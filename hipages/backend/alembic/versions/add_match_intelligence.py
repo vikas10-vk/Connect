@@ -1,0 +1,21 @@
+"""add match_intelligence to jobs
+
+Revision ID: add_match_intelligence
+Revises: add_soft_delete_cols
+Create Date: 2026-04-18
+"""
+from alembic import op
+import sqlalchemy as sa
+
+revision = 'add_match_intelligence'
+down_revision = 'add_soft_delete_cols'
+branch_labels = None
+depends_on = None
+
+
+def upgrade():
+    op.add_column('jobs', sa.Column('match_intelligence', sa.Text(), nullable=True))
+
+
+def downgrade():
+    op.drop_column('jobs', 'match_intelligence')

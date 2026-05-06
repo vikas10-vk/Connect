@@ -1,0 +1,21 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Environment
+.env
+.env.local
+
+# Node
+node_modules/
+.next/
+
+# Docker volumes
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

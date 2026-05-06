@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-terracotta: #8C3F1F;
+  --color-brand-cream: #FDFBF7;
+  --color-brand-navy: #071D36;
+  --color-brand-gold: #D4AA3A;
+  --color-brand-ivory: #FBF8EF;
+  --color-brand-sand: #F1EBDD;
+  --color-tradie-dark: #0A0A0B;
+  --color-tradie-card: #141416;
+  --color-tradie-accent: #1DE9B6;
+}
+
+@layer base {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply bg-brand-ivory text-gray-900 antialiased;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+  }
+}
+
+@layer utilities {
+  .tradie-hub-bg {
+    background: linear-gradient(180deg, #0A0A0B 0%, #141416 100%);
+  }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #d1d5db;
+}
