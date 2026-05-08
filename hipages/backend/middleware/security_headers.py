@@ -3,14 +3,9 @@
 # Tradie Platform
 # =============================================================================
 #
-# Adds security headers to every response.
-# nginx adds these in production — this middleware adds them as a backup so:
-# - Development (no nginx) also has them
-# - If nginx misconfiguration drops a header, it's still present
-#
-# Add to main.py:
-#   from middleware.security_headers import SecurityHeadersMiddleware
-#   app.add_middleware(SecurityHeadersMiddleware)
+# FIX: Starlette 0.28+ removed .pop() from MutableHeaders.
+# Replaced with explicit key existence check before deletion.
+# Affects: "Server" and "X-Powered-By" header removal.
 # =============================================================================
 
 from collections.abc import Awaitable, Callable
@@ -36,10 +31,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Frame-Options", "DENY")
 
         # Don't leak referrer across origins.
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Referrer-Policy", "strict-origin-when-cross-origin"
+        )
 
         # Remove headers that reveal server software.
-        response.headers.pop("Server", None)
-        response.headers.pop("X-Powered-By", None)
+        # FIX: MutableHeaders.pop() was removed in Starlette 0.28+.
+        # Use explicit membership check + del instead.
+        if "server" in response.headers:
+            del response.headers["server"]
+        if "x-powered-by" in response.headers:
+            del response.headers["x-powered-by"]
 
         return response
