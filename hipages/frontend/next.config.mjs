@@ -5,6 +5,11 @@ const nextConfig = {
     // The resulting .next/standalone/server.js is the production entry point.
     output: "standalone",
 
+    // Experimental flag to resolve the build error with Next.js 16
+    experimental: {
+        missingSuspenseWithCSRBailout: false,
+    },
+
     // Do not fail the build on TypeScript errors.
     // Fix type errors progressively — they should not block deploys.
     // Remove this once the codebase is fully typed.
