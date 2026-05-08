@@ -3,20 +3,21 @@
 # Tradie Platform
 # =============================================================================
 #
-# USES ASYNC SQLALCHEMY — no SYNC_DATABASE_URL, no psycopg2 needed.
+# FIX APPLIED: execution_options(no_parameters=True)
 #
-# HOW ASYNC ALEMBIC WORKS:
-# Alembic's migration runner (context.run_migrations) is synchronous.
-# But our database connection (asyncpg) is async.
-# The bridge: conn.run_sync() — runs a sync function inside an async connection.
+# PROBLEM:
+#   asyncpg uses PostgreSQL "extended query protocol" by default.
+#   This protocol treats every op.execute() call as a prepared statement.
+#   Prepared statements cannot contain multiple SQL commands (e.g. CREATE TABLE
+#   followed by CREATE INDEX in the same string).
+#   Error: "cannot insert multiple commands into a prepared statement"
 #
-#   asyncio.run(run_async_migrations())
-#       └── async with engine.connect() as conn:
-#               └── await conn.run_sync(do_run_migrations)
-#                       └── context.run_migrations()  ← sync, runs fine here
-#
-# RESULT: Full async connection, standard Alembic migration runner.
-# One DATABASE_URL env var. Same asyncpg driver as your FastAPI app.
+# FIX:
+#   Add execution_options(no_parameters=True) to the migration connection.
+#   This switches asyncpg to "simple query protocol" which allows multiple
+#   SQL statements in one op.execute() call.
+#   This only applies to the Alembic migration connection — FastAPI's
+#   connection pool is completely unaffected.
 # =============================================================================
 
 import asyncio
@@ -40,7 +41,6 @@ from db.session import Base
 
 # =============================================================================
 # Import all models — required for autogenerate to detect schema changes.
-# Add new model imports here as you create them.
 # =============================================================================
 from models.audit_event import AuditEvent
 from models.category import Category
@@ -74,8 +74,6 @@ from models.user import User
 
 config = context.config
 
-# Use DATABASE_URL directly — the asyncpg URL your app already uses.
-# No SYNC_DATABASE_URL, no psycopg2, no second env var.
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError(
@@ -91,7 +89,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # =============================================================================
-# PostGIS tables — skip in migrations (unchanged from your original)
+# PostGIS tables — skip in migrations
 # =============================================================================
 
 POSTGIS_TABLES = {
@@ -115,8 +113,7 @@ def include_object(object, name, type_, reflected, compare_to):
 
 
 # =============================================================================
-# Offline migrations — generates SQL without connecting to the database.
-# Usage: alembic upgrade head --sql > migration.sql
+# Offline migrations
 # =============================================================================
 
 def run_migrations_offline() -> None:
@@ -135,14 +132,10 @@ def run_migrations_offline() -> None:
 
 
 # =============================================================================
-# Online migrations — connects to the database and runs migrations.
+# Online migrations — async with no_parameters fix
 # =============================================================================
 
 def do_run_migrations(connection):
-    """
-    The actual migration runner — synchronous.
-    Called via conn.run_sync() from inside the async connection.
-    """
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
@@ -155,13 +148,6 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations() -> None:
-    """
-    Create an async engine and run migrations through it.
-
-    NullPool: do not pool connections during migrations.
-    Migrations are a one-shot operation — pooling adds no value
-    and can cause issues if the process exits without proper cleanup.
-    """
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -169,14 +155,28 @@ async def run_async_migrations() -> None:
     )
 
     async with connectable.connect() as connection:
-        # run_sync bridges the async connection to the sync migration runner.
+        # FIX: Switch asyncpg from "extended query protocol" (prepared statements)
+        # to "simple query protocol".
+        #
+        # WHY: asyncpg prepared statements reject multiple SQL commands in one
+        # op.execute() call. Some migration files use op.execute() with both
+        # CREATE TABLE and CREATE INDEX in the same string, which triggers:
+        # "cannot insert multiple commands into a prepared statement"
+        #
+        # no_parameters=True tells asyncpg to use simple protocol, which
+        # allows multiple semicolon-separated statements per execute call.
+        # This is safe for migrations because migration SQL has no parameters.
+        #
+        # SCOPE: Only applies to this Alembic migration connection.
+        # FastAPI's connection pool is completely unaffected.
+        connection = connection.execution_options(no_parameters=True)
+
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()
 
 
 def run_migrations_online() -> None:
-    """Entry point for online migrations — runs the async function."""
     asyncio.run(run_async_migrations())
 
 
