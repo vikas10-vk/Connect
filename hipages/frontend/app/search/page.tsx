@@ -1,7 +1,6 @@
 "use client";
 
-export const dynamic = "force-dynamic"
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -28,7 +27,13 @@ interface Tradie {
   categories?: string[];
 }
 
-export default function SearchPage() {
+// ─────────────────────────────────────────────────────────────────────────────
+// SearchPageContent — the real component.
+// Must NOT be the default export because useSearchParams() requires
+// this component to be wrapped in <Suspense> before Next.js can
+// statically generate the page shell.
+// ─────────────────────────────────────────────────────────────────────────────
+function SearchPageContent() {
   const { isAuthenticated, logout, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -154,7 +159,7 @@ export default function SearchPage() {
             )}
           </div>
 
-          {/* ── Auth area — P8 FIX: bigger circular badge ── */}
+          {/* ── Auth area ── */}
           <div className="flex items-center gap-3 shrink-0">
             {!isAuthenticated ? (
               <>
@@ -173,7 +178,6 @@ export default function SearchPage() {
               </>
             ) : (
               <div className="flex items-center gap-3">
-                {/* Circular avatar badge — name + dashboard link */}
                 <Link href={dashboardHref} className="flex items-center gap-2.5 group">
                   <div className="w-9 h-9 rounded-full bg-brand-gold flex items-center justify-center text-white font-black text-sm shadow-md shadow-brand-gold/30 ring-2 ring-white group-hover:ring-brand-gold/30 transition-all">
                     {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
@@ -185,7 +189,6 @@ export default function SearchPage() {
                     <p className="text-[10px] text-brand-gold font-bold mt-0.5">Dashboard →</p>
                   </div>
                 </Link>
-                {/* Sign out */}
                 <button
                   onClick={logout}
                   className="w-8 h-8 rounded-full bg-gray-100 hover:bg-red-50 hover:text-red-500 transition-all flex items-center justify-center border border-gray-200 text-gray-400"
@@ -453,5 +456,26 @@ export default function SearchPage() {
         </main>
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SearchPage — the exported page.
+// Wraps SearchPageContent in <Suspense> so Next.js 15 can statically
+// generate the page shell without hitting the useSearchParams() error.
+// The Loader2 spinner shows during the server-side pre-render pass,
+// then SearchPageContent hydrates on the client with full functionality.
+// ─────────────────────────────────────────────────────────────────────────────
+export default function SearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen bg-brand-ivory">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      }
+    >
+      <SearchPageContent />
+    </Suspense>
   );
 }
