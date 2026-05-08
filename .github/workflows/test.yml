@@ -119,7 +119,7 @@ jobs:
           R2_BUCKET_NAME:        test-bucket
           R2_PUBLIC_URL:         http://localhost
         run: |
-          pytest tests/ \
+          PYTHONPATH=. pytest tests/ \
             --tb=short \
             --cov=. \
             --cov-report=term-missing \
