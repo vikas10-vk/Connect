@@ -33,7 +33,7 @@ WORKDIR /app
 # If package.json hasn't changed, npm ci is skipped on next build.
 COPY package.json package-lock.json ./
 
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 
 # =============================================================================
