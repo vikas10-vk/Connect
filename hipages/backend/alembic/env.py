@@ -155,22 +155,7 @@ async def run_async_migrations() -> None:
     )
 
     async with connectable.connect() as connection:
-        # FIX: Switch asyncpg from "extended query protocol" (prepared statements)
-        # to "simple query protocol".
-        #
-        # WHY: asyncpg prepared statements reject multiple SQL commands in one
-        # op.execute() call. Some migration files use op.execute() with both
-        # CREATE TABLE and CREATE INDEX in the same string, which triggers:
-        # "cannot insert multiple commands into a prepared statement"
-        #
-        # no_parameters=True tells asyncpg to use simple protocol, which
-        # allows multiple semicolon-separated statements per execute call.
-        # This is safe for migrations because migration SQL has no parameters.
-        #
-        # SCOPE: Only applies to this Alembic migration connection.
-        # FastAPI's connection pool is completely unaffected.
-        connection = connection.execution_options(no_parameters=True)
-
+        connection = await connection.execution_options(no_parameters=True)
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()
