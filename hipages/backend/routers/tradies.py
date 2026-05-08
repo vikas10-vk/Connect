@@ -30,7 +30,7 @@ from typing import Literal, Optional
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,7 +75,7 @@ from services.notification_service import notify_tradie_new_inquiry
 URGENT_VALUES        = {"asap", "emergency"}
 HIGH_VALUE_THRESHOLD = 1000.0
 
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 router = APIRouter(prefix="/api/v1/tradies", tags=["Tradies"])
 
@@ -1247,7 +1247,7 @@ async def add_worker(
         email           = body.email.lower().strip(),
         phone_real      = body.phone_real.strip(),
         role            = TeamMemberRole.WORKER,
-        hashed_password = pwd_ctx.hash(body.password),
+        hashed_password = _bcrypt.hashpw(body.password[:72].encode("utf-8"), _bcrypt.gensalt(rounds=12)).decode("utf-8"),
         is_active       = True,
         can_accept_jobs = False,                       # must pass cert + selfie gate
     )
