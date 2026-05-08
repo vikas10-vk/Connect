@@ -67,7 +67,7 @@ jobs:
           pip install "pydantic==2.12.5" "pydantic-settings==2.13.1" "python-dotenv==1.2.2" "email-validator==2.3.0"
           pip install "python-jose[cryptography]==3.5.0" "cryptography==46.0.5" "bcrypt==4.0.1"
           pip install "redis==7.3.0" "celery==5.6.2"
-          pip install "httpx==0.28.1" "python-multipart==0.0.22" "python-dateutil==2.9.0" "orjson" "stripe"
+          pip install "httpx==0.28.1" "python-multipart==0.0.22" "python-dateutil==2.9.0" "orjson" "stripe" "boto3"
           pip install "sentry-sdk[fastapi]==2.56.0"
           pip install "pytest==8.3.4" "pytest-asyncio==0.24.0" "pytest-cov==6.0.0" "ruff==0.8.4"
 

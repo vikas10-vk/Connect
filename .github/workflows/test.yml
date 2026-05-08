@@ -72,7 +72,7 @@ jobs:
           # the kombu version conflict (kombu requires redis<6.5, we use 7.3.0)
           pip install "redis==7.3.0" "celery==5.6.2"
 
-          pip install "httpx==0.28.1" "python-multipart==0.0.22" "python-dateutil==2.9.0" "orjson" "stripe"
+          pip install "httpx==0.28.1" "python-multipart==0.0.22" "python-dateutil==2.9.0" "orjson" "stripe" "boto3"
 
           pip install "sentry-sdk[fastapi]==2.56.0"
 
