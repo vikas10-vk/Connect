@@ -3,15 +3,13 @@
 # Tradie Platform
 # =============================================================================
 #
-# FIXES APPLIED:
-#   - session-scoped event_loop: SQLAlchemy async engine is created once
-#     and never crosses event loop boundaries ("attached to a different loop")
-#   - LifespanManager: triggers app.state.redis_client setup + DB health check
-#     (ASGITransport alone does NOT trigger FastAPI lifespan)
-#   - generate_and_send mocked so registration never sends real emails
+# FIXES:
+#   - loop_scope="session" on the client fixture (pytest-asyncio 0.24.0 syntax)
+#   - LifespanManager triggers app startup so app.state.redis_client is set
+#   - Session scope means DB pool + Redis pool created once for all tests
+#   - asyncio_default_fixture_loop_scope = session in pytest.ini removes warning
 # =============================================================================
 
-import asyncio
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -24,47 +22,30 @@ from main import app
 
 
 # =============================================================================
-# Event loop — session scope prevents "attached to a different loop"
-# =============================================================================
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """
-    Single event loop shared across all tests.
-
-    WHY: SQLAlchemy's async engine (asyncpg pool) is created once at module
-    import. If each test gets its own loop (the default), the pool is created
-    in loop-1 but tests 2-N run in loop-2 … loop-N → asyncpg raises
-    "Future attached to a different loop".
-
-    Using one session-scoped loop means the pool is always in scope.
-    """
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
-
-
-# =============================================================================
 # HTTP client — session scope + LifespanManager
 # =============================================================================
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def client():
     """
-    Async HTTP client that talks directly to the FastAPI app in-process.
+    Async HTTP client wired directly to the FastAPI ASGI app.
 
-    LifespanManager is REQUIRED: ASGITransport does not call the ASGI lifespan.
-    Without it, app.state.redis_client is never set and RateLimitMiddleware
-    crashes on every request.
+    WHY LifespanManager:
+      ASGITransport does NOT trigger the FastAPI lifespan (startup/shutdown).
+      Without it, app.state.redis_client is never created and
+      RateLimitMiddleware crashes on every request with AttributeError.
 
-    Session scope means startup/shutdown runs once for the whole test suite,
-    not once per test — dramatically faster and avoids pool churn.
+    WHY session scope:
+      - asyncpg connection pool is created once at engine creation.
+        Crossing event loop boundaries causes "attached to a different loop".
+      - Session scope means one loop, one pool, one Redis connection for
+        the entire test run — much faster and no loop boundary errors.
     """
     async with LifespanManager(app) as manager:
         async with AsyncClient(
             transport=ASGITransport(app=manager.app),
             base_url="http://test",
+            timeout=30.0,
         ) as ac:
             yield ac
 
@@ -76,7 +57,7 @@ async def client():
 def make_user_data(**overrides) -> dict:
     """
     Build a valid registration payload.
-    Each call generates a unique email so tests never collide.
+    Unique email per call so tests never collide.
     """
     data = {
         "email":     f"test_{uuid.uuid4().hex[:8]}@example.com",
@@ -93,6 +74,7 @@ def make_user_data(**overrides) -> dict:
 # =============================================================================
 
 async def _register(client: AsyncClient, data: dict) -> dict:
+    """Register via API. Mocks the email sender so no real emails are sent."""
     with patch(
         "routers.auth.generate_and_send",
         new_callable=AsyncMock,
@@ -108,6 +90,7 @@ async def _register(client: AsyncClient, data: dict) -> dict:
 
 
 async def _login(client: AsyncClient, email: str, password: str) -> dict:
+    """Login and return tokens."""
     resp = await client.post("/api/v1/auth/login", json={
         "email":    email,
         "password": password,
@@ -122,19 +105,19 @@ async def _login(client: AsyncClient, email: str, password: str) -> dict:
 # Homeowner fixtures
 # =============================================================================
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def homeowner_data(client) -> dict:
     data = make_user_data(role="homeowner")
     await _register(client, data)
     return data
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def homeowner_tokens(client, homeowner_data) -> dict:
     return await _login(client, homeowner_data["email"], homeowner_data["password"])
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def homeowner_headers(homeowner_tokens) -> dict:
     return {"Authorization": f"Bearer {homeowner_tokens['access_token']}"}
 
@@ -143,19 +126,19 @@ async def homeowner_headers(homeowner_tokens) -> dict:
 # Tradie fixtures
 # =============================================================================
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def tradie_data(client) -> dict:
     data = make_user_data(role="tradie")
     await _register(client, data)
     return data
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def tradie_tokens(client, tradie_data) -> dict:
     return await _login(client, tradie_data["email"], tradie_data["password"])
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def tradie_headers(tradie_tokens) -> dict:
     return {"Authorization": f"Bearer {tradie_tokens['access_token']}"}
 
@@ -164,8 +147,12 @@ async def tradie_headers(tradie_tokens) -> dict:
 # Second homeowner — for IDOR tests
 # =============================================================================
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def other_homeowner_headers(client) -> dict:
+    """
+    Separate homeowner account — used to verify user A cannot touch user B's
+    resources (IDOR protection tests).
+    """
     data = make_user_data(role="homeowner", full_name="Other User")
     await _register(client, data)
     tokens = await _login(client, data["email"], data["password"])
@@ -176,6 +163,6 @@ async def other_homeowner_headers(client) -> dict:
 # Aliases
 # =============================================================================
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def auth_headers(homeowner_headers) -> dict:
     return homeowner_headers
