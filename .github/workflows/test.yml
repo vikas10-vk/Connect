@@ -82,11 +82,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/pyproject.toml
+          cache-dependency-path: hipages/backend/pyproject.toml
 
       # ── 3. Install dependencies ───────────────────────────────────────────────
       - name: Install dependencies
-        working-directory: backend
+        working-directory: hipages/backend
         run: |
           python -m pip install --upgrade pip
           pip install ".[dev]"
@@ -95,7 +95,7 @@ jobs:
       # Catches: unused imports, undefined names, style issues, common bugs.
       # Configured via pyproject.toml [tool.ruff].
       - name: Lint with ruff
-        working-directory: backend
+        working-directory: hipages/backend
         run: |
           ruff check .
           ruff format --check .
@@ -104,7 +104,7 @@ jobs:
       # Catches type errors that tests might not hit.
       # --ignore-missing-imports: third-party stubs are not always available.
       - name: Type check with mypy
-        working-directory: backend
+        working-directory: hipages/backend
         run: |
           mypy app --ignore-missing-imports --no-strict-optional
         continue-on-error: true   # Type errors are warnings until stubs are complete
@@ -114,7 +114,7 @@ jobs:
       # Apply all migrations to the test database before running tests.
       # This verifies migrations are valid AND the test DB has the correct schema.
       - name: Run Alembic migrations
-        working-directory: backend
+        working-directory: hipages/backend
         env:
           DATABASE_URL: postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
           SECRET_KEY:   ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
@@ -124,7 +124,7 @@ jobs:
 
       # ── 7. Run tests ──────────────────────────────────────────────────────────
       - name: Run tests with pytest
-        working-directory: backend
+        working-directory: hipages/backend
         env:
           # Test database — separate from dev, never touches real data
           DATABASE_URL:     postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
@@ -173,7 +173,7 @@ jobs:
         if: always()   # Upload even if tests fail — useful for debugging
         with:
           name: coverage-report
-          path: backend/coverage.xml
+          path: hipages/backend/coverage.xml
           retention-days: 7
 
   # ── Frontend build check ────────────────────────────────────────────────────
@@ -193,14 +193,14 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: hipages/frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: frontend
+        working-directory: hipages/frontend
         run: npm ci
 
       - name: Build Next.js
-        working-directory: frontend
+        working-directory: hipages/frontend
         env:
           # Provide required env vars so the build doesn't fail on missing vars
           NEXT_PUBLIC_API_URL:    http://localhost:8000

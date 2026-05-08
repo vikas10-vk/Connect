@@ -88,18 +88,18 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/pyproject.toml
+          cache-dependency-path: hipages/backend/pyproject.toml
 
       - name: Install dependencies
-        working-directory: backend
+        working-directory: hipages/backend
         run: pip install ".[dev]"
 
       - name: Lint
-        working-directory: backend
+        working-directory: hipages/backend
         run: ruff check .
 
       - name: Run migrations
-        working-directory: backend
+        working-directory: hipages/backend
         env:
           DATABASE_URL: postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
           SECRET_KEY:   ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
@@ -107,7 +107,7 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        working-directory: backend
+        working-directory: hipages/backend
         env:
           DATABASE_URL:          postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
           REDIS_URL:             redis://localhost:6379/0
@@ -180,8 +180,8 @@ jobs:
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
+          context: ./hipages/backend
+          file: ./hipages/backend/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/backend:${{ steps.meta.outputs.version }}
@@ -196,8 +196,8 @@ jobs:
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
+          context: ./hipages/frontend
+          file: ./hipages/frontend/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/frontend:${{ steps.meta.outputs.version }}
@@ -210,8 +210,8 @@ jobs:
       - name: Build and push admin image
         uses: docker/build-push-action@v5
         with:
-          context: ./admin
-          file: ./admin/Dockerfile
+          context: ./hipages/admin
+          file: ./hipages/admin/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/admin:${{ steps.meta.outputs.version }}
@@ -261,7 +261,7 @@ jobs:
         run: |
           scp -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
-            deploy.sh \
+            hipages/deploy.sh \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/home/${{ secrets.SERVER_USER }}/deploy.sh
 
       # ── Run deploy.sh on server ────────────────────────────────────────────
