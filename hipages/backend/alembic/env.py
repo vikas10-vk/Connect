@@ -1,34 +1,31 @@
 # =============================================================================
-# alembic/env.py — Async Alembic migration environment
+# alembic/env.py — Alembic migration environment
 # Tradie Platform
 # =============================================================================
 #
-# FIX APPLIED: execution_options(no_parameters=True)
+# DRIVER STRATEGY:
+#   FastAPI  → asyncpg  (async, high performance for API requests)
+#   Alembic  → psycopg2 (sync, standard, handles all SQL including multi-statement)
 #
-# PROBLEM:
-#   asyncpg uses PostgreSQL "extended query protocol" by default.
-#   This protocol treats every op.execute() call as a prepared statement.
-#   Prepared statements cannot contain multiple SQL commands (e.g. CREATE TABLE
-#   followed by CREATE INDEX in the same string).
-#   Error: "cannot insert multiple commands into a prepared statement"
+# WHY NOT ASYNC ALEMBIC:
+#   asyncpg has a known limitation — it cannot execute multiple SQL statements
+#   in a single op.execute() call. Several migration files in this project use
+#   op.execute() with CREATE TABLE + CREATE INDEX in one string.
+#   psycopg2 handles this without any issue.
 #
-# FIX:
-#   Add execution_options(no_parameters=True) to the migration connection.
-#   This switches asyncpg to "simple query protocol" which allows multiple
-#   SQL statements in one op.execute() call.
-#   This only applies to the Alembic migration connection — FastAPI's
-#   connection pool is completely unaffected.
+# URL DERIVATION (no extra env var needed):
+#   DATABASE_URL = postgresql+asyncpg://user:pass@host/db
+#   Sync URL     = postgresql://user:pass@host/db
+#   Derived by:  DATABASE_URL.replace("+asyncpg", "")
 # =============================================================================
 
-import asyncio
 import os
 import sys
 from logging.config import fileConfig
 
 from alembic import context
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import async_engine_from_config
-from sqlalchemy.pool import NullPool
+from sqlalchemy import engine_from_config, pool
 
 load_dotenv(
     dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
@@ -74,14 +71,19 @@ from models.user import User
 
 config = context.config
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
+# Derive the psycopg2 (sync) URL from DATABASE_URL.
+# DATABASE_URL uses asyncpg for FastAPI. Alembic needs the plain psycopg2 URL.
+# We just remove "+asyncpg" from the driver — same host, user, password, DB.
+_database_url = os.getenv("DATABASE_URL", "")
+if not _database_url:
     raise RuntimeError(
         "DATABASE_URL environment variable is not set. "
         "Alembic cannot connect to the database."
     )
 
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# postgresql+asyncpg://... → postgresql://...
+_sync_url = _database_url.replace("+asyncpg", "")
+config.set_main_option("sqlalchemy.url", _sync_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -132,37 +134,25 @@ def run_migrations_offline() -> None:
 
 
 # =============================================================================
-# Online migrations — async with no_parameters fix
+# Online migrations — synchronous psycopg2
 # =============================================================================
 
-def do_run_migrations(connection):
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata,
-        include_object=include_object,
-        compare_type=True,
-        compare_server_default=True,
-    )
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-async def run_async_migrations() -> None:
-    connectable = async_engine_from_config(
+def run_migrations_online() -> None:
+    connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
-        poolclass=NullPool,
+        poolclass=pool.NullPool,
     )
-
-    async with connectable.connect() as connection:
-        connection = await connection.execution_options(no_parameters=True)
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
-
-
-def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_object=include_object,
+            compare_type=True,
+            compare_server_default=True,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
 
 
 # =============================================================================
