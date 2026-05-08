@@ -38,7 +38,7 @@ from schemas.user_schema import (
     UserResponse,
 )
 from security import (
-    _DUMMY_HASH,
+    get_dummy_hash,
     create_refresh_token,
     revoke_token_family,
     rotate_refresh_token,
@@ -179,7 +179,7 @@ async def login(
     # faster than a real verification, revealing whether the email exists.
     password_ok = verify_password(
         body.password,
-        user.hashed_password if user else _DUMMY_HASH,
+        user.hashed_password if user else get_dummy_hash(),
     )
 
     if not user or not password_ok:

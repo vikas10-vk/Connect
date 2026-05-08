@@ -66,7 +66,7 @@ jobs:
 
           pip install "pydantic==2.12.5" "pydantic-settings==2.13.1" "python-dotenv==1.2.2" "email-validator==2.3.0"
 
-          pip install "python-jose[cryptography]==3.5.0" "passlib[bcrypt]==1.7.4" "cryptography==46.0.5"
+          pip install "python-jose[cryptography]==3.5.0" "cryptography==46.0.5"
 
           # redis without [hiredis] and celery without [redis] — avoids
           # the kombu version conflict (kombu requires redis<6.5, we use 7.3.0)

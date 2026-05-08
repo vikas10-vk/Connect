@@ -3,14 +3,26 @@
 # Tradie Platform
 # =============================================================================
 #
-# FIX APPLIED: Dummy hash for timing attack prevention.
+# CHANGE: Removed passlib — now uses bcrypt directly.
 #
-# PROBLEM: "$2b$12$dummyhashXXX..." is not a valid bcrypt hash.
-# passlib may fail it faster than a real verification, restoring the timing
-# difference that lets attackers detect whether an email exists.
+# WHY PASSLIB WAS REMOVED:
+#   passlib 1.7.4 (last release: 2020) accesses bcrypt.__about__ to detect
+#   the bcrypt version. bcrypt 4.0+ removed __about__ entirely.
+#   Result: passlib crashes on import with modern bcrypt versions.
+#   passlib is effectively abandoned — no fix will ever come.
 #
-# FIX: Pre-compute a real bcrypt hash at module import time.
-# Cost: ~250ms once at startup. After that it's a constant.
+# FIX:
+#   Use bcrypt directly, exactly as auth_service.py already does.
+#   hash_password() and verify_password() behave identically.
+#   All existing password hashes in the database continue to work —
+#   the hash format ($2b$12$...) is the same regardless of whether
+#   bcrypt was called via passlib or directly.
+#
+# _DUMMY_HASH IS NOW LAZY:
+#   Previously _DUMMY_HASH was computed at module import time, causing
+#   a crash if bcrypt had any issue during startup.
+#   Now get_dummy_hash() computes it on first call only.
+#   Import of this module never calls bcrypt.
 # =============================================================================
 
 import logging
@@ -20,12 +32,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import bcrypt as _bcrypt
 from cryptography.fernet import Fernet, InvalidToken
 from dotenv import load_dotenv
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import ExpiredSignatureError, JWTError, jwt
-from passlib.context import CryptContext
 
 from exceptions import (
     AuthenticationError,
@@ -59,44 +71,66 @@ RT_FAMILY = "rt:family:"
 
 
 # =============================================================================
-# 1. Password hashing
+# 1. Password hashing — bcrypt directly (no passlib)
 # =============================================================================
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
-
-# Pre-computed bcrypt hash for timing attack prevention.
-#
-# WHY THIS EXISTS:
-# When a login attempt uses an email that doesn't exist in the database,
-# we must still run a bcrypt verification (even though we have nothing to
-# verify against) to make the response take the same ~250ms as a real
-# verification. Without this, the response is immediate for unknown emails
-# — a timing oracle that tells attackers which emails are registered.
-#
-# WHY NOT A HARDCODED STRING:
-# The previous version used "$2b$12$dummyhashXXX..." which is not a valid
-# bcrypt hash. passlib may reject it faster than a real verification,
-# restoring the timing difference. We use a real pre-computed hash.
-#
-# COST: ~250ms once at module import time. Negligible in practice.
-_DUMMY_HASH: str = _pwd_context.hash("__tradie_dummy_timing_hash_never_matches__")
-
-
 def hash_password(plain: str) -> str:
-    return _pwd_context.hash(plain)
+    """
+    Hash a password with bcrypt rounds=12.
+    Truncates to 72 bytes explicitly — bcrypt silently or noisily truncates
+    depending on version. Being explicit is safer and clearer.
+    Compatible with all existing hashes in the database.
+    """
+    return _bcrypt.hashpw(
+        plain[:72].encode("utf-8"),
+        _bcrypt.gensalt(rounds=12),
+    ).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """
-    Verify password. Always takes ~250ms regardless of outcome.
-    Compatible with hashes made by direct bcrypt.hashpw() and by passlib.
-    Both produce $2b$ format — fully interoperable.
+    Verify a password against its hash.
+    Works on hashes created by this function, by auth_service.hash_password(),
+    and by the old passlib-based hash_password() — all produce $2b$ format.
     """
-    return _pwd_context.verify(plain, hashed)
+    try:
+        return _bcrypt.checkpw(
+            plain[:72].encode("utf-8"),
+            hashed.encode("utf-8"),
+        )
+    except Exception:
+        return False
 
 
-def needs_rehash(hashed: str) -> bool:
-    return _pwd_context.needs_update(hashed)
+# =============================================================================
+# Dummy hash for timing attack prevention — LAZY INITIALISATION
+#
+# WHY LAZY:
+#   Computing a bcrypt hash takes ~250ms. Doing this at module import time:
+#   - Slows every startup by 250ms
+#   - Crashes the app if bcrypt fails to initialise for any reason
+#   - Runs even when no login endpoint is ever called (e.g. in tests
+#     that only test database models)
+#
+# HOW IT WORKS:
+#   First call to get_dummy_hash() computes and caches the hash.
+#   Subsequent calls return the cached value instantly.
+#   Used in the login handler when the email does not exist, to ensure
+#   the response time is the same as a real failed login (~250ms).
+# =============================================================================
+
+_dummy_hash_cache: str | None = None
+
+
+def get_dummy_hash() -> str:
+    """
+    Return a valid bcrypt hash for timing attack prevention.
+    Computed once on first call, cached forever.
+    """
+    global _dummy_hash_cache
+    if _dummy_hash_cache is None:
+        _dummy_hash_cache = hash_password("__tradie_dummy_timing_placeholder__")
+    return _dummy_hash_cache
 
 
 # =============================================================================
@@ -112,13 +146,13 @@ def create_access_token(
 ) -> str:
     now = datetime.now(UTC)
     payload: dict[str, Any] = {
-        "sub": str(user_id),
-        "role": role,
+        "sub":      str(user_id),
+        "role":     role,
         "verified": is_verified,
-        "active": is_active,
-        "type": "access",
-        "iat": now,
-        "exp": now + timedelta(minutes=EXPIRE_MINS),
+        "active":   is_active,
+        "type":     "access",
+        "iat":      now,
+        "exp":      now + timedelta(minutes=EXPIRE_MINS),
     }
     if extra:
         payload.update(extra)
@@ -152,12 +186,12 @@ def create_refresh_token(
     family_id = family_id or str(uuid.uuid4())
 
     payload: dict[str, Any] = {
-        "sub": str(user_id),
-        "type": "refresh",
-        "jti": token_id,
+        "sub":    str(user_id),
+        "type":   "refresh",
+        "jti":    token_id,
         "family": family_id,
-        "iat": now,
-        "exp": now + timedelta(days=REFRESH_EXPIRE_DAYS),
+        "iat":    now,
+        "exp":    now + timedelta(days=REFRESH_EXPIRE_DAYS),
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return token, token_id, family_id
@@ -240,7 +274,7 @@ async def _invalidate_family(family_id: str, redis_client: Any) -> None:
 
 
 # =============================================================================
-# 4. FastAPI auth dependencies (new routers only)
+# 4. FastAPI auth dependencies
 # =============================================================================
 
 _bearer = HTTPBearer(auto_error=False)
