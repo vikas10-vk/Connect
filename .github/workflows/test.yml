@@ -145,28 +145,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Check frontend exists
-        id: check_frontend
-        run: |
-          if [ -f "hipages/frontend/package.json" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "No frontend/package.json found — skipping build"
-          fi
-
       - name: Set up Node.js 20
-        if: steps.check_frontend.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: hipages/frontend/package-lock.json
 
-      - name: Install and build frontend
-        if: steps.check_frontend.outputs.exists == 'true'
+      - name: Install dependencies
+        working-directory: hipages/frontend
+        run: npm ci
+
+      - name: Build Next.js
         working-directory: hipages/frontend
         env:
-          NEXT_PUBLIC_API_URL:     http://localhost:8000
-          NEXT_TELEMETRY_DISABLED: "1"
-        run: |
-          npm ci
-          npm run build
+          # Required at build time for NEXT_PUBLIC_ variables
+          NEXT_PUBLIC_API_URL:      http://localhost:8000
+          NEXT_PUBLIC_WS_URL:       ws://localhost:8000
+          NEXT_PUBLIC_STRIPE_KEY:   pk_test_placeholder
+          NEXT_TELEMETRY_DISABLED:  "1"
+          NODE_ENV:                 production
+        run: npm run build
