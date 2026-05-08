@@ -120,6 +120,7 @@ jobs:
           R2_PUBLIC_URL:         http://localhost
         run: |
           PYTHONPATH=. pytest tests/ \
+            --asyncio-mode=auto \
             --tb=short \
             --cov=. \
             --cov-report=term-missing \
