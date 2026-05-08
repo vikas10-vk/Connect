@@ -3,7 +3,9 @@
 # ============================================================
 .env
 .env.*
-!.env.example          # keep the template
+!.env.example
+!.env.dev.example
+!.env.prod.example
 *.env
 .env.local
 .env.development

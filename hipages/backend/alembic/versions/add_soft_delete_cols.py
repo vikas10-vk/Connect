@@ -18,10 +18,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('jobs', sa.Column('is_deleted',   sa.Boolean(),  nullable=False, server_default='false'))
-    op.add_column('jobs', sa.Column('deleted_at',   sa.DateTime(), nullable=True))
-    op.add_column('jobs', sa.Column('completed_at', sa.DateTime(), nullable=True))
-    op.create_index('ix_jobs_is_deleted', 'jobs', ['is_deleted'])
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    jobs_cols = [c['name'] for c in inspector.get_columns('jobs')]
+    if 'is_deleted' not in jobs_cols:
+        op.add_column('jobs', sa.Column('is_deleted',   sa.Boolean(),  nullable=False, server_default='false'))
+    if 'deleted_at' not in jobs_cols:
+        op.add_column('jobs', sa.Column('deleted_at',   sa.DateTime(), nullable=True))
+    if 'completed_at' not in jobs_cols:
+        op.add_column('jobs', sa.Column('completed_at', sa.DateTime(), nullable=True))
+    existing_indexes = [idx['name'] for idx in inspector.get_indexes('jobs')]
+    if 'ix_jobs_is_deleted' not in existing_indexes:
+        op.create_index('ix_jobs_is_deleted', 'jobs', ['is_deleted'])
 
 
 def downgrade() -> None:

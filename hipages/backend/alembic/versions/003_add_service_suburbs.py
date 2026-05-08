@@ -16,10 +16,14 @@ depends_on    = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "tradie_preferences",
-        sa.Column("service_suburbs", sa.Text(), nullable=True),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_cols = [c['name'] for c in inspector.get_columns('tradie_preferences')]
+    if 'service_suburbs' not in existing_cols:
+        op.add_column(
+            "tradie_preferences",
+            sa.Column("service_suburbs", sa.Text(), nullable=True),
+        )
 
 
 def downgrade() -> None:

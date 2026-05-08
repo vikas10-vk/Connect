@@ -14,7 +14,11 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('jobs', sa.Column('match_intelligence', sa.Text(), nullable=True))
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    jobs_cols = [c['name'] for c in inspector.get_columns('jobs')]
+    if 'match_intelligence' not in jobs_cols:
+        op.add_column('jobs', sa.Column('match_intelligence', sa.Text(), nullable=True))
 
 
 def downgrade():

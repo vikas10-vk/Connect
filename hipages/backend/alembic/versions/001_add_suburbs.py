@@ -18,19 +18,21 @@ depends_on    = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "suburbs",
-        sa.Column("id",         sa.Integer(),     nullable=False),
-        sa.Column("suburb",     sa.String(100),   nullable=False),
-        sa.Column("postcode",   sa.String(10),    nullable=False),  # VARCHAR keeps leading zeros
-        sa.Column("state",      sa.String(50),    nullable=False),
-        sa.Column("state_code", sa.String(5),     nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    # Indexes for autocomplete + postcode lookup + state filter
-    op.create_index("ix_suburbs_suburb_lower", "suburbs", [sa.text("lower(suburb)")], postgresql_using="btree")
-    op.create_index("ix_suburbs_postcode",     "suburbs", ["postcode"])
-    op.create_index("ix_suburbs_state_code",   "suburbs", ["state_code"])
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if 'suburbs' not in inspector.get_table_names():
+        op.create_table(
+            "suburbs",
+            sa.Column("id",         sa.Integer(),     nullable=False),
+            sa.Column("suburb",     sa.String(100),   nullable=False),
+            sa.Column("postcode",   sa.String(10),    nullable=False),
+            sa.Column("state",      sa.String(50),    nullable=False),
+            sa.Column("state_code", sa.String(5),     nullable=False),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index("ix_suburbs_suburb_lower", "suburbs", [sa.text("lower(suburb)")], postgresql_using="btree")
+        op.create_index("ix_suburbs_postcode",     "suburbs", ["postcode"])
+        op.create_index("ix_suburbs_state_code",   "suburbs", ["state_code"])
 
 
 def downgrade() -> None:

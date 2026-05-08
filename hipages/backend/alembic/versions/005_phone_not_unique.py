@@ -19,11 +19,13 @@ depends_on    = None
 
 def upgrade() -> None:
     # Drop the unique index that enforces phone uniqueness.
-    # PostgreSQL creates an index named <table>_<col>_key for unique columns,
-    # but SQLAlchemy may also have created a named index; we drop both safely.
-    with op.batch_alter_table("users") as batch_op:
-        # Drop the unique constraint (named automatically by Postgres)
-        batch_op.drop_constraint("users_phone_key", type_="unique")
+    # On a fresh database this constraint may not exist, so we check first.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    constraints = [c['name'] for c in inspector.get_unique_constraints('users')]
+    if 'users_phone_key' in constraints:
+        with op.batch_alter_table("users") as batch_op:
+            batch_op.drop_constraint("users_phone_key", type_="unique")
 
 
 def downgrade() -> None:

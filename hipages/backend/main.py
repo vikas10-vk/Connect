@@ -1,61 +1,47 @@
-import os
+# =============================================================================
+# main.py — FastAPI application entry point
+# Tradie Platform
+# =============================================================================
+#
+# FIX APPLIED: Conditional CORS middleware.
+#
+# PROBLEM: nginx adds Access-Control-Allow-Origin AND FastAPI CORSMiddleware
+# also adds it. Browsers reject responses with duplicate CORS headers.
+# In production your frontend could not call your API.
+#
+# FIX: CORSMiddleware only runs in development (where there is no nginx).
+# In production, nginx handles all CORS via conf.d/api.conf.
+# =============================================================================
+
+from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv(
-    dotenv_path=r"C:\Users\Capstone\Intership_main\hipages\.env",
-    override=True
-)
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
 
-# ── Sentry — must be initialised before anything else ─────────────
+import logging
+import os
+import sys
+from contextlib import asynccontextmanager
+from typing import Any
+
+import redis.asyncio as aioredis
 import sentry_sdk
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import ORJSONResponse
+from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-from sentry_sdk.integrations.celery import CeleryIntegration
 
+from db.session import check_database_health
+from exceptions import register_exception_handlers
+from middleware.audit_middleware import AuditMiddleware
+from middleware.rate_limit import RateLimitMiddleware
+from middleware.request_id import RequestIDMiddleware
+from middleware.security_headers import SecurityHeadersMiddleware
 
-SENTRY_DSN = os.getenv("SENTRY_BACKEND_DSN")
-
-if SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        environment=os.getenv("ENVIRONMENT", "development"),
-        traces_sample_rate=1.0,       # 100% of transactions in dev; lower to 0.1 in prod
-        profiles_sample_rate=0.1,     # 10% profiling sample
-        integrations=[
-            FastApiIntegration(),
-            SqlalchemyIntegration(),   # captures slow/failed DB queries
-            CeleryIntegration(),       # captures Celery task errors
-        ],
-        # Strip sensitive data from error reports
-        send_default_pii=False,
-    )
-    print(f"[OK] Sentry initialised — environment: {os.getenv('ENVIRONMENT', 'development')}")
-else:
-    print("[WARNING] SENTRY_BACKEND_DSN not set — Sentry disabled")
-# ──────────────────────────────────────────────────────────────────
-
-from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
-from db.session import get_db
-
-from models.user import User
-from models.tradie_profile import TradieProfile
-from models.category import Category
-from models.tradie_category import TradieCategory
-from models.job import Job
-from models.lead import Lead
-from models.quote import Quote
-from models.review import Review
-from models.job_photo import JobPhoto
-from models.inquiry import Inquiry
-from models.audit_event import AuditEvent
-from models.job_event import JobEvent
-from models.suburb import Suburb
-from models.email_otp import EmailOTP
-
+# ── All existing router imports — UNCHANGED ──────────────────────────────────
 from routers.auth import router as auth_router
 from routers.tradies import router as tradies_router
 from routers.categories import router as categories_router
@@ -66,36 +52,138 @@ from routers.reviews import router as reviews_router
 from routers.websocket import router as ws_router
 from routers.payments import router as payments_router
 from routers.uploads import router as uploads_router
-from models.home_asset import HomeAsset
 from routers.assets import router as assets_router
-from models.tradie_pass       import TradiePass
-from models.tradie_preference import TradiePreference
-from models.earnings_record   import EarningsRecord
-from models.swms_document     import SWMSDocument
-from routers.compliance    import router as compliance_router
+from routers.compliance import router as compliance_router
 from routers.licence_guard import router as licence_guard_router
-from routers.swms          import router as swms_router
-from routers.earnings      import router as earnings_router
-from routers.preferences   import router as preferences_router
-from models.chat_conversation import ChatConversation
+from routers.swms import router as swms_router
+from routers.earnings import router as earnings_router
+from routers.preferences import router as preferences_router
 from routers.ai_chat import router as ai_chat_router
 from routers.suburbs import router as suburbs_router
 from routers.job_assignments import router as job_assignments_router
-from middleware.audit_middleware import AuditMiddleware
 
-app = FastAPI(title="ProConnect API", version="1.0.0")
+logger = logging.getLogger(__name__)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "development") == "production"
+
+# =============================================================================
+# Sentry
+# =============================================================================
+
+SENTRY_DSN = os.getenv("SENTRY_BACKEND_DSN")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=os.getenv("ENVIRONMENT", "development"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        profiles_sample_rate=0.1,
+        integrations=[FastApiIntegration(), SqlalchemyIntegration(), CeleryIntegration()],
+        send_default_pii=False,
+    )
+    logger.info(f"Sentry initialised — environment: {os.getenv('ENVIRONMENT')}")
+else:
+    logger.warning("SENTRY_BACKEND_DSN not set — Sentry disabled")
+
+
+# =============================================================================
+# Lifespan — startup checks
+# =============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting Tradie Platform API...")
+
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    app.state.redis_client = aioredis.from_url(
+        redis_url,
+        encoding="utf-8",
+        decode_responses=True,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+        retry_on_timeout=True,
+        max_connections=20,
+    )
+
+    try:
+        await check_database_health()
+        logger.info("✓ Database connection verified")
+    except Exception as e:
+        logger.critical(f"✗ Database unreachable — refusing to start: {e}")
+        sys.exit(1)
+
+    try:
+        await app.state.redis_client.ping()
+        logger.info("✓ Redis connection verified")
+    except Exception as e:
+        logger.critical(f"✗ Redis unreachable — refusing to start: {e}")
+        sys.exit(1)
+
+    logger.info("✓ All startup checks passed — accepting traffic")
+
+    yield
+
+    logger.info("Shutting down...")
+    await app.state.redis_client.aclose()
+    from db.session import engine
+    await engine.dispose()
+
+
+# =============================================================================
+# App
+# =============================================================================
+
+app = FastAPI(
+    title="Tradie Platform API",
+    version="1.0.0",
+    default_response_class=ORJSONResponse,
+    docs_url="/docs" if not IS_PRODUCTION else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if not IS_PRODUCTION else None,
+    lifespan=lifespan,
 )
 
-# ── Audit middleware — auto-logs every mutating request ────────────
+register_exception_handlers(app)
 
+# =============================================================================
+# Middleware stack
+# Registration order: innermost first, outermost last.
+# Execution order on request: outermost first (reversed from registration).
+# =============================================================================
+
+# 4. Innermost
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 3. Rate limiting
+app.add_middleware(RateLimitMiddleware)
+
+# 2. Audit logging
 app.add_middleware(AuditMiddleware)
+
+# 1. CORS — only in development.
+#
+# FIX: In production, nginx handles CORS via conf.d/api.conf.
+# If FastAPI CORSMiddleware also ran in production, every response would have
+# two Access-Control-Allow-Origin headers — browsers reject this entirely.
+#
+# In development (no nginx), FastAPI handles CORS so localhost:3000 works.
+#
+if not IS_PRODUCTION:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(","),
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Idempotency-Key"],
+        expose_headers=["X-Request-ID", "X-Response-Time"],
+    )
+
+# 0. Outermost — must run first so everything else has request_id.
+app.add_middleware(RequestIDMiddleware)
+
+# =============================================================================
+# Routers — all existing routes preserved
+# =============================================================================
+
 app.include_router(auth_router)
 app.include_router(tradies_router)
 app.include_router(categories_router)
@@ -116,26 +204,53 @@ app.include_router(ai_chat_router)
 app.include_router(suburbs_router)
 app.include_router(job_assignments_router)
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
 
+# =============================================================================
+# Health endpoints
+# =============================================================================
 
-@app.get("/health/db")
-async def health_db(db: AsyncSession = Depends(get_db)):
+@app.get("/health", include_in_schema=False)
+async def health() -> ORJSONResponse:
+    result: dict[str, Any] = {"status": "ok", "checks": {}}
+    overall_ok = True
+
     try:
-        await db.execute(text("SELECT 1"))
-        return {"status": "ok", "database": "connected"}
+        await check_database_health()
+        result["checks"]["database"] = "ok"
     except Exception as e:
-        # Sentry captures this automatically
-        return {"status": "error", "database": str(e)}
+        result["checks"]["database"] = "error"
+        overall_ok = False
+        logger.error(f"Health check — database failed: {e}")
+
+    try:
+        redis_client = getattr(app.state, "redis_client", None)
+        if redis_client:
+            await redis_client.ping()
+            result["checks"]["redis"] = "ok"
+        else:
+            result["checks"]["redis"] = "not_initialised"
+            overall_ok = False
+    except Exception as e:
+        result["checks"]["redis"] = "error"
+        overall_ok = False
+        logger.error(f"Health check — Redis failed: {e}")
+
+    if not overall_ok:
+        result["status"] = "degraded"
+        return ORJSONResponse(status_code=503, content=result)
+
+    return ORJSONResponse(status_code=200, content=result)
 
 
-# ── Sentry debug endpoint — REMOVE IN PRODUCTION ──────────────────
-@app.get("/sentry-debug")
-async def sentry_debug():
-    """
-    Hit this endpoint once to verify Sentry is receiving errors.
-    Remove this route before deploying to production.
-    """
-    raise ValueError("Sentry test error — if you see this in Sentry, it's working!")
+@app.get("/health/db", include_in_schema=False)
+async def health_db() -> ORJSONResponse:
+    try:
+        await check_database_health()
+        return ORJSONResponse({"status": "ok", "database": "connected"})
+    except Exception as e:
+        return ORJSONResponse(
+            status_code=503,
+            content={"status": "error", "database": str(e)},
+        )
+
+# NOTE: /sentry-debug removed — never expose a deliberate exception trigger in production.

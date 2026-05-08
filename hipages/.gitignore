@@ -1,21 +1,48 @@
-# Python
+# ============================================================
+# SECRET & ENVIRONMENT FILES — NEVER COMMIT THESE
+# ============================================================
+.env
+.env.local
+.env.dev
+.env.prod
+
+# Allow example templates — these are safe to commit
+!.env.example
+!.env.dev.example
+!.env.prod.example
+
+# ============================================================
+# PYTHON
+# ============================================================
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 .pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-# Environment
-.env
-.env.local
-
-# Node
+# ============================================================
+# NODE / FRONTEND
+# ============================================================
 node_modules/
 .next/
+out/
+dist/
+build/
 
-# Docker volumes
+# ============================================================
+# DOCKER
+# ============================================================
 *.log
+docker-compose.override.yml
 
+# ============================================================
 # OS
+# ============================================================
 .DS_Store
 Thumbs.db

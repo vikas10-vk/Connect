@@ -15,6 +15,8 @@ export interface User {
   avatar?: string
   createdAt: string
   full_name?: string
+  email_verified?: boolean
+  is_verified?: boolean
 }
 
 export interface TradieProfile {

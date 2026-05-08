@@ -1,0 +1,380 @@
+# =============================================================================
+# docker-compose.dev.yml — Local development stack
+# Tradie Platform
+# =============================================================================
+#
+# DIFFERENCES FROM PRODUCTION:
+#   - Single FastAPI instance (no zero-downtime needed locally)
+#   - Code is mounted as a volume — changes reflect instantly without rebuild
+#   - Hot reload enabled (uvicorn --reload, next dev)
+#   - Ports exposed directly so you can hit services without nginx
+#   - No SSL (plain HTTP locally)
+#   - No resource limits
+#   - No Cloudflare, no real Stripe keys (use test keys)
+#   - Mailpit instead of real email provider (catch all outgoing emails locally)
+#   - DEBUG=true, verbose logging
+#
+# HOW TO RUN:
+#   docker compose -f docker-compose.dev.yml up
+#
+# SERVICES AND PORTS:
+#   FastAPI     → http://localhost:8000
+#   Next.js     → http://localhost:3000
+#   Django admin → http://localhost:8001/admin/
+#   PostgreSQL  → localhost:5432 (connect with any DB client)
+#   Redis       → localhost:6379
+#   Flower      → http://localhost:5555
+#   Mailpit     → http://localhost:8025 (view outgoing emails)
+#   pgAdmin     → http://localhost:5050
+#
+# FIRST TIME SETUP:
+#   1. Copy .env.dev.example to .env.dev and fill in the values
+#   2. docker compose -f docker-compose.dev.yml up -d
+#   3. docker compose -f docker-compose.dev.yml exec fastapi alembic upgrade head
+#   4. docker compose -f docker-compose.dev.yml exec fastapi python scripts/seed_dev.py
+# =============================================================================
+
+name: tradie-dev
+
+networks:
+  dev_network:
+    driver: bridge
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — same version as production.
+  # IMPORTANT: always develop against the same DB version you use in production.
+  # Using SQLite locally and PostgreSQL in production hides bugs.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: tradie_dev_postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: tradie_dev
+      POSTGRES_USER: tradie
+      POSTGRES_PASSWORD: tradie_dev_password
+
+    ports:
+      - "5432:5432" # Exposed so you can use pgAdmin, TablePlus, DBeaver etc.
+
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./scripts/db_init:/docker-entrypoint-initdb.d:ro
+
+    networks:
+      - dev_network
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U tradie -d tradie_dev" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Redis
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: tradie_dev_redis
+    restart: unless-stopped
+
+    # No password in dev — easier to connect from tools.
+    command: redis-server --appendonly yes
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_dev_data:/data
+
+    networks:
+      - dev_network
+
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # FastAPI — single instance, hot reload, code mounted
+  # ---------------------------------------------------------------------------
+  fastapi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+
+    container_name: tradie_dev_fastapi
+    restart: unless-stopped
+
+    # uvicorn with --reload watches for file changes and restarts automatically.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app
+
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://tradie:tradie_dev_password@postgres:5432/tradie_dev
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      JWT_SECRET_KEY: dev-secret-key-never-use-in-production-replace-me
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      REFRESH_TOKEN_EXPIRE_DAYS: 30
+      FIELD_ENCRYPTION_KEY: dev-encryption-key-32-bytes-xxxxxx
+
+      # Use Stripe test keys (start with sk_test_)
+      STRIPE_SECRET_KEY: ${STRIPE_TEST_SECRET_KEY:-sk_test_placeholder}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_TEST_WEBHOOK_SECRET:-whsec_placeholder}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_TEST_PUBLISHABLE_KEY:-pk_test_placeholder}
+
+      # Use test/dev AWS credentials or localstack
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-dev_access_key}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-dev_secret_key}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-tradie-dev-bucket}
+      AWS_S3_REGION: ap-southeast-2
+
+      # Email — Mailpit catches all outgoing emails locally.
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_USE_TLS: "false"
+
+      # Twilio — use test credentials
+      TWILIO_ACCOUNT_SID: ${TWILIO_TEST_ACCOUNT_SID:-AC_placeholder}
+      TWILIO_AUTH_TOKEN: ${TWILIO_TEST_AUTH_TOKEN:-placeholder}
+
+      LOG_LEVEL: DEBUG
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      # Mount source code — changes appear instantly without rebuild.
+      - ./backend:/app
+      # Preserve virtual environment inside container, not on host.
+      # This prevents permission issues and keeps the venv in the container.
+      - /app/.venv
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    networks:
+      - dev_network
+
+  # ---------------------------------------------------------------------------
+  # Next.js — development server with hot reload
+  # ---------------------------------------------------------------------------
+  nextjs:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+
+    container_name: tradie_dev_nextjs
+    restart: unless-stopped
+
+    command: npm run dev
+
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000
+      NEXT_PUBLIC_STRIPE_KEY: ${STRIPE_TEST_PUBLISHABLE_KEY:-pk_test_placeholder}
+      NEXT_TELEMETRY_DISABLED: "1" # Disable Next.js telemetry.
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # node_modules stays in container.
+      - /app/.next # .next build cache stays in container.
+
+    networks:
+      - dev_network
+
+  # ---------------------------------------------------------------------------
+  # Django Admin — development
+  # ---------------------------------------------------------------------------
+  django_admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile.dev
+
+    container_name: tradie_dev_django
+    restart: unless-stopped
+
+    command: python manage.py runserver 0.0.0.0:8001
+
+    environment:
+      DJANGO_ENV: development
+      DEBUG: "True"
+      DJANGO_SECRET_KEY: dev-django-secret-never-use-in-production
+      ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DATABASE_URL: postgresql://tradie:tradie_dev_password@postgres:5432/tradie_dev
+      REDIS_URL: redis://redis:6379/0
+      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+      EMAIL_HOST: mailpit
+      EMAIL_PORT: "1025"
+
+    ports:
+      - "8001:8001"
+
+    volumes:
+      - ./admin:/app
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - dev_network
+
+  # ---------------------------------------------------------------------------
+  # Celery — single combined worker in dev (all queues, low concurrency)
+  # In dev you want to see all task output in one place.
+  # ---------------------------------------------------------------------------
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+
+    container_name: tradie_dev_celery
+    restart: unless-stopped
+
+    command: >
+      celery -A app.celery_app worker --queues=critical,normal,bulk --concurrency=2 --loglevel=debug --logfile=/dev/stdout
+
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://tradie:tradie_dev_password@postgres:5432/tradie_dev
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      JWT_SECRET_KEY: dev-secret-key-never-use-in-production-replace-me
+      FIELD_ENCRYPTION_KEY: dev-encryption-key-32-bytes-xxxxxx
+      STRIPE_SECRET_KEY: ${STRIPE_TEST_SECRET_KEY:-sk_test_placeholder}
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    networks:
+      - dev_network
+
+  # ---------------------------------------------------------------------------
+  # Celery Beat — dev scheduler
+  # Uses the default file-based scheduler in dev (simpler, no Redis dependency).
+  # ---------------------------------------------------------------------------
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+
+    container_name: tradie_dev_celery_beat
+    restart: unless-stopped
+
+    command: >
+      celery -A app.celery_app beat --loglevel=debug --logfile=/dev/stdout
+
+    environment:
+      APP_ENV: development
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+
+    depends_on:
+      - redis
+
+    networks:
+      - dev_network
+
+  # ---------------------------------------------------------------------------
+  # Flower — Celery task monitor (exposed in dev, internal-only in prod)
+  # ---------------------------------------------------------------------------
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+
+    container_name: tradie_dev_flower
+    restart: unless-stopped
+
+    command: >
+      celery -A app.celery_app flower --port=5555
+
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+
+    ports:
+      - "5555:5555"
+
+    depends_on:
+      - redis
+
+    networks:
+      - dev_network
+
+  # ---------------------------------------------------------------------------
+  # Mailpit — catches all outgoing emails and shows them in a web UI.
+  # Never sends real emails in dev. Open http://localhost:8025 to see them.
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: tradie_dev_mailpit
+    restart: unless-stopped
+
+    ports:
+      - "8025:8025" # Web UI
+      - "1025:1025" # SMTP — apps send mail here
+
+    networks:
+      - dev_network
+
+  # ---------------------------------------------------------------------------
+  # pgAdmin — PostgreSQL visual database browser.
+  # Open http://localhost:5050
+  # Login: admin@tradie.dev / admin
+  # Add server: host=postgres, port=5432, user=tradie, pass=tradie_dev_password
+  # ---------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: tradie_dev_pgadmin
+    restart: unless-stopped
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@tradie.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False" # Single-user mode.
+
+    ports:
+      - "5050:80"
+
+    networks:
+      - dev_network
+
+    # pgAdmin is heavy — only start it when you need it.
+    # docker compose -f docker-compose.dev.yml up pgadmin
+    profiles:
+      - tools

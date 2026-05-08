@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db.session import AsyncSessionLocal
 from models.category import Category
+from models.service_question import ServiceQuestion
 from sqlalchemy import select
 import uuid
 

@@ -137,6 +137,23 @@ export default function TradieOnboardingPage() {
     const suburbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [step1Error, setStep1Error] = useState('');
 
+    useEffect(() => {
+        const saved = localStorage.getItem('onboarding_suburb');
+        if (saved) {
+            try { 
+                const parsed = JSON.parse(saved);
+                setSelectedSuburb(parsed);
+                setSuburbInput(parsed.label);
+            } catch {}
+        }
+    }, []);
+
+    useEffect(() => {
+        if (selectedSuburb) {
+            localStorage.setItem('onboarding_suburb', JSON.stringify(selectedSuburb));
+        }
+    }, [selectedSuburb]);
+
     // ── Step 2: OTP ──────────────────────────────────────────────────────────
     const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
     const [otpSending, setOtpSending] = useState(false);
@@ -182,9 +199,10 @@ export default function TradieOnboardingPage() {
         }
 
         // Logged in but email not verified → resume at OTP step
-        if (!(user as any).email_verified) {
-            // Resend the OTP so the code is fresh
-            api.post('/auth/resend-email-otp').catch(() => { });
+        if (!user.email_verified) {
+            // We no longer automatically resend here to avoid 429 errors.
+            // The OTP from registration might still be valid. 
+            // If they need a new one, they can click "Resend code".
             setStep(2);
             setResendCooldown(60);
             setResumeChecking(false);
@@ -351,8 +369,7 @@ export default function TradieOnboardingPage() {
             const loginRes = await api.post('/auth/login', { email: email.trim().toLowerCase(), password });
             saveToken(loginRes.data.access_token);
 
-            // Send OTP (for new users) or the backend already resent it
-            await api.post('/auth/send-email-otp').catch(() => { });
+            // Note: /auth/register automatically sends the first OTP, so we don't send it again here to avoid 429s.
             setResendCooldown(60);
             setStep(2);
         } catch (e: any) {

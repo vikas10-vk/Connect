@@ -1,0 +1,333 @@
+# =============================================================================
+# .github/workflows/deploy.yml — CD: Build, push, and deploy
+# Tradie Platform
+# =============================================================================
+#
+# TRIGGERS:
+#   - Push to main branch only
+#   - Manual trigger (workflow_dispatch) for emergency deploys or rollbacks
+#
+# WHAT THIS DOES:
+#   1. Runs all tests first (same as test.yml) — deploy never skips tests
+#   2. Builds Docker images for backend, frontend, admin
+#   3. Pushes images to GitHub Container Registry (GHCR) — free, integrated
+#   4. SSHes to production server
+#   5. Runs deploy.sh — zero-downtime rolling update with auto-rollback
+#   6. Sends Slack notification on success or failure
+#
+# REQUIRED GITHUB SECRETS (set in repo Settings → Secrets and variables → Actions):
+#   SERVER_HOST       — production server IP or hostname
+#   SERVER_USER       — SSH username (e.g. ubuntu)
+#   SERVER_SSH_KEY    — private SSH key (the paired public key must be in
+#                       ~/.ssh/authorized_keys on the server)
+#   SLACK_WEBHOOK_URL — Slack incoming webhook URL for deploy notifications
+#                       (optional — deploy still works without it)
+#
+# NOTE ON APP SECRETS:
+#   Stripe keys, JWT secrets, etc. are stored on the server in
+#   /etc/tradie/.env — set there once during initial server setup.
+#   They are NOT injected here. This keeps secrets out of CI/CD logs.
+# =============================================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual deploy"
+        required: false
+        default: "Manual trigger"
+
+# Only one deploy at a time — concurrent deploys cause race conditions.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # Never cancel a deploy already in progress
+
+jobs:
+  # ============================================================================
+  # Job 1: Run all tests before deploying
+  # Identical to test.yml — deploy never skips tests.
+  # ============================================================================
+  test:
+    name: Run tests before deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB:       tradie_test
+          POSTGRES_USER:     tradie
+          POSTGRES_PASSWORD: test_password_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tradie -d tradie_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install ".[dev]"
+
+      - name: Lint
+        working-directory: backend
+        run: ruff check .
+
+      - name: Run migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
+          SECRET_KEY:   ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
+          ALGORITHM:    HS256
+        run: alembic upgrade head
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          DATABASE_URL:          postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
+          REDIS_URL:             redis://localhost:6379/0
+          CELERY_BROKER_URL:     redis://localhost:6379/1
+          CELERY_RESULT_BACKEND: redis://localhost:6379/2
+          ENVIRONMENT:           test
+          DEBUG:                 "true"
+          SECRET_KEY:            ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
+          ALGORITHM:             HS256
+          ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+          FIELD_ENCRYPTION_KEY:  ""
+          SENTRY_BACKEND_DSN:    ""
+          STRIPE_SECRET_KEY:     sk_test_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_placeholder
+          R2_ACCOUNT_ID:        test
+          R2_ACCESS_KEY_ID:     test
+          R2_SECRET_ACCESS_KEY: test
+          R2_BUCKET_NAME:       test-bucket
+          R2_PUBLIC_URL:        http://localhost
+        run: pytest tests/ --tb=short -q
+
+  # ============================================================================
+  # Job 2: Build and push Docker images
+  # Only runs after tests pass.
+  # ============================================================================
+  build:
+    name: Build and push Docker images
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Expose IMAGE_TAG so deploy job can use it
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    permissions:
+      contents: read
+      packages: write   # Required to push to GHCR
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Set up Docker Buildx for multi-platform and cache support ──────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Log in to GitHub Container Registry ───────────────────────────────
+      # GITHUB_TOKEN is automatic — no secret needed for GHCR.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Generate image metadata (tags and labels) ──────────────────────────
+      # Tags the image with: git SHA (for traceability) + "latest"
+      # The SHA tag is what deploy.sh pulls — "latest" is for convenience.
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ── Build and push FastAPI backend ─────────────────────────────────────
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/backend:${{ steps.meta.outputs.version }}
+            ghcr.io/${{ github.repository }}/backend:latest
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer caching — dramatically speeds up builds when only code changes
+          # (not dependencies). Cache is stored in GHCR.
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/backend:buildcache
+          cache-to:   type=registry,ref=ghcr.io/${{ github.repository }}/backend:buildcache,mode=max
+
+      # ── Build and push Next.js frontend ───────────────────────────────────
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/frontend:${{ steps.meta.outputs.version }}
+            ghcr.io/${{ github.repository }}/frontend:latest
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/frontend:buildcache
+          cache-to:   type=registry,ref=ghcr.io/${{ github.repository }}/frontend:buildcache,mode=max
+
+      # ── Build and push Django admin ────────────────────────────────────────
+      - name: Build and push admin image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./admin
+          file: ./admin/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/admin:${{ steps.meta.outputs.version }}
+            ghcr.io/${{ github.repository }}/admin:latest
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/admin:buildcache
+          cache-to:   type=registry,ref=ghcr.io/${{ github.repository }}/admin:buildcache,mode=max
+
+      # ── Summary ───────────────────────────────────────────────────────────
+      - name: Write build summary
+        run: |
+          echo "## 🐳 Images Built" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| backend  | \`${{ steps.meta.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| frontend | \`${{ steps.meta.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| admin    | \`${{ steps.meta.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Job 3: Deploy to production
+  # Only runs after build succeeds.
+  # ============================================================================
+  deploy:
+    name: Deploy to production
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production   # Uses GitHub Environments for secret scoping
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Set up SSH ─────────────────────────────────────────────────────────
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Add server to known_hosts to prevent interactive prompt.
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      # ── Copy deploy.sh to server ───────────────────────────────────────────
+      # We copy the script on every deploy so the server always runs the
+      # latest version of deploy.sh — not a cached old version.
+      - name: Copy deploy.sh to server
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            deploy.sh \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/home/${{ secrets.SERVER_USER }}/deploy.sh
+
+      # ── Run deploy.sh on server ────────────────────────────────────────────
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "bash /home/${{ secrets.SERVER_USER }}/deploy.sh \
+              ${{ needs.build.outputs.image_tag }} \
+              ghcr.io/${{ github.repository }} \
+              ${{ github.sha }} \
+              '${{ github.event.head_commit.message }}'"
+
+      # ── Slack notification — success ───────────────────────────────────────
+      - name: Notify Slack — success
+        if: success() && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "✅ *Deploy succeeded*",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "✅ *Deploy succeeded* — `${{ needs.build.outputs.image_tag }}`\n*Commit:* ${{ github.event.head_commit.message }}\n*Author:* ${{ github.actor }}\n*Branch:* `main`"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      # ── Slack notification — failure ───────────────────────────────────────
+      - name: Notify Slack — failure
+        if: failure() && secrets.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "❌ *Deploy FAILED*",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "❌ *Deploy FAILED* — `${{ needs.build.outputs.image_tag }}`\n*Commit:* ${{ github.event.head_commit.message }}\n*Author:* ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      # ── Write deploy summary ───────────────────────────────────────────────
+      - name: Write deploy summary
+        if: always()
+        run: |
+          echo "## 🚀 Deploy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image tag | \`${{ needs.build.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit    | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Author    | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status    | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
