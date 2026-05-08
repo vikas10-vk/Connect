@@ -65,7 +65,7 @@ jobs:
           pip install "fastapi==0.135.1" "uvicorn[standard]==0.42.0" "gunicorn==25.1.0"
           pip install "sqlalchemy[asyncio]==2.0.48" "asyncpg==0.30.0" "alembic==1.14.0" "psycopg2-binary==2.9.11"
           pip install "pydantic==2.12.5" "pydantic-settings==2.13.1" "python-dotenv==1.2.2" "email-validator==2.3.0"
-          pip install "python-jose[cryptography]==3.5.0" "cryptography==46.0.5"
+          pip install "python-jose[cryptography]==3.5.0" "cryptography==46.0.5" "bcrypt==4.0.1"
           pip install "redis==7.3.0" "celery==5.6.2"
           pip install "httpx==0.28.1" "python-multipart==0.0.22" "python-dateutil==2.9.0" "orjson"
           pip install "sentry-sdk[fastapi]==2.56.0"
