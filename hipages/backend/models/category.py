@@ -24,7 +24,7 @@ EXISTING FIELDS: id, name, slug, parent_id — kept exactly as-is.
 NEW FIELDS: level, is_active, icon_slug, description.
 """
 import uuid
-from sqlalchemy import String, SmallInteger, Boolean, Text, ForeignKey
+from sqlalchemy import String, SmallInteger, Boolean, Text, ForeignKey, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.session import Base
 
@@ -86,7 +86,6 @@ class Category(Base):
         "ServiceQuestion",
         back_populates="category",
         cascade="all, delete-orphan",
-        order_by="ServiceQuestion.sort_order",
     )
 
     def __repr__(self):

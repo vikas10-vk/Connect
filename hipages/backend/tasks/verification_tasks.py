@@ -41,6 +41,7 @@ WIRING — add these to celery_app.py beat_schedule:
 import asyncio
 import logging
 from datetime import datetime, date, timedelta
+from workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def _run(coro):
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── Task 1: Tradie verification decision emails ───────────────────────────────
-
+@celery_app.task(name="tasks.verification_tasks.notify_verification_decisions")
 def notify_verification_decisions():
     """
     Finds TradieProfiles where:
@@ -169,7 +170,7 @@ async def _async_notify_verification_decisions():
 
 
 # ── Task 2: Review moderation decision emails ─────────────────────────────────
-
+@celery_app.task(name="tasks.verification_tasks.notify_review_decisions")
 def notify_review_decisions():
     """
     Finds Reviews where:
@@ -264,7 +265,7 @@ async def _async_notify_review_decisions():
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── Task 3: Certificate expiry monitoring ─────────────────────────────────────
-
+@celery_app.task(name="tasks.verification_tasks.check_cert_expiry")
 def check_cert_expiry():
     """
     Daily task — scans TradieCertification rows with status='verified' and an
@@ -538,7 +539,7 @@ async def _send_cert_email(
 
 
 # ── Task 4: Insurance expiry monitoring ───────────────────────────────────────
-
+@celery_app.task(name="tasks.verification_tasks.check_insurance_expiry")
 def check_insurance_expiry():
     """
     Daily task — scans InsurancePolicy rows with status='verified'.
@@ -736,7 +737,7 @@ async def _send_insurance_email(
 
 
 # ── Task 5: Watchdog — ghost job detection ────────────────────────────────────
-
+@celery_app.task(name="tasks.verification_tasks.watchdog_ghost_jobs")
 def watchdog_ghost_jobs():
     """
     Every 5 minutes — finds jobs stuck in 'open' or 'pending' status for

@@ -11,11 +11,14 @@ from celery import Celery
 from celery.schedules import crontab
 from dotenv import load_dotenv
 import os
+from models.service_question import ServiceQuestion
 
 load_dotenv(
-    dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
+    dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"),
     override=True,
 )
+
+import models
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
