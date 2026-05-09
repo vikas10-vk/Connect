@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const FASTAPI_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const FASTAPI_BASE = process.env.INTERNAL_API_URL ||
+    (process.env.NODE_ENV === "development" ? "http://fastapi:8000" : process.env.NEXT_PUBLIC_API_URL) ||
+    "http://localhost:8000";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
     const { path } = await params;
