@@ -293,13 +293,21 @@ async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
 ) -> ORJSONResponse:
+    # FIX: include_url=False is Pydantic v2 only.
+    # Some edge-case exception types reaching this handler don't support it.
+    # Defensive call: try with include_url=False first, fall back without it.
+    try:
+        raw_errors = exc.errors(include_url=False)
+    except TypeError:
+        raw_errors = exc.errors()
+
     errors = [
         {
             "field": " → ".join(str(loc) for loc in e["loc"]),
             "message": e["msg"],
             "type": e["type"],
         }
-        for e in exc.errors(include_url=False)
+        for e in raw_errors
     ]
 
     logger.warning(

@@ -4,7 +4,6 @@
 # =============================================================================
 
 from pathlib import Path
-
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
@@ -21,6 +20,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool          # ← NEW IMPORT
 
 logger = logging.getLogger(__name__)
 
@@ -32,31 +32,39 @@ if not DATABASE_URL:
         "Check your .env file exists and contains DATABASE_URL."
     )
 
-# REMOVED: print("SESSION DATABASE_URL =", DATABASE_URL)
-# This line logged the full database URL including password to stdout.
-# Anyone with log access (CloudWatch, Papertrail, Docker logs) could see:
-#   postgresql+asyncpg://tradie_app:MyRealPassword@postgres:5432/tradie_prod
-# Never log connection strings, DSNs, or any value that contains credentials.
+# =============================================================================
+# IS_TEST flag
+# =============================================================================
+IS_TEST = os.getenv("ENVIRONMENT") == "test"
 
 # =============================================================================
 # Engine
 # =============================================================================
-
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=os.getenv("DEBUG", "false").lower() == "true",
-    pool_size=int(os.getenv("DATABASE_POOL_SIZE", "10")),
-    max_overflow=int(os.getenv("DATABASE_MAX_OVERFLOW", "20")),
-
-    # Validate connections before returning from pool.
-    # Prevents "connection already closed" errors after network interruptions.
-    pool_pre_ping=True,
-
-    # Recycle connections older than 30 minutes.
-    pool_recycle=1800,
-
-    pool_timeout=30,
-)
+#
+# WHY NullPool IN TESTS:
+#   asyncpg's connection pool binds to the event loop that created it.
+#   In tests, tasks run across different async contexts, causing:
+#     RuntimeError: Task <Task pending ...> attached to a different loop
+#   NullPool opens a fresh connection per request and closes it immediately —
+#   nothing is bound to any loop. Zero pool-related errors in tests.
+#   Never use NullPool in production — it kills performance.
+#
+if IS_TEST:
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        poolclass=NullPool,          # ← KEY FIX: no pool in test mode
+    )
+else:
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=os.getenv("DEBUG", "false").lower() == "true",
+        pool_size=int(os.getenv("DATABASE_POOL_SIZE", "10")),
+        max_overflow=int(os.getenv("DATABASE_MAX_OVERFLOW", "20")),
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        pool_timeout=30,
+    )
 
 # =============================================================================
 # Session factory
