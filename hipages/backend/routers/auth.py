@@ -1,21 +1,3 @@
-# =============================================================================
-# routers/auth.py — Authentication endpoints
-# Tradie Platform
-# =============================================================================
-#
-# FIXES APPLIED:
-#
-# 1. /logout — Cross-user session revocation attack plugged.
-#    Before: Attacker with access_token(UserA) + refresh_token(UserB) could
-#            revoke UserB's session silently.
-#    After:  refresh_token's sub claim is verified against current_user.id.
-#            Mismatched ownership silently returns success (don't reveal info).
-#
-# 2. /login — Timing attack on non-existent emails strengthened.
-#    Before: Used an invalid bcrypt hash string as dummy.
-#    After:  Uses _DUMMY_HASH from security.py — a real pre-computed hash.
-# =============================================================================
-
 import os
 import uuid
 
@@ -130,15 +112,17 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
                 detail="An account with this email already exists. Please sign in.",
             )
         else:
-            existing.hashed_password = hash_password(body.password)
-            existing.full_name = body.full_name
-            if body.phone:
-                existing.phone = body.phone
-            existing.role = body.role.value
-            await db.commit()
-            await db.refresh(existing)
-            await generate_and_send(db, existing)
-            return existing
+            # FIX: also reject unverified duplicates.
+            # The user registered but never verified — tell them to check their inbox.
+            # Previously this silently re-registered and returned 201, which caused
+            # test_register_duplicate_email_rejected to fail (expected 400, got 201).
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "An account with this email is pending verification. "
+                    "Please check your inbox for the verification code."
+                ),
+            )
 
     user = User(
         id=str(uuid.uuid4()),
@@ -200,7 +184,11 @@ async def login(
 
     await _clear_login_failures(email_lower, redis_client)
 
-    access_token = legacy_create_access_token({"sub": user.id, "role": user.role})
+    access_token = legacy_create_access_token({
+        "sub":  user.id,
+        "role": user.role,
+        "jti":  str(uuid.uuid4()),   # ← guarantees uniqueness across calls
+    })
 
     refresh_token, token_id, family_id = create_refresh_token(user_id=user.id)
     await store_refresh_token(
@@ -242,7 +230,11 @@ async def refresh(
         await revoke_token_family(family_id=family_id, redis_client=redis_client)
         raise HTTPException(status_code=403, detail="Account is disabled")
 
-    new_access = legacy_create_access_token({"sub": user.id, "role": user.role})
+    new_access = legacy_create_access_token({
+        "sub":  user.id,
+        "role": user.role,
+        "jti":  str(uuid.uuid4()),   # ← guarantees new token every refresh
+    })
 
     return RefreshResponse(
         access_token=new_access,

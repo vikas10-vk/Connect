@@ -1,18 +1,3 @@
-# =============================================================================
-# main.py — FastAPI application entry point
-# Tradie Platform
-# =============================================================================
-#
-# FIX APPLIED: Conditional CORS middleware.
-#
-# PROBLEM: nginx adds Access-Control-Allow-Origin AND FastAPI CORSMiddleware
-# also adds it. Browsers reject responses with duplicate CORS headers.
-# In production your frontend could not call your API.
-#
-# FIX: CORSMiddleware only runs in development (where there is no nginx).
-# In production, nginx handles all CORS via conf.d/api.conf.
-# =============================================================================
-
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -123,9 +108,19 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down...")
-    await app.state.redis_client.aclose()
-    from db.session import engine
-    await engine.dispose()
+
+    try:
+        await app.state.redis_client.aclose()
+        logger.info("✓ Redis connection closed")
+    except Exception as e:
+        logger.warning(f"Shutdown — Redis close skipped: {e}")
+
+    try:
+        from db.session import engine
+        await engine.dispose()
+        logger.info("✓ Database engine disposed")
+    except Exception as e:
+        logger.warning(f"Shutdown — Engine dispose skipped: {e}")
 
 
 # =============================================================================
