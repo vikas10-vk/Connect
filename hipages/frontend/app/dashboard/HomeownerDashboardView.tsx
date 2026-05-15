@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   MapPin, Calendar, AlertCircle,
@@ -69,8 +69,8 @@ interface MatchIntel {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CREAM = '#FBF8EF';
-const CREAM2 = '#F1EBDD';
+const CREAM = '#FFF8E7';
+const CREAM2 = '#F5EDD0';
 const TERRA = '#D4AA3A';
 const TERRA_LIGHT = '#F6E9C9';
 const TERRA_MID = '#EBCB66';
@@ -79,7 +79,7 @@ const INK = '#071D36';
 const INK2 = '#173452';
 const INK3 = '#56677A';
 const INK4 = '#8A785A';
-const BORDER = '#E9DDBF';
+const BORDER = '#E8D9B0';
 const GREEN = '#2E7D5A';
 const GREEN_LIGHT = '#E8F5EE';
 const AMBER = '#B85C00';
@@ -101,7 +101,8 @@ const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   partial_stop: { label: 'Work Stopped', color: ROSE, bg: ROSE_LIGHT },
   disputed: { label: 'Disputed', color: ROSE, bg: ROSE_LIGHT },
   // ── TERMINAL ────────────────────────────────────────────────────────────────
-  completed: { label: 'Completed', color: GREEN, bg: GREEN_LIGHT },
+  completed: { label: 'Awaiting Confirmation', color: GREEN, bg: GREEN_LIGHT },
+  confirmed: { label: 'Confirmed', color: GREEN, bg: GREEN_LIGHT },
   closed: { label: 'Closed', color: INK3, bg: CREAM2 },
   cancelled: { label: 'Cancelled', color: ROSE, bg: ROSE_LIGHT },
   deleted: { label: 'Deleted', color: INK3, bg: CREAM2 },
@@ -726,10 +727,18 @@ export default function HomeownerDashboardView() {
   const [historyJobs, setHistoryJobs] = useState<Job[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [reviewModalJobId, setReviewModalJobId] = useState<string | null>(null);
-  const [completingJobId, setCompletingJobId] = useState<string | null>(null);
+  // completingJobId removed — homeowner cannot directly mark in_progress→completed;
+  // only the tradie can do that via POST /jobs/{id}/complete with photos.
   // ── NEW: dispute modal ────────────────────────────────────────────────────
   const [disputeModalJobId, setDisputeModalJobId] = useState<string | null>(null);
   const [confirmingCompleteJobId, setConfirmingCompleteJobId] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  // ── Ref keeps loadData's closure in sync with the current selectedJobId ───────
+  // Without this, loadData (wrapped in useCallback([user])) captures
+  // selectedJobId = null from mount time and always resets the selection.
+  const selectedJobIdRef = useRef<string | null>(null);
+  useEffect(() => { selectedJobIdRef.current = selectedJobId; }, [selectedJobId]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
@@ -762,7 +771,7 @@ export default function HomeownerDashboardView() {
       );
       setAllQuotes(quoteArrays.flat());
       const firstActive = fetchedJobs.find(j => !['completed', 'cancelled', 'closed'].includes(j.status));
-      if (firstActive && !selectedJobId) setSelectedJobId(firstActive.id);
+      if (firstActive && !selectedJobIdRef.current) setSelectedJobId(firstActive.id);
     } catch {
       setError('Failed to load dashboard. Please refresh.');
     } finally { setIsLoading(false); }
@@ -816,13 +825,9 @@ export default function HomeownerDashboardView() {
     finally { setEditSaving(false); }
   };
 
-  const handleMarkComplete = async (jobId: string) => {
-    if (!confirm('Mark this job as complete? You can leave a review afterwards.')) return;
-    setCompletingJobId(jobId);
-    try { await api.patch(`/jobs/${jobId}/status?new_status=completed`); await loadData(); }
-    catch (err: any) { alert(err?.response?.data?.detail || 'Could not mark job complete.'); }
-    finally { setCompletingJobId(null); }
-  };
+  // handleMarkComplete removed — homeowner cannot mark in_progress→completed directly.
+  // The state machine enforces that only tradies can make this transition (with photos).
+  // Homeowners confirm completion after the tradie has marked it done.
 
   // ── NEW: Scope change respond ────────────────────────────────────────────────
   const handleScopeChangeRespond = async (jobId: string, approve: boolean) => {
@@ -830,15 +835,26 @@ export default function HomeownerDashboardView() {
     await loadData();
   };
 
-  // ── NEW: Confirm complete (after tradie marks done) ──────────────────────────
+  // ── Confirm complete (after tradie marks done) ────────────────────────────────
   const handleConfirmComplete = async (jobId: string) => {
     setConfirmingCompleteJobId(jobId);
+    setConfirmError(null);
     try {
-      await api.post(`/jobs/${jobId}/confirm-complete`);
+      console.log('[confirm-complete] Sending POST for job:', jobId);
+      const res = await api.post(`/jobs/${jobId}/confirm-complete`);
+      console.log('[confirm-complete] Success:', res.data);
+      // Optimistically update the job status in state so the UI flips immediately
+      // even before loadData() completes its re-fetch.
+      setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: 'confirmed' } : j));
       await loadData();
     } catch (err: any) {
-      alert(err?.response?.data?.detail || 'Could not confirm completion. Try again.');
-    } finally { setConfirmingCompleteJobId(null); }
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail;
+      console.error('[confirm-complete] Error:', status, detail, err);
+      setConfirmError(detail || `Could not confirm completion (HTTP ${status ?? 'network error'}). Please try again.`);
+    } finally {
+      setConfirmingCompleteJobId(null);
+    }
   };
 
   const handlePhotoUpload = async (file: File, jobId: string) => {
@@ -865,7 +881,7 @@ export default function HomeownerDashboardView() {
     if (bPending !== aPending) return bPending - aPending;
     return 0;
   });
-  const completedJobs = jobs.filter(j => j.status === 'completed');
+  const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'confirmed');
 
   const pendingQuotes = allQuotes.filter(q => q.status === 'pending');
   const actionNeededJobs = activeJobs.filter(j => ['awaiting_scope_approval', 'partial_stop', 'disputed'].includes(j.status));
@@ -902,7 +918,7 @@ export default function HomeownerDashboardView() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0, width: isMobile ? '100%' : 'auto' }}>
                     <button onClick={() => handleRepost(job)} style={{ flex: isMobile ? 1 : 'initial', padding: '8px 14px', borderRadius: 10, background: TERRA_LIGHT, border: '1px solid rgba(212,170,58,.25)', color: TERRA, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-                      <RefreshCw size={12} /> Re-post
+                      Re-post
                     </button>
                     <button onClick={() => handleClearHistory(job.id)} style={{ width: 34, height: 34, borderRadius: 10, background: ROSE_LIGHT, color: ROSE, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Remove permanently">
                       <X size={14} />
@@ -942,7 +958,7 @@ export default function HomeownerDashboardView() {
                     <p style={{ fontSize: 12, color: INK4, marginTop: 3 }}>{job.suburb}, {job.state}{job.completed_at && ` · Completed ${fmt(job.completed_at)}`}</p>
                   </div>
                   <button onClick={() => handleRepost(job)} style={{ padding: '8px 14px', borderRadius: 10, background: GREEN_LIGHT, border: '1px solid rgba(46,125,90,.2)', color: GREEN, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <RefreshCw size={12} /> Same issue
+                    Same issue
                   </button>
                 </div>
               );
@@ -1038,9 +1054,6 @@ export default function HomeownerDashboardView() {
               <p style={{ fontWeight: 700, fontSize: 14, color: INK }}>Your Jobs</p>
               <p style={{ fontSize: 11, color: INK4, marginTop: 1 }}>{activeJobs.length} active</p>
             </div>
-            <button onClick={loadData} style={{ width: 30, height: 30, borderRadius: 8, background: CREAM2, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: INK4 }}>
-              <RefreshCw size={13} />
-            </button>
           </div>
           <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
             {jobs.length === 0 ? (
@@ -1126,52 +1139,75 @@ export default function HomeownerDashboardView() {
               {selectedJob.status === 'disputed' && <DisputeBanner />}
 
               {/* ⑥ NEW: Confirm complete (tradie marked done, homeowner hasn't confirmed) */}
-              {selectedJob.status === 'completed' && !selectedJob.confirmed_by_user_at && (
+              {selectedJob.status === 'completed' && (
+                <div style={{ background: '#fff', border: `1.5px solid ${GREEN}40`, borderRadius: 18, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                    <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: GREEN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <CheckCircle2 size={22} color={GREEN} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Tradie says the job is done</p>
+                      <p style={{ fontSize: 12, color: INK4, lineHeight: 1.5 }}>
+                        Confirm to release payment. You have 48 hours to raise a dispute if anything isn't right.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleConfirmComplete(selectedJob.id)}
+                        disabled={confirmingCompleteJobId === selectedJob.id}
+                        style={{ ...btn(GREEN, '#fff'), padding: '11px 18px', borderRadius: 12, opacity: confirmingCompleteJobId === selectedJob.id ? .6 : 1, boxShadow: '0 4px 12px rgba(46,125,90,.2)' }}>
+                        {confirmingCompleteJobId === selectedJob.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                        {confirmingCompleteJobId === selectedJob.id ? 'Confirming…' : 'Confirm complete'}
+                      </button>
+                      <button onClick={() => setDisputeModalJobId(selectedJob.id)}
+                        style={{ ...btn(ROSE_LIGHT, ROSE), padding: '11px 18px', borderRadius: 12, border: `1px solid ${ROSE}25` }}>
+                        <AlertTriangle size={14} /> Something's wrong
+                      </button>
+                    </div>
+                  </div>
+                  {/* Inline error — shows instead of a browser alert that can be blocked */}
+                  {confirmError && (
+                    <div style={{ background: '#FFF0F0', border: '1px solid #F5A0A0', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#A33030', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                      <span>{confirmError}</span>
+                      <button onClick={() => setConfirmError(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#A33030', fontSize: 16, lineHeight: 1 }}>×</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ⑥b: Job confirmed by homeowner — awaiting payment release */}
+              {selectedJob.status === 'confirmed' && (
                 <div style={{ background: '#fff', border: `1.5px solid ${GREEN}40`, borderRadius: 18, padding: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                   <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: GREEN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <CheckCircle2 size={22} color={GREEN} />
                   </div>
                   <div style={{ flex: 1, minWidth: 200 }}>
-                    <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Tradie says the job is done</p>
+                    <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Job confirmed — thank you!</p>
                     <p style={{ fontSize: 12, color: INK4, lineHeight: 1.5 }}>
-                      Confirm to release payment. You have 48 hours to raise a dispute if anything isn't right.
+                      Payment is being released to your tradie. Leave a review to help other homeowners.
                     </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-                    <button
-                      onClick={() => handleConfirmComplete(selectedJob.id)}
-                      disabled={confirmingCompleteJobId === selectedJob.id}
-                      style={{ ...btn(GREEN, '#fff'), padding: '11px 18px', borderRadius: 12, opacity: confirmingCompleteJobId === selectedJob.id ? .6 : 1, boxShadow: '0 4px 12px rgba(46,125,90,.2)' }}>
-                      {confirmingCompleteJobId === selectedJob.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                      {confirmingCompleteJobId === selectedJob.id ? 'Confirming…' : 'Confirm complete'}
-                    </button>
-                    <button onClick={() => setDisputeModalJobId(selectedJob.id)}
-                      style={{ ...btn(ROSE_LIGHT, ROSE), padding: '11px 18px', borderRadius: 12, border: `1px solid ${ROSE}25` }}>
-                      <AlertTriangle size={14} /> Something's wrong
-                    </button>
                   </div>
                 </div>
               )}
 
-              {/* ⑦ Mark complete — only for in_progress (not scope change / partial stop) */}
+              {/* ⑦ Waiting for tradie — job is in_progress, tradie must mark complete first */}
               {selectedJob.status === 'in_progress' && (
-                <div style={{ background: '#fff', border: `1.5px solid ${GREEN}40`, borderRadius: 18, padding: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ background: '#fff', border: `1.5px solid ${GREEN}30`, borderRadius: 18, padding: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                   <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: GREEN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Check size={22} color={GREEN} strokeWidth={2.5} />
+                    <Loader2 size={22} color={GREEN} style={{ animation: 'spin 2s linear infinite' }} />
                   </div>
                   <div style={{ flex: 1, minWidth: 200 }}>
-                    <p style={{ fontWeight: 700, fontSize: 14, color: INK }}>Job all done?</p>
-                    <p style={{ fontSize: 12, color: INK4, marginTop: 3, lineHeight: 1.5 }}>Mark complete once the work is finished. You'll be invited to leave a review.</p>
+                    <p style={{ fontWeight: 700, fontSize: 14, color: INK }}>Work in progress</p>
+                    <p style={{ fontSize: 12, color: INK4, marginTop: 3, lineHeight: 1.5 }}>
+                      Your tradie will mark the job complete once finished. You'll then be able to confirm and leave a review.
+                    </p>
                   </div>
-                  <button onClick={() => handleMarkComplete(selectedJob.id)} disabled={completingJobId === selectedJob.id}
-                    style={{ ...btn(GREEN, '#fff'), padding: '11px 20px', borderRadius: 12, opacity: completingJobId === selectedJob.id ? .6 : 1, boxShadow: '0 4px 14px rgba(46,125,90,.25)' }}>
-                    {completingJobId === selectedJob.id ? <><Loader2 size={14} className="animate-spin" /> Marking…</> : <><Check size={14} /> Mark complete</>}
-                  </button>
                 </div>
               )}
 
               {/* ⑧ Review CTA */}
-              {selectedJob.status === 'completed' && (
+              {(selectedJob.status === 'completed' || selectedJob.status === 'confirmed') && (
                 <div style={{ background: '#fff', border: `1.5px solid ${TERRA}40`, borderRadius: 18, padding: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                   <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: TERRA_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Star size={22} color={TERRA} fill={TERRA} />

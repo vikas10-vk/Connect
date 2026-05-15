@@ -38,6 +38,7 @@ from services.earnings_service import get_monthly_summary
 from services.swms_service import generate_swms_with_ai
 from services.vision_service import analyse_photo, build_vision_context
 from services.component_selector import select_component, select_vision_component
+from services.category_resolver import resolve_trade_category
 from services.memory_service import get_user_context
 from services.ai_tools import HOMEOWNER_TOOLS, TRADIE_TOOLS, SHARED_TOOLS
 
@@ -118,13 +119,20 @@ async def execute_tool(tool_name: str, tool_input: dict, user: User, db: AsyncSe
 
     if tool_name == "post_job":
         slug = tool_input.get("category_slug", "")
-        cat_r = await db.execute(select(Category).where(Category.slug == slug))
-        cat = cat_r.scalar_one_or_none()
+        cat = await resolve_trade_category(
+            db,
+            " ".join(
+                part for part in [
+                    tool_input.get("title", ""),
+                    tool_input.get("description", ""),
+                    slug,
+                ] if part
+            ),
+        )
         if not cat:
-            cat_r2 = await db.execute(select(Category).where(Category.name.ilike(f"%{slug}%")))
-            cat = cat_r2.scalar_one_or_none()
+            cat = await resolve_trade_category(db, slug)
         if not cat:
-            return {"error": f"Category '{slug}' not found."}
+            return {"error": f"Service '{slug}' not found."}
 
         job = Job(
             id=str(uuid.uuid4()),

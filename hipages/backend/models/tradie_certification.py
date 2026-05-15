@@ -74,11 +74,12 @@ class TradieCertification(Base):
     photo_url : Mapped[str] = mapped_column(String(500), nullable=True)
 
     # ── Verification ─────────────────────────────────────────────────
-    status           : Mapped[str]      = mapped_column(String(20), default=CertificationStatus.PENDING, nullable=False, index=True)
-    rejection_reason : Mapped[str]      = mapped_column(String(50), nullable=True)
-    rejection_note   : Mapped[str]      = mapped_column(Text,       nullable=True)
-    verified_by      : Mapped[str]      = mapped_column(String,     ForeignKey("users.id"), nullable=True)
-    verified_at      : Mapped[datetime] = mapped_column(DateTime,   nullable=True)
+    status             : Mapped[str]      = mapped_column(String(20), default=CertificationStatus.PENDING, nullable=False, index=True)
+    rejection_reason   : Mapped[str]      = mapped_column(String(50), nullable=True)
+    rejection_note     : Mapped[str]      = mapped_column(Text,       nullable=True)
+    edit_request_note  : Mapped[str]      = mapped_column(Text,       nullable=True)  # tradie's reason for requesting an edit
+    verified_by        : Mapped[str]      = mapped_column(String,     ForeignKey("users.id"), nullable=True)
+    verified_at        : Mapped[datetime] = mapped_column(DateTime,   nullable=True)
 
     # ── Renewal reminder ledger ──────────────────────────────────────
     # Filled in by the daily Celery beat task that scans for expiring certs.

@@ -13,8 +13,8 @@ import { useAuth } from '@/src/contexts/AuthContext';
 import HomeownerDashboardView from './HomeownerDashboardView';
 
 // ── Palette (matches dashboard) ───────────────────────────────────────────────
-const CREAM = '#FBF8EF';
-const CREAM2 = '#F1EBDD';
+const CREAM = '#FFF8E7';
+const CREAM2 = 'rgba(255,255,255,0.08)';
 const TERRA = '#D4AA3A';
 const TERRA_MID = '#EBCB66';
 const TERRA_DRK = '#0D2544';
@@ -22,7 +22,9 @@ const INK = '#071D36';
 const INK2 = '#173452';
 const INK3 = '#56677A';
 const INK4 = '#8A785A';
-const BORDER = '#E9DDBF';
+const BORDER = 'rgba(255,255,255,0.10)';
+const ICON_BLUE = '#5BB3FF';
+const NAVY = '#071D36';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -73,7 +75,7 @@ function DashboardContent() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: CREAM, display: 'flex', fontFamily: "'DM Sans', sans-serif", overflowX: 'hidden', maxWidth: '100vw' }}>
+    <div style={{ minHeight: '100vh', background: '#FFF8E7', display: 'flex', fontFamily: "'DM Sans', sans-serif", overflowX: 'hidden', maxWidth: '100vw' }}>
 
       {/* ── Mobile overlay ── */}
       {isMobile && sidebarOpen && (
@@ -89,8 +91,8 @@ function DashboardContent() {
           width: 240,
           minWidth: 240,
           flexShrink: 0,
-          background: '#fff',
-          borderRight: `1px solid ${BORDER}`,
+          background: NAVY,
+          borderRight: '1px solid rgba(255,255,255,0.08)',
           display: 'flex',
           flexDirection: 'column',
           height: '100vh',
@@ -105,17 +107,17 @@ function DashboardContent() {
         }}
       >
         {/* Logo */}
-        <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ padding: '20px 20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-            <div style={{ width: 34, height: 34, background: TERRA, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 4px 12px rgba(212,170,58,.25)` }}>
-              <Zap style={{ width: 18, height: 18, fill: '#fff', color: '#fff' }} />
+            <div style={{ width: 34, height: 34, background: TERRA, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(212,170,58,.35)' }}>
+              <Zap style={{ width: 18, height: 18, fill: INK, color: INK }} />
             </div>
             <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 17, color: TERRA }}>ProConnect</span>
           </Link>
           {isMobile && (
             <button
               onClick={() => setSidebarOpen(false)}
-              style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: CREAM2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: INK4 }}
+              style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.08)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)' }}
             >
               <X style={{ width: 14, height: 14 }} />
             </button>
@@ -123,19 +125,19 @@ function DashboardContent() {
         </div>
 
         {/* User chip */}
-        <div style={{ margin: '14px 14px 0', background: CREAM2, borderRadius: 14, padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 10, border: `1px solid ${BORDER}` }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: TERRA, color: '#fff', fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ margin: '14px 14px 0', background: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: '11px 12px', display: 'flex', alignItems: 'center', gap: 10, border: '1px solid rgba(255,255,255,0.10)' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: TERRA, color: INK, fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             {userInitials}
           </div>
           <div style={{ minWidth: 0 }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: TERRA_DRK, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{firstName}</p>
-            <p style={{ fontSize: 10, color: INK4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.9)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{firstName}</p>
+            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</p>
           </div>
         </div>
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto' }}>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: INK4, padding: '14px 10px 6px' }}>Menu</p>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', padding: '14px 10px 6px' }}>Menu</p>
           {NAV_ITEMS.map(item => {
             const active = isActive(item);
             return (
@@ -145,24 +147,25 @@ function DashboardContent() {
                 onClick={() => setSidebarOpen(false)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '9px 12px', borderRadius: 12,
-                  textDecoration: 'none', fontSize: 13, fontWeight: 600,
-                  color: active ? '#fff' : INK2,
-                  background: active ? TERRA : 'transparent',
+                  padding: '9px 12px', borderRadius: 10,
+                  textDecoration: 'none', fontSize: 13, fontWeight: active ? 600 : 500,
+                  color: active ? TERRA : 'rgba(255,255,255,0.78)',
+                  background: active ? 'rgba(212,170,58,0.13)' : 'transparent',
+                  border: active ? '1px solid rgba(212,170,58,0.22)' : '1px solid transparent',
                   transition: 'all .15s',
                 }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = CREAM2; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = TERRA; } }}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.78)'; } }}
               >
                 <div style={{
-                  width: 28, height: 28, borderRadius: 9, flexShrink: 0,
+                  width: 28, height: 28, borderRadius: 8, flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: active ? 'rgba(255,255,255,.2)' : CREAM2,
+                  background: active ? 'rgba(212,170,58,0.18)' : 'rgba(255,255,255,0.06)',
                 }}>
-                  <item.icon style={{ width: 14, height: 14, color: active ? '#fff' : TERRA }} />
+                  <item.icon style={{ width: 14, height: 14, color: active ? TERRA : ICON_BLUE }} />
                 </div>
                 <span style={{ flex: 1 }}>{item.label}</span>
-                {active && <ChevronRight style={{ width: 14, height: 14, opacity: .7 }} />}
+                {active && <ChevronRight style={{ width: 14, height: 14, opacity: .7, color: TERRA }} />}
               </Link>
             );
           })}
@@ -170,7 +173,7 @@ function DashboardContent() {
 
 
         {/* Bottom */}
-        <div style={{ padding: '10px 8px', borderTop: `1px solid ${BORDER}`, display: 'flex', gap: 4 }}>
+        <div style={{ padding: '10px 8px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 4 }}>
           {[
             { icon: Settings, label: 'Settings', href: '/settings', danger: false },
             { icon: LogOut, label: 'Sign Out', onClick: logout, danger: true },
@@ -187,14 +190,14 @@ function DashboardContent() {
                   flex: 1, display: 'flex', alignItems: 'center', gap: 6,
                   padding: '8px 10px', borderRadius: 10,
                   fontSize: 12, fontWeight: 500,
-                  color: danger ? '#A33030' : INK3,
+                  color: danger ? '#FF7070' : 'rgba(255,255,255,0.5)',
                   textDecoration: 'none', cursor: 'pointer',
                   background: 'none', border: 'none',
-                  transition: 'background .15s',
+                  transition: 'all .15s',
                   ...props.style,
                 }}
-                onMouseEnter={(e: any) => e.currentTarget.style.background = danger ? '#FFEBEB' : CREAM2}
-                onMouseLeave={(e: any) => e.currentTarget.style.background = 'none'}
+                onMouseEnter={(e: any) => { e.currentTarget.style.background = danger ? 'rgba(255,80,80,0.12)' : 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = danger ? '#FF6B6B' : 'rgba(255,255,255,0.9)'; }}
+                onMouseLeave={(e: any) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = danger ? '#FF7070' : 'rgba(255,255,255,0.5)'; }}
               >
                 <Icon style={{ width: 14, height: 14, opacity: .75 }} /> {label}
               </El>
@@ -212,24 +215,24 @@ function DashboardContent() {
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '12px 18px',
-              background: '#fff', borderBottom: `1px solid ${BORDER}`,
+              background: NAVY, borderBottom: '1px solid rgba(255,255,255,0.08)',
               position: 'sticky', top: 0, zIndex: 20,
               width: '100%', maxWidth: '100vw',
             }}>
             <button
               onClick={() => setSidebarOpen(true)}
-              style={{ width: 36, height: 36, borderRadius: 10, background: CREAM2, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: INK3 }}
+              style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.8)' }}
             >
               <Menu style={{ width: 16, height: 16 }} />
             </button>
             <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: TERRA, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Zap style={{ width: 14, height: 14, fill: '#fff', color: '#fff' }} />
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: TERRA, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(212,170,58,0.3)' }}>
+                <Zap style={{ width: 14, height: 14, fill: INK, color: INK }} />
               </div>
               <span style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, color: TERRA, fontSize: 15 }}>ProConnect</span>
             </Link>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: CREAM2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ color: TERRA, fontSize: 12, fontWeight: 800 }}>{userInitials}</span>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: TERRA, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(212,170,58,0.3)' }}>
+              <span style={{ color: INK, fontSize: 12, fontWeight: 800 }}>{userInitials}</span>
             </div>
           </div>
         )}

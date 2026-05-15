@@ -40,7 +40,7 @@ export default function ChatFAB() {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
                         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                        className="fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[400px] h-[600px] bg-brand-cream rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-gray-100"
+                        className="fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-[400px] h-[600px] bg-brand-ivory rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-gray-100"
                     >
                         {/* Chat header */}
                         <div className="bg-white border-b border-gray-100 px-5 py-4 flex items-center gap-3">

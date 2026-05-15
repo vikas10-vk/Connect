@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const FASTAPI_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// INTERNAL_API_URL must be used for server-side fetches inside Docker
+// (e.g. http://fastapi:8000). NEXT_PUBLIC_API_URL is browser-facing and
+// resolves to localhost, which is NOT reachable from inside the Next container.
+// Falling back to localhost:8000 is only safe for local dev without Docker.
+const FASTAPI_BASE =
+  process.env.INTERNAL_API_URL ||
+  (process.env.NODE_ENV === 'development' ? 'http://fastapi:8000' : process.env.NEXT_PUBLIC_API_URL) ||
+  'http://localhost:8000';
 
 /**
  * POST /api/upload-photo

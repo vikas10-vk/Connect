@@ -70,7 +70,7 @@ export default function PhotoAnalysisCard({ data, props }: PhotoAnalysisCardProp
                 {data.visible_damage && data.visible_damage.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                         {data.visible_damage.map((item, i) => (
-                            <span key={i} className="text-xs bg-brand-cream text-gray-600 px-2.5 py-1 rounded-full">
+                            <span key={i} className="text-xs bg-brand-ivory text-gray-600 px-2.5 py-1 rounded-full">
                                 {item}
                             </span>
                         ))}

@@ -89,6 +89,12 @@ const VERIF_CONFIG: Record<string, {
     cardBg: '#F2FBF6', cardBorder: '#A0D9BC', iconBg: '#E0F5EC', iconColor: '#2E7D5A',
     textColor: '#1B5E3A', subColor: '#2E7D5A', badge: 'Verified', badgeBg: '#E0F5EC', badgeColor: '#2E7D5A',
   },
+  verified: {
+    icon: ShieldCheck, title: 'Verified & Active',
+    desc: "Your profile is live. You're set up to receive leads. Keep your availability current.",
+    cardBg: '#F2FBF6', cardBorder: '#A0D9BC', iconBg: '#E0F5EC', iconColor: '#2E7D5A',
+    textColor: '#1B5E3A', subColor: '#2E7D5A', badge: 'Verified', badgeBg: '#E0F5EC', badgeColor: '#2E7D5A',
+  },
   rejected: {
     icon: XCircle, title: 'Application Not Approved',
     desc: "We couldn't approve your application. Check your email or contact support.",
@@ -234,7 +240,7 @@ function VerificationCard({ status }: { status: string }) {
       )}
 
       {/* ── CTA for non-approved ── */}
-      {status !== 'approved' && (
+      {status !== 'approved' && status !== 'verified' && (
         <div style={{ marginTop: '1rem', paddingTop: '0.875rem', borderTop: `1px solid ${cfg.cardBorder}` }}>
           <a href="mailto:support@proconnect.com.au" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: cfg.iconColor, textDecoration: 'none' }}>
             <MessageSquare style={{ width: 14, height: 14 }} />
@@ -259,6 +265,7 @@ export default function TradieDashboardView() {
     (tradieProfile as any)?.verification_status ||
     (tradieProfile as any)?.verificationStatus ||
     'pending_review';
+  const isApproved = verificationStatus === 'verified' || verificationStatus === 'approved';
 
   const loadLeads = async () => {
     if (!user) return;
@@ -291,7 +298,7 @@ export default function TradieDashboardView() {
           <h1 className="text-4xl font-black tracking-tight text-gray-900">Tradie Dashboard</h1>
           <p className="text-gray-500 font-medium text-lg">Welcome back, {user?.name?.split(' ')[0] || 'Tradie'}.</p>
         </div>
-        {verificationStatus === 'approved' && (
+        {isApproved && (
           <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-2xl border border-gray-100 shadow-sm">
             <div className="relative">
               <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-ping absolute inset-0" />
@@ -336,19 +343,20 @@ export default function TradieDashboardView() {
 
         {/* Right column */}
         <div className="lg:col-span-2 space-y-8">
-          {verificationStatus !== 'approved' && !isLoading && (
-            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-brand-cream flex items-center justify-center mx-auto mb-4">
-                <Zap className="w-7 h-7 text-brand-terracotta" />
+          {/* Soft banner for non-approved tradies — still show leads if any exist */}
+          {!isApproved && !isLoading && (
+            <div className="bg-amber-50 border border-amber-100 rounded-[2rem] px-6 py-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-amber-800">Profile under review</p>
+                <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                  Our team is reviewing your application. You may already be receiving leads below — full live matching activates once approved.
+                </p>
               </div>
-              <h4 className="font-bold text-gray-900 mb-2">Leads will appear here once you&apos;re verified</h4>
-              <p className="text-gray-500 text-sm max-w-xs mx-auto leading-relaxed">
-                Our team is reviewing your application. Once approved, job leads matching your skills and location will show up right here.
-              </p>
             </div>
           )}
 
-          {verificationStatus === 'approved' && (
+          {(isApproved || leads.length > 0) && (
             <div className="space-y-4">
               <div className="flex justify-between items-center px-1">
                 <h3 className="text-2xl font-bold text-gray-900">Available Leads</h3>

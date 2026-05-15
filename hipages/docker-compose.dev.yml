@@ -6,7 +6,6 @@
 # SERVICES AND PORTS:
 #   FastAPI      → http://localhost:8000
 #   Next.js      → http://localhost:3000
-#   Django admin → http://localhost:8001/admin/
 #   PostgreSQL   → localhost:5432
 #   Redis        → localhost:6379
 #   Flower       → http://localhost:5555
@@ -142,6 +141,9 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_TEST_ACCOUNT_SID:-AC_placeholder}
       TWILIO_AUTH_TOKEN: ${TWILIO_TEST_AUTH_TOKEN:-placeholder}
 
+      # AI — Groq (required for Step 3 job-brief analysis)
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+
       # Optional — leave blank to disable in dev
       SENTRY_BACKEND_DSN: ""
       FIELD_ENCRYPTION_KEY: ""
@@ -197,42 +199,6 @@ services:
     networks:
       - dev_network
 
-  # ---------------------------------------------------------------------------
-  # Django Admin
-  # ---------------------------------------------------------------------------
-  django_admin:
-    build:
-      context: ./admin
-      dockerfile: Dockerfile.dev
-
-    container_name: tradie_dev_django
-    restart: unless-stopped
-
-    command: python manage.py runserver 0.0.0.0:8001
-
-    environment:
-      DJANGO_ENV: development
-      DEBUG: "True"
-      DJANGO_SECRET_KEY: dev-django-secret-never-use-in-production
-      ALLOWED_HOSTS: "localhost,127.0.0.1"
-      DATABASE_URL: postgresql://tradie:tradie_dev_password@postgres:5432/tradie_dev
-      REDIS_URL: redis://redis:6379/0
-      EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
-      EMAIL_HOST: mailpit
-      EMAIL_PORT: "1025"
-
-    ports:
-      - "8001:8001"
-
-    volumes:
-      - ./admin:/app
-
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-    networks:
-      - dev_network
 
   # ---------------------------------------------------------------------------
   # Celery worker
@@ -261,6 +227,7 @@ services:
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       FIELD_ENCRYPTION_KEY: ""
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
 
     volumes:
       - ./backend:/app

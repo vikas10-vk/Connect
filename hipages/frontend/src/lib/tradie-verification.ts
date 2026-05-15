@@ -114,24 +114,46 @@ const RULES_BY_SLUG: Record<string, ServiceVerificationRule> = {
     documents: HIGH_RISK_DOCUMENTS,
     reason: "Roofing is high-risk work and may require trade or height-safety evidence.",
   },
+  // ── Electrical — both slug variants so DB naming doesn't matter ──────────
   electrical: {
     level: "strict",
     group: "Licensed & High Risk",
     documents: STRICT_DOCUMENTS,
     reason: "Electrical work must be strictly verified before leads are sent.",
   },
+  electrician: {
+    level: "strict",
+    group: "Licensed & High Risk",
+    documents: STRICT_DOCUMENTS,
+    reason: "Electrical work must be strictly verified before leads are sent.",
+  },
+  // ── Plumbing variants ────────────────────────────────────────────────────
   plumbing: {
     level: "strict",
     group: "Licensed & High Risk",
     documents: STRICT_DOCUMENTS,
     reason: "Plumbing work needs licence and insurance verification.",
   },
+  plumber: {
+    level: "strict",
+    group: "Licensed & High Risk",
+    documents: STRICT_DOCUMENTS,
+    reason: "Plumbing work needs licence and insurance verification.",
+  },
+  // ── Gas ─────────────────────────────────────────────────────────────────
   "gas-fitting": {
     level: "strict",
     group: "Licensed & High Risk",
     documents: STRICT_DOCUMENTS,
     reason: "Gas work requires strict licence verification.",
   },
+  "gas-fitter": {
+    level: "strict",
+    group: "Licensed & High Risk",
+    documents: STRICT_DOCUMENTS,
+    reason: "Gas work requires strict licence verification.",
+  },
+  // ── HVAC / Air Conditioning ──────────────────────────────────────────────
   hvac: {
     level: "strict",
     group: "Licensed & High Risk",
@@ -144,18 +166,33 @@ const RULES_BY_SLUG: Record<string, ServiceVerificationRule> = {
     documents: STRICT_DOCUMENTS,
     reason: "Air conditioning installation often needs licensed electrical or refrigerant work.",
   },
+  "air-conditioner": {
+    level: "strict",
+    group: "Licensed & High Risk",
+    documents: STRICT_DOCUMENTS,
+    reason: "Air conditioning installation often needs licensed electrical or refrigerant work.",
+  },
+  // ── Solar ────────────────────────────────────────────────────────────────
   solar: {
     level: "strict",
     group: "Licensed & High Risk",
     documents: HIGH_RISK_DOCUMENTS,
     reason: "Solar work needs strict electrical, roof, and safety verification.",
   },
+  "solar-installation": {
+    level: "strict",
+    group: "Licensed & High Risk",
+    documents: HIGH_RISK_DOCUMENTS,
+    reason: "Solar work needs strict electrical, roof, and safety verification.",
+  },
+  // ── Security ─────────────────────────────────────────────────────────────
   security: {
     level: "strict",
     group: "Licensed & High Risk",
     documents: STRICT_DOCUMENTS,
     reason: "Security work can require licensing and identity-sensitive access.",
   },
+  // ── Construction ─────────────────────────────────────────────────────────
   demolition: {
     level: "strict",
     group: "Licensed & High Risk",
@@ -211,12 +248,33 @@ const LEVEL_RANK: Record<VerificationLevel, number> = {
 };
 
 export function getServiceRule(category: Pick<ServiceCategory, "name" | "slug">): ServiceVerificationRule {
-  const slug = category.slug?.toLowerCase();
+  // 1. Try exact slug match first
+  const slug = category.slug?.toLowerCase().trim();
   if (slug && RULES_BY_SLUG[slug]) return RULES_BY_SLUG[slug];
 
+  // 2. Try normalised name as slug (handles DB categories named "Electrician" with slug "electrician")
+  const nameAsSlug = category.name.toLowerCase().trim().replace(/\s+/g, "-");
+  if (RULES_BY_SLUG[nameAsSlug]) return RULES_BY_SLUG[nameAsSlug];
+
+  // 3. Substring name matching — use broad prefixes so "electrician", "electrical",
+  //    "plumber", "plumbing", "gas fitter", "gas fitting" etc. all match.
   const name = category.name.toLowerCase();
-  const strictNames = ["electrical", "plumb", "gas", "solar", "building", "demolition", "waterproof", "roof", "security", "air conditioning"];
-  if (strictNames.some((item) => name.includes(item))) {
+
+  const strictPatterns = [
+    "electric",   // catches "electrician" AND "electrical"
+    "plumb",      // catches "plumber" AND "plumbing"
+    "gas",
+    "solar",
+    "building",
+    "demolition",
+    "waterproof",
+    "roof",
+    "security",
+    "air condition",  // catches "air conditioning" AND "air conditioner"
+    "hvac",
+    "refriger",
+  ];
+  if (strictPatterns.some((p) => name.includes(p))) {
     return {
       level: "strict",
       group: "Licensed & High Risk",
@@ -225,8 +283,8 @@ export function getServiceRule(category: Pick<ServiceCategory, "name" | "slug">)
     };
   }
 
-  const basicNames = ["cleaning", "handyman", "lawn mowing", "garden maintenance"];
-  if (basicNames.some((item) => name.includes(item))) {
+  const basicPatterns = ["cleaning", "handyman", "lawn mowing", "garden maintenance", "mowing"];
+  if (basicPatterns.some((p) => name.includes(p))) {
     return {
       level: "basic",
       group: "Cleaning & Maintenance",

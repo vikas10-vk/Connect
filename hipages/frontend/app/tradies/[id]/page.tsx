@@ -8,7 +8,7 @@ import api from '@/src/lib/api';
 
 // ── Palette (matches homeowner dashboard) ────────────────────────────────────
 const CREAM = '#FDFAF5';
-const CREAM2 = '#F5F0E8';
+const CREAM2 = '#F5EDD0';
 const TERRA = '#C5563A';
 const TERRA_LIGHT = '#F5EDE9';
 const TERRA_DARK = '#9B3E2A';

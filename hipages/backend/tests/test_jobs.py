@@ -73,6 +73,98 @@ class TestCreateJob:
         assert "id" in body, f"Response missing job id: {body}"
         assert body.get("status") is not None, f"Response missing status: {body}"
 
+    async def test_plumber_language_resolves_to_plumbing(self, client, homeowner_headers):
+        """
+        User/tradie language like "plumber" must resolve to Plumbing, never to
+        a loose partial-match category such as Painting & Decorating.
+        """
+        with patch("routers.jobs.geocode_suburb", new_callable=AsyncMock, return_value=(None, None)):
+            resp = await client.post(
+                "/api/v1/jobs/",
+                json=make_job_data(
+                    category_slug="plumber",
+                    title="Need a plumber for leaking tap",
+                    description="Kitchen tap is leaking and needs repair.",
+                ),
+                headers=homeowner_headers,
+            )
+
+        assert resp.status_code == 201, (
+            f"Expected plumber alias to create job, got {resp.status_code}: {resp.text}"
+        )
+        body = resp.json()
+        cats_resp = await client.get("/api/v1/categories", headers=homeowner_headers)
+        assert cats_resp.status_code == 200
+        plumbing = next((c for c in cats_resp.json() if c["slug"] == "plumbing"), None)
+        assert plumbing is not None, f"Seeded plumbing category missing: {cats_resp.json()}"
+        assert body["category_id"] == plumbing["id"], f"Expected Plumbing category, got {body}"
+
+    @pytest.mark.parametrize(
+        ("category_slug", "title", "description", "expected_slug"),
+        [
+            ("electrical", "Install two ceiling fans", "Need an electrician for bedroom ceiling fans.", "electrical"),
+            ("painting", "Paint interior walls", "Paint three bedrooms and hallway walls.", "painting"),
+            ("roofing", "Fix leaking roof", "Water coming through roof flashing near gutter.", "roofing"),
+            ("hvac", "Air con service", "Split system air conditioner needs servicing.", "hvac"),
+            ("glazing", "Install shower screen", "Need a frameless glass shower screen installed.", "glazing"),
+            ("solar", "Install solar panels", "Rooftop solar panel system and inverter installation.", "solar"),
+            ("gas-fitting", "Gas cooktop connection", "Connect new gas cooktop and check gas line.", "gas-fitting"),
+            ("bathroom-renovation", "Replace shower", "Bathroom shower replacement with new vanity.", "bathroom-renovation"),
+            ("kitchen-renovation", "Replace kitchen cabinets", "Kitchen cabinet and benchtop replacement.", "kitchen-renovation"),
+            ("waterproofing", "Waterproof balcony", "Deck and balcony waterproofing before tiling.", "waterproofing"),
+        ],
+    )
+    async def test_service_matching_resolves_multiple_trades(
+        self,
+        client,
+        homeowner_headers,
+        category_slug,
+        title,
+        description,
+        expected_slug,
+    ):
+        """Representative services across the taxonomy resolve to their intended trade."""
+        with patch("routers.jobs.geocode_suburb", new_callable=AsyncMock, return_value=(None, None)):
+            resp = await client.post(
+                "/api/v1/jobs/",
+                json=make_job_data(
+                    category_slug=category_slug,
+                    title=title,
+                    description=description,
+                ),
+                headers=homeowner_headers,
+            )
+
+        assert resp.status_code == 201, (
+            f"Expected {category_slug} to create job, got {resp.status_code}: {resp.text}"
+        )
+        body = resp.json()
+        cats_resp = await client.get("/api/v1/categories", headers=homeowner_headers)
+        assert cats_resp.status_code == 200
+        expected = next((c for c in cats_resp.json() if c["slug"] == expected_slug), None)
+        assert expected is not None, f"Seeded {expected_slug} category missing: {cats_resp.json()}"
+        assert body["category_id"] == expected["id"], f"Expected {expected_slug}, got {body}"
+
+    async def test_unknown_service_is_rejected_instead_of_loose_fallback(self, client, homeowner_headers):
+        """
+        Unknown service text must fail loudly instead of being loosely mapped
+        to whichever category name happens to contain a similar fragment.
+        """
+        with patch("routers.jobs.geocode_suburb", new_callable=AsyncMock, return_value=(None, None)):
+            resp = await client.post(
+                "/api/v1/jobs/",
+                json=make_job_data(
+                    category_slug="nonsense-service",
+                    title="Specialist home request",
+                    description="No specific trade words are provided here.",
+                ),
+                headers=homeowner_headers,
+            )
+
+        assert resp.status_code == 400, (
+            f"Expected unknown service to be rejected, got {resp.status_code}: {resp.text}"
+        )
+
     async def test_tradie_cannot_create_job(self, client, tradie_headers):
         """
         A tradie must not be able to post jobs — only homeowners can.

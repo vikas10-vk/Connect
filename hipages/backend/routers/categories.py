@@ -2,15 +2,31 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from db.session import get_db
-from models.category import Category
+from models.category import Category, CategoryLevel
 from models.tradie_category import TradieCategory
 from models.tradie_profile import TradieProfile
 from schemas.category_schema import CategoryCreate, CategoryResponse
 from services.auth_service import get_current_user
+from services.category_resolver import resolve_to_canonical_trade
 from models.user import User
 import uuid
 
 router = APIRouter(prefix="/api/v1/categories", tags=["Categories"])
+
+# ---------------------------------------------------------------------------
+# CANONICAL_SLUGS — the 24 official trade categories.
+# The category picker shown to tradies ONLY displays these slugs.
+# Any other level-1 rows in the DB are orphan synonyms from the old seed
+# (e.g. "Plumber", "Electrician") and must not appear in the UI.
+# ---------------------------------------------------------------------------
+CANONICAL_SLUGS = frozenset([
+    "plumbing", "electrical", "carpentry", "painting", "tiling",
+    "roofing", "hvac", "landscaping", "concreting", "plastering",
+    "flooring", "fencing", "glazing", "pest-control", "security",
+    "solar", "gas-fitting", "demolition", "waterproofing", "cleaning",
+    "handyman", "building", "bathroom-renovation", "kitchen-renovation",
+])
+
 
 @router.post("", response_model=CategoryResponse, status_code=201)
 async def create_category(
@@ -27,10 +43,28 @@ async def create_category(
     await db.refresh(category)
     return category
 
+
 @router.get("", response_model=list[CategoryResponse])
 async def list_categories(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Category).order_by(Category.name))
+    """
+    Return ONLY the 24 canonical trade categories for the tradie preferences picker.
+
+    Orphan synonym categories ("Plumber", "Electrician", etc.) created by the
+    old seed script are intentionally excluded via the CANONICAL_SLUGS filter.
+    This prevents tradies from ever selecting a non-canonical category, which
+    would cause their leads to not match homeowner jobs.
+    """
+    result = await db.execute(
+        select(Category)
+        .where(
+            Category.level == CategoryLevel.TRADE,
+            Category.is_active == True,
+            Category.slug.in_(CANONICAL_SLUGS),
+        )
+        .order_by(Category.name)
+    )
     return result.scalars().all()
+
 
 @router.post("/my-categories/{category_id}", status_code=201)
 async def add_my_category(
@@ -41,7 +75,6 @@ async def add_my_category(
     if current_user.role != "tradie":
         raise HTTPException(status_code=403, detail="Only tradies can select categories")
 
-    # Get tradie profile
     result = await db.execute(
         select(TradieProfile).where(TradieProfile.user_id == current_user.id)
     )
@@ -49,12 +82,20 @@ async def add_my_category(
     if not profile:
         raise HTTPException(status_code=404, detail="Create your tradie profile first")
 
-    # Check category exists
     result = await db.execute(select(Category).where(Category.id == category_id))
-    if not result.scalar_one_or_none():
+    category = result.scalar_one_or_none()
+    if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    # Check not already added
+    # Use resolve_to_canonical_trade (not just canonical_trade_category) so that
+    # orphan synonym rows like "Plumber" are normalised to "Plumbing" before saving.
+    # Without this, TradieCategory.category_id would store the "Plumber" UUID,
+    # which never matches any job's category_id (which is always "Plumbing").
+    trade_category = await resolve_to_canonical_trade(db, category)
+    if not trade_category:
+        raise HTTPException(status_code=400, detail="Please select a valid trade service.")
+    category_id = trade_category.id
+
     result = await db.execute(
         select(TradieCategory).where(
             TradieCategory.tradie_id == profile.id,
@@ -84,14 +125,13 @@ async def get_my_categories(
     )
     profile = result.scalar_one_or_none()
     if not profile:
-        return []   # No profile yet — return empty list, not 404
+        return []
 
     result = await db.execute(
         select(TradieCategory).where(TradieCategory.tradie_id == profile.id)
     )
     links = result.scalars().all()
 
-    # Return with category_id so frontend can match
     return [{"category_id": lnk.category_id, "tradie_id": lnk.tradie_id} for lnk in links]
 
 

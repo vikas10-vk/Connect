@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-terracotta: #8C3F1F;
-  --color-brand-cream: #FDFBF7;
+  --color-brand-terracotta: #071D36;
+  --color-brand-cream: #FFF8E7;
   --color-brand-navy: #071D36;
   --color-brand-gold: #D4AA3A;
-  --color-brand-ivory: #FBF8EF;
-  --color-brand-sand: #F1EBDD;
-  --color-tradie-dark: #0A0A0B;
-  --color-tradie-card: #141416;
-  --color-tradie-accent: #1DE9B6;
+  --color-brand-ivory: #FFF8E7;
+  --color-brand-sand: #F5EDD0;
+  --color-tradie-dark: #071D36;
+  --color-tradie-card: #FFFFFF;
+  --color-tradie-accent: #D4AA3A;
 }
 
 @layer base {
@@ -21,6 +21,26 @@
 
   body {
     @apply bg-brand-ivory text-gray-900 antialiased;
+    background-color: #FFF8E7;
+  }
+
+  :root {
+    --pc-navy: #071D36;
+    --pc-navy-soft: #0D2544;
+    --pc-gold: #D4AA3A;
+    --pc-gold-soft: #F7EBC5;
+    --pc-bg: #FFF8E7;
+    --pc-border: #E8D9B0;
+    --pc-icon-blue: #5BB3FF;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  svg {
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   *,
@@ -39,7 +59,20 @@
 
 @layer utilities {
   .tradie-hub-bg {
-    background: linear-gradient(180deg, #0A0A0B 0%, #141416 100%);
+    background: linear-gradient(180deg, #071D36 0%, #0D2544 100%);
+  }
+  /* Nav icon — blue by default, gold on hover */
+  .nav-icon {
+    color: #5BB3FF;
+    transition: color 0.2s;
+  }
+  .nav-item:hover .nav-icon,
+  .nav-item.active .nav-icon {
+    color: #D4AA3A;
+  }
+  .nav-item:hover .nav-label,
+  .nav-item.active .nav-label {
+    color: #D4AA3A;
   }
 }
 

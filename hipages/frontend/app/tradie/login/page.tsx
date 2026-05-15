@@ -12,10 +12,10 @@ import { useAuth } from '@/src/contexts/AuthContext';
 
 // ─── Atelier design tokens (matches tradie dashboard exactly) ────────────────
 const C = {
-    paper: '#FAF7F1', panel: '#F3EFE7', card: '#FFFFFF',
-    line: '#E8E2D4', lineSoft: '#EFEAE0',
-    ink: '#1A1A1A', ink2: '#4A4A48', ink3: '#8A8882', ink4: '#B8B5AE',
-    brass: '#A68A4E', brassL: '#F4EEDD', brassB: '#E6D9B5',
+    paper: '#FFF8E7', panel: '#071D36', card: '#FFFFFF',
+    line: '#E8D9B0', lineSoft: '#F0E4C4',
+    ink: '#071D36', ink2: '#173452', ink3: '#56677A', ink4: '#8A785A',
+    brass: '#D4AA3A', brassL: '#F7EBC5', brassB: '#E8C766',
     sage: '#5B7560', sageL: '#EDF3EE',
     amber: '#9A6B1E', amberL: '#F7EED8',
     rose: '#A8423A', roseL: '#F7E6E4',
@@ -72,26 +72,30 @@ function TradieLoginForm() {
             minHeight: '100vh', background: C.paper, fontFamily: UI, color: C.ink,
             display: 'flex', flexDirection: 'column',
         }}>
-            {/* Header */}
+            {/* Header — navy, matches site-wide navbar */}
             <header style={{
-                padding: '20px 28px', borderBottom: `1px solid ${C.line}`,
-                background: `${C.paper}E6`, backdropFilter: 'blur(10px)',
+                padding: '16px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+                background: '#071D36', backdropFilter: 'blur(10px)',
                 position: 'sticky', top: 0, zIndex: 100,
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+                boxShadow: '0 2px 12px rgba(7,29,54,0.35)',
             }}>
                 <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
                     <div style={{
-                        width: 32, height: 32, borderRadius: 9, background: C.ink,
+                        width: 34, height: 34, borderRadius: 9, background: C.brass,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 3px 10px rgba(212,170,58,0.35)',
                     }}>
-                        <Zap size={16} color={C.card} fill={C.card} />
+                        <Zap size={17} color={C.ink} fill={C.ink} />
                     </div>
                     <div>
-                        <p style={{ fontFamily: DISPLAY, fontSize: 17, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: '-0.01em', lineHeight: 1 }}>ProConnect</p>
-                        <p style={{ fontSize: 10, fontWeight: 600, color: C.ink3, margin: '3px 0 0', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Tradie studio</p>
+                        <p style={{ fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, color: C.brass, margin: 0, letterSpacing: '-0.01em', lineHeight: 1 }}>ProConnect</p>
+                        <p style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.4)', margin: '3px 0 0', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Tradie Studio</p>
                     </div>
                 </Link>
-                <Link href="/" style={{ fontSize: 12.5, fontWeight: 600, color: C.ink3, textDecoration: 'none' }}>
+                <Link href="/" style={{ fontSize: 12.5, fontWeight: 600, color: 'rgba(255,255,255,0.55)', textDecoration: 'none' }}
+                    onMouseEnter={(e: any) => (e.currentTarget.style.color = C.brass)}
+                    onMouseLeave={(e: any) => (e.currentTarget.style.color = 'rgba(255,255,255,0.55)')}>
                     ← Back to home
                 </Link>
             </header>
@@ -223,7 +227,7 @@ function TradieLoginForm() {
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                 transition: 'background 0.15s',
                             }}
-                            onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = '#000'; }}
+                            onMouseEnter={e => { if (!submitting) e.currentTarget.style.background = '#0E2E55'; }}
                             onMouseLeave={e => { if (!submitting) e.currentTarget.style.background = C.ink; }}
                         >
                             {submitting ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}

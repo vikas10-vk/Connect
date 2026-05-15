@@ -73,18 +73,19 @@ async def my_leads(
             sent_at=lead.sent_at,
 
             # Job details
-            job_title=job.title           if job else None,
-            job_suburb=job.suburb         if job else None,
-            job_state=job.state           if job else None,
+            job_title=job.title             if job else None,
+            job_suburb=job.suburb           if job else None,
+            job_state=job.state             if job else None,
             job_description=job.description if job else None,
-            job_budget_min=job.budget_min if job else None,
-            job_budget_max=job.budget_max if job else None,
-            job_urgency=job.urgency       if job else None,
+            job_budget_min=job.budget_min   if job else None,
+            job_budget_max=job.budget_max   if job else None,
+            job_urgency=job.urgency         if job else None,
+            job_status=job.status           if job else None,
 
             # Wizard fields
-            job_type=job.job_type         if job else None,
-            service_type=job.service_type if job else None,
-            job_stage=job.job_stage       if job else None,
+            job_type=job.job_type           if job else None,
+            service_type=job.service_type   if job else None,
+            job_stage=job.job_stage         if job else None,
 
             # Badges
             is_urgent=is_urgent,

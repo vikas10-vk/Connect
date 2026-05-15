@@ -44,28 +44,28 @@ export default function MessageRenderer({ component }: MessageRendererProps) {
         // ── Stubs for future components ──────────────────────────────────────
         case "QuoteComparison":
             return (
-                <div className="mt-3 p-4 bg-brand-cream rounded-2xl text-sm text-gray-500 border border-gray-100">
+                <div className="mt-3 p-4 bg-brand-ivory rounded-2xl text-sm text-gray-500 border border-gray-100">
                     📋 Quote comparison coming soon
                 </div>
             );
 
         case "HomeHealthChart":
             return (
-                <div className="mt-3 p-4 bg-brand-cream rounded-2xl text-sm text-gray-500 border border-gray-100">
+                <div className="mt-3 p-4 bg-brand-ivory rounded-2xl text-sm text-gray-500 border border-gray-100">
                     🏠 Home health chart coming soon
                 </div>
             );
 
         case "EarningsSummary":
             return (
-                <div className="mt-3 p-4 bg-brand-cream rounded-2xl text-sm text-gray-500 border border-gray-100">
+                <div className="mt-3 p-4 bg-brand-ivory rounded-2xl text-sm text-gray-500 border border-gray-100">
                     💰 Earnings summary coming soon
                 </div>
             );
 
         case "LeadGrid":
             return (
-                <div className="mt-3 p-4 bg-brand-cream rounded-2xl text-sm text-gray-500 border border-gray-100">
+                <div className="mt-3 p-4 bg-brand-ivory rounded-2xl text-sm text-gray-500 border border-gray-100">
                     📬 Lead cards coming soon
                 </div>
             );

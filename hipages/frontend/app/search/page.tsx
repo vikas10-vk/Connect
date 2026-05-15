@@ -101,18 +101,18 @@ function SearchPageContent() {
   const dashboardHref = user?.role === 'tradie' ? '/tradie/dashboard' : '/dashboard';
 
   return (
-    <div className="min-h-screen bg-brand-ivory font-sans">
+    <div className="min-h-screen font-sans" style={{ background: '#FFF8E7' }}>
 
       {/* ── Navigation ─────────────────────────────────────────────────────── */}
       <nav className="bg-[#071D36] border-b border-white/10 sticky top-0 z-[100]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap lg:flex-nowrap justify-between items-center gap-3 sm:gap-4">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-brand-gold flex items-center justify-center text-[#071D36]">
-              <Zap className="w-5 h-5 fill-current" />
+          <Link href="/" className="flex items-center gap-2 shrink-0 group">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105" style={{ background: '#D4AA3A', boxShadow: '0 3px 10px rgba(212,170,58,0.3)' }}>
+              <Zap className="w-5 h-5 fill-current" style={{ color: '#071D36' }} />
             </div>
-            <span className="text-xl font-bold tracking-tight text-brand-gold hidden sm:block">ProConnect</span>
+            <span className="text-xl font-bold tracking-tight hidden sm:block" style={{ color: '#D4AA3A' }}>ProConnect</span>
           </Link>
 
           {/* Search bar */}
@@ -179,19 +179,22 @@ function SearchPageContent() {
             ) : (
               <div className="flex items-center gap-3">
                 <Link href={dashboardHref} className="flex items-center gap-2.5 group">
-                  <div className="w-9 h-9 rounded-full bg-brand-gold flex items-center justify-center text-white font-black text-sm shadow-md shadow-brand-gold/30 ring-2 ring-white group-hover:ring-brand-gold/30 transition-all">
+                  <div className="w-9 h-9 rounded-full font-black text-sm shadow-md transition-all flex items-center justify-center" style={{ background: '#D4AA3A', color: '#071D36', boxShadow: '0 3px 10px rgba(212,170,58,0.3)' }}>
                     {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
                   </div>
                   <div className="hidden sm:block">
-                    <p className="text-xs font-black text-gray-800 leading-none truncate max-w-[90px]">
+                    <p className="text-xs font-black text-white leading-none truncate max-w-[90px]">
                       {user?.name?.split(' ')[0] || user?.email?.split('@')[0]}
                     </p>
-                    <p className="text-[10px] text-brand-gold font-bold mt-0.5">Dashboard →</p>
+                    <p className="text-[10px] font-bold mt-0.5" style={{ color: '#D4AA3A' }}>Dashboard →</p>
                   </div>
                 </Link>
                 <button
                   onClick={logout}
-                  className="w-8 h-8 rounded-full bg-gray-100 hover:bg-red-50 hover:text-red-500 transition-all flex items-center justify-center border border-gray-200 text-gray-400"
+                  className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
+                  style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.12)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,80,80,0.15)'; e.currentTarget.style.color = '#FF6B6B'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
                   title="Sign out"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -207,9 +210,9 @@ function SearchPageContent() {
 
         {/* ── Sidebar filters ───────────────────────────────────────────────── */}
         <aside className={cn("w-56 shrink-0 space-y-6", "hidden lg:block")}>
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 space-y-4">
-            <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-              <SlidersHorizontal className="w-4 h-4" />
+          <div className="bg-white rounded-2xl p-5 space-y-4" style={{ border: '1px solid #E8D9B0' }}>
+            <h3 className="font-bold text-sm flex items-center gap-2" style={{ color: '#071D36' }}>
+              <SlidersHorizontal className="w-4 h-4" style={{ color: '#5BB3FF' }} />
               Categories
             </h3>
             <div className="space-y-1 max-h-96 overflow-y-auto pr-1">

@@ -58,8 +58,10 @@ class JobStatus(str, enum.Enum):
     # ── Stopped / dispute ────────────────────────────────────────
     PARTIAL_STOP = "partial_stop"
     DISPUTED     = "disputed"
-    # ── Terminal ─────────────────────────────────────────────────
+    # ── Post-completion ──────────────────────────────────────────
     COMPLETED   = "completed"
+    CONFIRMED   = "confirmed"   # homeowner confirmed; payment release pending
+    # ── Terminal ─────────────────────────────────────────────────
     CLOSED      = "closed"
     CANCELLED   = "cancelled"
 
@@ -123,7 +125,9 @@ class Job(Base):
     # Timestamped and stored to S3 via /api/upload-photo.
     # These are the primary dispute resolution artifacts.
     photo_before_url  : Mapped[str] = mapped_column(String(500), nullable=True)
-    photo_after_url   : Mapped[str] = mapped_column(String(500), nullable=True)
+    # Stores a JSON array of 1–3 completion photo URLs (e.g. '["url1","url2"]').
+    # Changed from String(500) → Text to accommodate multiple URLs.
+    photo_after_url   : Mapped[str] = mapped_column(Text,        nullable=True)
     completion_note   : Mapped[str] = mapped_column(Text,        nullable=True)
 
     # ── NEW: homeowner confirms completion ────────────────────────────────────

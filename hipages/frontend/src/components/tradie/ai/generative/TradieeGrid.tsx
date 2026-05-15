@@ -29,7 +29,7 @@ export default function TradieeGrid({ data, props }: TradieeGridProps) {
 
     if (!tradies || tradies.length === 0) {
         return (
-            <div className="mt-3 p-4 rounded-2xl bg-brand-cream border border-brand-terracotta/10 text-sm text-gray-500 text-center">
+            <div className="mt-3 p-4 rounded-2xl bg-brand-ivory border border-brand-terracotta/10 text-sm text-gray-500 text-center">
                 No tradies found in that area yet. Try a nearby suburb.
             </div>
         );

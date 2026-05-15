@@ -282,11 +282,7 @@ Return ONLY this JSON, no markdown:
             explanation=data.get("brief", ""),
             missing_info=data.get("missing_info", ""),
         )
-    except Exception:
-        return AnalyseJobResponse(
-            title=f"{body.category} job",
-            job_type="residential",
-            service_type="repair",
-            explanation="",
-            missing_info="",
-        )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"analyse-job Groq call failed: {exc}")
+        raise HTTPException(status_code=503, detail="AI service unavailable. Please try again.")

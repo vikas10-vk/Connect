@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Paperclip, X, Sparkles, Loader2, Bot, User, RotateCcw } from "lucide-react";
+import { Send, Paperclip, X, Sparkles, Loader2, Bot, User } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import api from "@/src/lib/api";
@@ -171,7 +171,7 @@ export default function AIChatInterface() {
     const isEmpty = messages.length === 0;
 
     return (
-        <div className="flex-1 flex flex-col w-full bg-brand-cream">
+        <div className="flex-1 flex flex-col w-full bg-brand-ivory">
 
             {/* ── Empty state / welcome ─────────────────────────────────────────── */}
             <AnimatePresence>
@@ -321,7 +321,7 @@ export default function AIChatInterface() {
                     {/* Photo upload button */}
                     <button
                         onClick={() => fileRef.current?.click()}
-                        className="w-10 h-10 rounded-xl bg-brand-cream flex items-center justify-center text-gray-400 hover:text-brand-terracotta hover:bg-brand-terracotta/5 transition-all duration-200 shrink-0"
+                        className="w-10 h-10 rounded-xl bg-brand-ivory flex items-center justify-center text-gray-400 hover:text-brand-terracotta hover:bg-brand-terracotta/5 transition-all duration-200 shrink-0"
                         title="Upload a photo"
                     >
                         <Paperclip className="w-5 h-5" />
@@ -349,19 +349,10 @@ export default function AIChatInterface() {
                                 : "Tell me what needs fixing, or upload a photo..."
                         }
                         rows={1}
-                        className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-terracotta/40 focus:ring-2 focus:ring-brand-terracotta/10 transition-all bg-brand-cream placeholder:text-gray-400"
+                        className="flex-1 resize-none rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-terracotta/40 focus:ring-2 focus:ring-brand-terracotta/10 transition-all bg-brand-ivory placeholder:text-gray-400"
                     />
 
                     {/* Send / reset */}
-                    {!isEmpty && messages.length > 0 && (
-                        <button
-                            onClick={resetChat}
-                            className="w-10 h-10 rounded-xl bg-brand-cream flex items-center justify-center text-gray-400 hover:text-gray-600 transition-all shrink-0"
-                            title="New conversation"
-                        >
-                            <RotateCcw className="w-4 h-4" />
-                        </button>
-                    )}
 
                     <button
                         onClick={() => sendMessage()}
@@ -383,3 +374,4 @@ export default function AIChatInterface() {
         </div>
     );
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                

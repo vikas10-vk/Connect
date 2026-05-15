@@ -14,12 +14,13 @@ import {
 import api from '@/src/lib/api';
 import { saveToken } from '@/src/lib/auth';
 import { useAuth } from '@/src/contexts/AuthContext';
+import { getServiceRule } from '@/src/lib/tradie-verification';
 
 const C = {
-    paper: '#FAF7F1', panel: '#F3EFE7', card: '#FFFFFF',
-    line: '#E8E2D4', lineSoft: '#EFEAE0',
-    ink: '#1A1A1A', ink2: '#4A4A48', ink3: '#8A8882', ink4: '#B8B5AE',
-    brass: '#A68A4E', brassL: '#F4EEDD', brassB: '#E6D9B5',
+    paper: '#FFF8E7', panel: '#071D36', card: '#FFFFFF',
+    line: '#E8D9B0', lineSoft: '#F0E4C4',
+    ink: '#071D36', ink2: '#173452', ink3: '#56677A', ink4: '#8A785A',
+    brass: '#D4AA3A', brassL: '#F7EBC5', brassB: '#E8C766',
     sage: '#5B7560', sageL: '#EDF3EE',
     amber: '#9A6B1E', amberL: '#F7EED8',
     rose: '#A8423A', roseL: '#F7E6E4',
@@ -41,20 +42,6 @@ const STATE_REGISTRY_NAMES: Record<string, string> = {
     NT: 'NT Government Licensing',
     ACT: 'Access Canberra',
 };
-
-const LICENCE_REQUIRED_TRADES = [
-    'Electrician', 'EV Charger Installation', 'Plumber', 'Gas Fitter',
-    'Hot Water System Installer', 'Drains Installer', 'Builder',
-    'Renovation and Extensions Builder', 'Asbestos Removal',
-    'Demolition Services', 'Pool Builder', 'Pool Fence Installer',
-    'Bricklayer', 'Concretor', 'Roofer', 'Waterproofer',
-    'Air Conditioning Installer', 'Glazier',
-    'electrical', 'plumbing', 'gas-fitting', 'building', 'roofing',
-    'waterproofing', 'hvac', 'glazing', 'solar', 'demolition',
-];
-
-const isLicenceRequired = (name: string) =>
-    LICENCE_REQUIRED_TRADES.some(t => name.toLowerCase().includes(t.toLowerCase()));
 
 const formatAbn = (raw: string) => {
     const d = raw.replace(/\D/g, '').slice(0, 11);
@@ -101,7 +88,7 @@ interface InsuranceEntry {
     skip: boolean;
 }
 
-type StepId = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+type StepId = 1 | 2 | 3 | 4 | 5 | 6;
 type SubmitPhase = 'idle' | 'profile' | 'certs' | 'insurance' | 'done';
 
 const STEPS: { id: StepId; label: string; sub: string }[] = [
@@ -109,9 +96,8 @@ const STEPS: { id: StepId; label: string; sub: string }[] = [
     { id: 2, label: 'Verify', sub: 'Confirm your email' },
     { id: 3, label: 'Business', sub: 'About your business' },
     { id: 4, label: 'Services', sub: 'What you offer' },
-    { id: 5, label: 'Licences', sub: 'Trade certifications' },
-    { id: 6, label: 'Insurance', sub: 'Public liability' },
-    { id: 7, label: 'Submit', sub: 'Review & submit' },
+    { id: 5, label: 'Documents', sub: 'Licences & insurance' },
+    { id: 6, label: 'Submit', sub: 'Review & submit' },
 ];
 
 export default function TradieOnboardingPage() {
@@ -179,12 +165,19 @@ export default function TradieOnboardingPage() {
     // ── Step 5: Licences ─────────────────────────────────────────────────────
     const [certEntries, setCertEntries] = useState<CertEntry[]>([]);
 
-    // ── Step 6: Insurance ────────────────────────────────────────────────────
+    // ── Step 5: Insurance (merged into Documents step) ───────────────────────
     const [insurance, setInsurance] = useState<InsuranceEntry>({
         insurer_name: '', policy_number: '',
         coverage_amount_raw: '', holder_name: '',
         expires_at: '', document_url: '', skip: false,
     });
+
+    // ── Step 5: White Card (merged into Documents step) ──────────────────────
+    const [whiteCardNumber, setWhiteCardNumber] = useState('');
+    const [whiteCardSkip, setWhiteCardSkip] = useState(false);
+
+    // ── Section collapse state (which doc sections are collapsed to summary) ──
+    const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
     // ── Resume detection: fires once auth state settles ───────────────────────
     // If user already has a valid token (came back mid-flow or after OTP verify),
@@ -237,9 +230,9 @@ export default function TradieOnboardingPage() {
 
                         if ((certsRes.data || []).length > 0 || (insurRes.data || []).length > 0) {
                             // Certs/insurance already submitted → go to final review
-                            setStep(7);
+                            setStep(6);
                         } else {
-                            // Has categories but no certs/insurance → go to licences
+                            // Has categories but no certs/insurance → go to documents step
                             setStep(5);
                         }
                     } else {
@@ -309,9 +302,20 @@ export default function TradieOnboardingPage() {
         [allCategories, selectedCatIds],
     );
     const licensedSelectedCats = useMemo(
-        () => allCategories.filter(c => selectedCatIds.includes(c.id) && isLicenceRequired(c.name)),
+        () => allCategories.filter(c =>
+            selectedCatIds.includes(c.id) &&
+            getServiceRule(c).documents.includes('trade_licence')
+        ),
         [allCategories, selectedCatIds],
     );
+
+    const selectedServiceDocs = useMemo(() => {
+        const docs = new Set<string>();
+        for (const cat of allCategories.filter(c => selectedCatIds.includes(c.id))) {
+            getServiceRule(cat).documents.forEach(doc => docs.add(doc));
+        }
+        return docs;
+    }, [allCategories, selectedCatIds]);
 
     const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
     const step1Valid =
@@ -321,16 +325,21 @@ export default function TradieOnboardingPage() {
         businessName.trim().length >= 2 && abn.replace(/\D/g, '').length === 11 &&
         (soloOrTeam === 'solo' || (soloOrTeam === 'team' && !!teamSize));
     const step4Valid = selectedCatIds.length > 0;
-    const step5Valid = certEntries.every(e =>
-        e.skip || (e.licence_number.trim().length >= 2 && e.issuing_state && e.holder_name.trim().length >= 2)
+    const certsValid = certEntries.every(e =>
+        e.licence_number.trim().length >= 2 && e.issuing_state && e.holder_name.trim().length >= 2
     );
-    const step6Valid =
-        insurance.skip ||
+    const insuranceRequired = selectedServiceDocs.has('public_liability');
+    const whiteCardRequired = selectedServiceDocs.has('white_card');
+
+    const insuranceValid =
+        !insuranceRequired ||
         (insurance.insurer_name.trim().length >= 2 &&
             insurance.policy_number.trim().length >= 2 &&
             insurance.coverage_amount_raw.replace(/[^0-9.]/g, '').length > 0 &&
             insurance.holder_name.trim().length >= 2 &&
             !!insurance.expires_at);
+    const whiteCardValid = !whiteCardRequired || whiteCardNumber.trim().length >= 5;
+    const step5Valid = certsValid && insuranceValid && whiteCardValid;
 
     // ── Shared input styles ───────────────────────────────────────────────────
     const labelStyle: React.CSSProperties = {
@@ -443,7 +452,8 @@ export default function TradieOnboardingPage() {
     // ── Step 4 → Step 5: Init cert entries from licensed categories ───────────
     const handleStep4Continue = () => {
         const licensed = allCategories.filter(c =>
-            selectedCatIds.includes(c.id) && isLicenceRequired(c.name)
+            selectedCatIds.includes(c.id) &&
+            getServiceRule(c).documents.includes('trade_licence')
         );
         const existingIds = certEntries.map(e => e.category_id);
         const newEntries = licensed
@@ -468,9 +478,9 @@ export default function TradieOnboardingPage() {
         setCertEntries(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
     };
 
-    // ── Step 6 → Step 7: Back from insurance ─────────────────────────────────
-    const handleStep6Back = () => {
-        setStep(certEntries.length > 0 ? 5 : 4);
+    // ── Collapse / expand a documents section ────────────────────────────────
+    const toggleSection = (key: string, collapsed: boolean) => {
+        setCollapsedSections(prev => ({ ...prev, [key]: collapsed }));
     };
 
     // ── Final submit ──────────────────────────────────────────────────────────
@@ -545,6 +555,17 @@ export default function TradieOnboardingPage() {
             }
         }
 
+        // Phase 4: Submit white card (non-fatal)
+        if (!whiteCardSkip && whiteCardNumber.trim()) {
+            try {
+                await api.post('/compliance/update-white-card', {
+                    white_card_number: whiteCardNumber.trim(),
+                });
+            } catch {
+                toast.error('Could not submit White Card details. You can add this from your dashboard.');
+            }
+        }
+
         setSubmitPhase('done');
         toast.success('Profile submitted — our team will review within 1 business day.');
         setTimeout(() => router.push('/tradie/dashboard'), 700);
@@ -575,23 +596,24 @@ export default function TradieOnboardingPage() {
             display: 'flex', flexDirection: 'column',
         }}>
 
-            {/* ── Header ── */}
+            {/* ── Header — navy, matches site-wide navbar ── */}
             <header style={{
-                padding: '20px 28px', borderBottom: `1px solid ${C.line}`,
-                background: `${C.paper}E6`, backdropFilter: 'blur(10px)',
+                padding: '16px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)',
+                background: '#071D36', backdropFilter: 'blur(10px)',
                 position: 'sticky', top: 0, zIndex: 100,
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+                boxShadow: '0 2px 12px rgba(7,29,54,0.35)',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 9, background: C.ink, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Zap size={16} color={C.card} fill={C.card} />
+                    <div style={{ width: 34, height: 34, borderRadius: 9, background: C.brass, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 3px 10px rgba(212,170,58,0.35)' }}>
+                        <Zap size={17} color={C.ink} fill={C.ink} />
                     </div>
                     <div>
-                        <p style={{ fontFamily: DISPLAY, fontSize: 17, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: '-0.01em', lineHeight: 1 }}>ProConnect</p>
-                        <p style={{ fontSize: 10, fontWeight: 600, color: C.ink3, margin: '3px 0 0', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Tradie onboarding</p>
+                        <p style={{ fontFamily: DISPLAY, fontSize: 17, fontWeight: 700, color: C.brass, margin: 0, letterSpacing: '-0.01em', lineHeight: 1 }}>ProConnect</p>
+                        <p style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.4)', margin: '3px 0 0', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Tradie Onboarding</p>
                     </div>
                 </div>
-                <a href="/tradie/login" style={{ fontSize: 12.5, fontWeight: 600, color: C.ink3, textDecoration: 'none' }}>
+                <a href="/tradie/login" style={{ fontSize: 12.5, fontWeight: 600, color: 'rgba(255,255,255,0.55)', textDecoration: 'none' }}>
                     Already a member? <span style={{ color: C.brass }}>Sign in</span>
                 </a>
             </header>
@@ -947,7 +969,7 @@ export default function TradieOnboardingPage() {
                                         <div style={{ padding: 10, maxHeight: 300, overflowY: 'auto' }}>
                                             <div className="cat-grid-onboard">
                                                 {filteredCategories.filter(cat => !selectedCatIds.includes(cat.id)).map(cat => {
-                                                    const lic = isLicenceRequired(cat.name);
+                                                    const lic = getServiceRule(cat).documents.includes('trade_licence');
                                                     return (
                                                         <button key={cat.id}
                                                             onClick={() => setSelectedCatIds(prev => [...prev, cat.id])}
@@ -997,70 +1019,75 @@ export default function TradieOnboardingPage() {
                     )}
 
                     {/* ═══════════════════════════════════════════════════════════
-                        STEP 5 — Licences (NEW)
+                        STEP 5 — Documents (Licences + Insurance + White Card combined)
                     ═══════════════════════════════════════════════════════════ */}
                     {step === 5 && (
                         <motion.div key="s5" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
                             <div style={{ marginBottom: 24 }}>
-                                <p style={{ fontSize: 12, fontWeight: 600, color: C.brass, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Step 5 of 7</p>
-                                <h1 style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink, margin: '0 0 10px', letterSpacing: '-0.025em', lineHeight: 1.15 }}>Trade licence details</h1>
+                                <p style={{ fontSize: 12, fontWeight: 600, color: C.brass, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Step 5 of 6</p>
+                                <h1 style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink, margin: '0 0 10px', letterSpacing: '-0.025em', lineHeight: 1.15 }}>Licences &amp; documents</h1>
                                 <p style={{ fontSize: 14.5, color: C.ink2, margin: 0, lineHeight: 1.6, maxWidth: 480 }}>
-                                    {certEntries.length === 0
-                                        ? "None of your selected services require a trade licence — continue to the next step."
-                                        : "Enter your licence number for each trade. Our admin team verifies directly with the state registry — no document upload needed."}
+                                    Fill in each section — it collapses to a summary when done. You can skip sections and add them later from your dashboard.
                                 </p>
                             </div>
 
-                            {certEntries.length === 0 ? (
-                                <div style={{ padding: '28px 24px', background: C.sageL, border: `1px solid ${C.sage}40`, borderRadius: 16, textAlign: 'center', marginBottom: 24 }}>
-                                    <CheckCircle2 size={32} color={C.sage} style={{ marginBottom: 12 }} />
-                                    <p style={{ fontFamily: DISPLAY, fontSize: 20, color: C.ink, margin: '0 0 8px', fontWeight: 500 }}>No licences required</p>
-                                    <p style={{ fontSize: 13.5, color: C.ink2, margin: 0, lineHeight: 1.6 }}>The services you selected don't require a trade licence. Continue to add your insurance details.</p>
-                                </div>
-                            ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 8 }}>
-                                    {certEntries.map((entry, idx) => (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 8 }}>
+
+                                {/* ── LICENCE CARDS (one per licensed trade) ── */}
+                                {certEntries.length === 0 ? (
+                                    <div style={{ padding: '18px 20px', background: C.sageL, border: `1px solid ${C.sage}40`, borderRadius: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+                                        <CheckCircle2 size={18} color={C.sage} />
+                                        <div>
+                                            <p style={{ fontSize: 13.5, fontWeight: 600, color: C.ink, margin: 0 }}>No trade licences required</p>
+                                            <p style={{ fontSize: 12.5, color: C.ink2, margin: '2px 0 0' }}>The services you selected don't require a trade licence.</p>
+                                        </div>
+                                    </div>
+                                ) : certEntries.map((entry, idx) => {
+                                    const isCollapsed = !!collapsedSections[`cert_${entry.category_id}`];
+                                    const entryComplete = !entry.skip && entry.licence_number.trim().length >= 2 && !!entry.issuing_state && entry.holder_name.trim().length >= 2;
+                                    return (
                                         <motion.div key={entry.category_id}
                                             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                             transition={{ delay: idx * 0.06, duration: 0.24 }}
-                                            style={{
-                                                background: entry.skip ? C.panel : C.card,
-                                                border: `1.5px solid ${entry.skip ? C.line : C.brassB}`,
-                                                borderRadius: 16, overflow: 'hidden',
-                                                transition: 'all 0.2s',
-                                            }}>
+                                            style={{ background: entry.skip ? C.panel : C.card, border: `1.5px solid ${entry.skip ? C.line : isCollapsed ? C.sage : C.brassB}`, borderRadius: 16, overflow: 'hidden', transition: 'all 0.2s' }}>
                                             {/* Card header */}
-                                            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${entry.skip ? C.lineSoft : C.brassB}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: entry.skip ? 'transparent' : C.brassL }}>
+                                            <div style={{ padding: '14px 18px', borderBottom: isCollapsed || entry.skip ? 'none' : `1px solid ${C.brassB}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: entry.skip ? 'transparent' : isCollapsed ? C.sageL : C.brassL }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    <Award size={16} color={entry.skip ? C.ink4 : C.brass} />
-                                                    <span style={{ fontSize: 14, fontWeight: 700, color: entry.skip ? C.ink4 : C.ink }}>{entry.category_name}</span>
+                                                    {isCollapsed ? <CheckCircle2 size={16} color={C.sage} /> : <Award size={16} color={entry.skip ? C.ink4 : C.brass} />}
+                                                    <div>
+                                                        <span style={{ fontSize: 13.5, fontWeight: 700, color: entry.skip ? C.ink4 : isCollapsed ? C.sage : C.ink }}>{entry.category_name}</span>
+                                                        {isCollapsed && !entry.skip && (
+                                                            <span style={{ display: 'block', fontSize: 11.5, color: C.ink3, fontVariantNumeric: 'tabular-nums' }}>{entry.licence_number} · {entry.issuing_state}</span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <button onClick={() => updateCert(idx, 'skip', !entry.skip)}
-                                                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 20, border: `1px solid ${entry.skip ? C.sage : C.line}`, background: entry.skip ? C.sageL : 'transparent', color: entry.skip ? C.sage : C.ink3, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}>
-                                                    {entry.skip ? <><CheckCircle2 size={11} /> Added later</> : <><SkipForward size={11} /> Add later</>}
-                                                </button>
+                                                <div style={{ display: 'flex', gap: 8 }}>
+                                                    {isCollapsed && (
+                                                        <button onClick={() => toggleSection(`cert_${entry.category_id}`, false)}
+                                                            style={{ fontSize: 11.5, fontWeight: 600, color: C.brass, background: 'none', border: `1px solid ${C.brassB}`, borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>Edit</button>
+                                                    )}
+                                                    {!isCollapsed && (
+                                                        <button disabled
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, border: `1px solid ${C.brassB}`, background: C.amberL, color: C.amber, fontSize: 11.5, fontWeight: 600, cursor: 'not-allowed', transition: 'all 0.15s' }}>
+                                                            <ShieldCheck size={11} /> Required
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-
                                             <AnimatePresence>
-                                                {!entry.skip && (
+                                                {!isCollapsed && !entry.skip && (
                                                     <motion.div key="cert-form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} style={{ overflow: 'hidden' }}>
-                                                        <div style={{ padding: '20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                                            {/* State registry info */}
+                                                        <div style={{ padding: '18px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                                                             <div style={{ padding: '10px 14px', background: C.amberL, borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                                                                 <Info size={13} color={C.amber} style={{ flexShrink: 0, marginTop: 1 }} />
                                                                 <p style={{ fontSize: 12, color: C.ink2, margin: 0, lineHeight: 1.55 }}>
-                                                                    Our team verifies this against{' '}
-                                                                    <strong>{STATE_REGISTRY_NAMES[entry.issuing_state] || 'the state registry'}</strong>.
-                                                                    {!entry.issuing_state && ' Select your issuing state first.'}
+                                                                    Verified against <strong>{STATE_REGISTRY_NAMES[entry.issuing_state] || 'the state registry'}</strong>. {!entry.issuing_state && 'Select state first.'}
                                                                 </p>
                                                             </div>
-
-                                                            {/* Issuing state */}
                                                             <div>
                                                                 <label style={labelStyle}>Issuing state / territory</label>
                                                                 <div style={{ position: 'relative' }}>
-                                                                    <select value={entry.issuing_state}
-                                                                        onChange={e => updateCert(idx, 'issuing_state', e.target.value)}
+                                                                    <select value={entry.issuing_state} onChange={e => updateCert(idx, 'issuing_state', e.target.value)}
                                                                         style={{ ...inputStyle, paddingRight: 36, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}
                                                                         onFocus={inputFocusOn} onBlur={inputFocusOff}>
                                                                         <option value="">Select state…</option>
@@ -1069,81 +1096,230 @@ export default function TradieOnboardingPage() {
                                                                     <ChevronDown size={14} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
                                                                 </div>
                                                             </div>
-
-                                                            {/* Licence number */}
                                                             <div>
                                                                 <label style={labelStyle}>Licence number</label>
-                                                                <input value={entry.licence_number}
-                                                                    onChange={e => updateCert(idx, 'licence_number', e.target.value.toUpperCase())}
+                                                                <input value={entry.licence_number} onChange={e => updateCert(idx, 'licence_number', e.target.value.toUpperCase())}
                                                                     placeholder="e.g. VL12345 or PLB98765"
                                                                     style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.08em', fontSize: 15 }}
                                                                     onFocus={inputFocusOn} onBlur={inputFocusOff} />
-                                                                <p style={{ fontSize: 11.5, color: C.ink4, margin: '5px 0 0' }}>Enter the number exactly as it appears on your licence card.</p>
                                                             </div>
-
-                                                            {/* Holder name */}
                                                             <div>
                                                                 <label style={labelStyle}>Name on licence</label>
-                                                                <input value={entry.holder_name}
-                                                                    onChange={e => updateCert(idx, 'holder_name', e.target.value)}
+                                                                <input value={entry.holder_name} onChange={e => updateCert(idx, 'holder_name', e.target.value)}
                                                                     placeholder="Exactly as printed on the licence"
-                                                                    style={inputStyle}
-                                                                    onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                                    style={inputStyle} onFocus={inputFocusOn} onBlur={inputFocusOff} />
                                                             </div>
-
-                                                            {/* Dates row */}
                                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                                                                 <div>
                                                                     <label style={labelStyle}>Issue date <span style={{ color: C.ink4, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
                                                                     <div style={{ position: 'relative' }}>
                                                                         <Calendar size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
-                                                                        <input type="date" value={entry.issued_at}
-                                                                            onChange={e => updateCert(idx, 'issued_at', e.target.value)}
-                                                                            style={{ ...inputStyle, paddingLeft: 36, fontSize: 13 }}
-                                                                            onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                                        <input type="date" value={entry.issued_at} onChange={e => updateCert(idx, 'issued_at', e.target.value)}
+                                                                            style={{ ...inputStyle, paddingLeft: 36, fontSize: 13 }} onFocus={inputFocusOn} onBlur={inputFocusOff} />
                                                                     </div>
                                                                 </div>
                                                                 <div>
                                                                     <label style={labelStyle}>Expiry date <span style={{ color: C.ink4, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
                                                                     <div style={{ position: 'relative' }}>
                                                                         <Calendar size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
-                                                                        <input type="date" value={entry.expires_at}
-                                                                            onChange={e => updateCert(idx, 'expires_at', e.target.value)}
-                                                                            style={{ ...inputStyle, paddingLeft: 36, fontSize: 13 }}
-                                                                            onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                                        <input type="date" value={entry.expires_at} onChange={e => updateCert(idx, 'expires_at', e.target.value)}
+                                                                            style={{ ...inputStyle, paddingLeft: 36, fontSize: 13 }} onFocus={inputFocusOn} onBlur={inputFocusOff} />
                                                                     </div>
                                                                 </div>
                                                             </div>
-
-                                                            {/* Optional photo URL */}
-                                                            <div>
-                                                                <label style={labelStyle}>
-                                                                    Licence card photo URL <span style={{ color: C.ink4, textTransform: 'none', letterSpacing: 0 }}>(optional — speeds up verification)</span>
-                                                                </label>
-                                                                <input value={entry.photo_url}
-                                                                    onChange={e => updateCert(idx, 'photo_url', e.target.value)}
-                                                                    placeholder="Paste S3/cloud URL after uploading via your dashboard…"
-                                                                    style={{ ...inputStyle, fontSize: 13 }}
-                                                                    onFocus={inputFocusOn} onBlur={inputFocusOff} />
-                                                                <p style={{ fontSize: 11.5, color: C.ink4, margin: '5px 0 0' }}>Upload a clear photo of your licence card from your dashboard and paste the URL here. Helps admin verify faster.</p>
-                                                            </div>
+                                                            {/* Save / collapse button */}
+                                                            {entryComplete && (
+                                                                <button onClick={() => toggleSection(`cert_${entry.category_id}`, true)}
+                                                                    style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: C.sage, color: C.card, fontWeight: 600, fontSize: 13.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: UI }}>
+                                                                    <CheckCircle2 size={15} /> Looks good — save this licence
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </motion.div>
                                                 )}
                                             </AnimatePresence>
-
                                             {entry.skip && (
-                                                <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                <div style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
                                                     <Info size={13} color={C.ink4} style={{ flexShrink: 0 }} />
                                                     <p style={{ fontSize: 12.5, color: C.ink4, margin: 0, lineHeight: 1.5 }}>
-                                                        You can add this licence from <strong>Dashboard → Licences & Certifications</strong>. You won't receive leads in this category until a licence is verified.
+                                                        You won't receive leads for <strong>{entry.category_name}</strong> until a licence is verified. You can add it from <strong>Licences &amp; Documents</strong> in your dashboard.
                                                     </p>
                                                 </div>
                                             )}
                                         </motion.div>
-                                    ))}
-                                </div>
-                            )}
+                                    );
+                                })}
+
+                                {/* ── INSURANCE SECTION ── */}
+                                {(() => {
+                                    const isCollapsed = !!collapsedSections['insurance'];
+                                    const insComplete = insuranceValid && !insurance.skip;
+                                    return (
+                                        <div style={{ background: insurance.skip ? C.panel : C.card, border: `1.5px solid ${insurance.skip ? C.line : isCollapsed ? C.sage : C.brassB}`, borderRadius: 16, overflow: 'hidden', transition: 'all 0.2s' }}>
+                                            {/* Header */}
+                                            <div style={{ padding: '14px 18px', borderBottom: isCollapsed || insurance.skip ? 'none' : `1px solid ${C.brassB}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: insurance.skip ? 'transparent' : isCollapsed ? C.sageL : C.brassL }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    {isCollapsed ? <CheckCircle2 size={16} color={C.sage} /> : <Shield size={16} color={insurance.skip ? C.ink4 : C.brass} />}
+                                                    <div>
+                                                        <span style={{ fontSize: 13.5, fontWeight: 700, color: insurance.skip ? C.ink4 : isCollapsed ? C.sage : C.ink }}>Public Liability Insurance</span>
+                                                        {isCollapsed && (
+                                                            <span style={{ display: 'block', fontSize: 11.5, color: C.ink3 }}>{insurance.insurer_name} · {insurance.policy_number}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 8 }}>
+                                                    {isCollapsed && (
+                                                        <button onClick={() => toggleSection('insurance', false)}
+                                                            style={{ fontSize: 11.5, fontWeight: 600, color: C.brass, background: 'none', border: `1px solid ${C.brassB}`, borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>Edit</button>
+                                                    )}
+                                                    {!isCollapsed && (
+                                                        <button
+                                                            onClick={() => { if (!insuranceRequired) setInsurance(p => ({ ...p, skip: !p.skip })); }}
+                                                            disabled={insuranceRequired}
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, border: `1px solid ${insuranceRequired ? C.brassB : insurance.skip ? C.sage : C.line}`, background: insuranceRequired ? C.amberL : insurance.skip ? C.sageL : 'transparent', color: insuranceRequired ? C.amber : insurance.skip ? C.sage : C.ink3, fontSize: 11.5, fontWeight: 600, cursor: insuranceRequired ? 'not-allowed' : 'pointer', transition: 'all 0.15s' }}>
+                                                            {insuranceRequired ? <><ShieldCheck size={11} /> Required</> : insurance.skip ? <><CheckCircle2 size={11} /> Skipped</> : <><SkipForward size={11} /> Skip</>}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <AnimatePresence>
+                                                {!isCollapsed && !insurance.skip && (
+                                                    <motion.div key="ins-form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} style={{ overflow: 'hidden' }}>
+                                                        <div style={{ padding: '18px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                                            <div style={{ padding: '10px 14px', background: C.amberL, borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                                                                <Shield size={13} color={C.amber} style={{ flexShrink: 0, marginTop: 1 }} />
+                                                                <p style={{ fontSize: 12, color: C.ink2, margin: 0, lineHeight: 1.55 }}>$20M public liability is standard for Australian trades. Our admin verifies directly with your insurer.</p>
+                                                            </div>
+                                                            <div>
+                                                                <label style={labelStyle}>Insurer name</label>
+                                                                <input value={insurance.insurer_name} onChange={e => setInsurance(p => ({ ...p, insurer_name: e.target.value }))}
+                                                                    placeholder="e.g. QBE, Allianz, CGU, IAG, Vero" style={inputStyle} onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                            </div>
+                                                            <div>
+                                                                <label style={labelStyle}>Policy number</label>
+                                                                <input value={insurance.policy_number} onChange={e => setInsurance(p => ({ ...p, policy_number: e.target.value.toUpperCase() }))}
+                                                                    placeholder="e.g. PLB-2024-123456"
+                                                                    style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.05em' }} onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                            </div>
+                                                            <div>
+                                                                <label style={labelStyle}>Policy holder name</label>
+                                                                <input value={insurance.holder_name} onChange={e => setInsurance(p => ({ ...p, holder_name: e.target.value }))}
+                                                                    placeholder="Name as on the policy certificate" style={inputStyle} onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                                <p style={{ fontSize: 11.5, color: C.ink4, margin: '5px 0 0' }}>Usually your business name or your personal name for sole traders.</p>
+                                                            </div>
+                                                            <div>
+                                                                <label style={labelStyle}>Coverage amount (AUD)</label>
+                                                                <div style={{ position: 'relative' }}>
+                                                                    <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: C.ink3, fontSize: 15, fontWeight: 600, pointerEvents: 'none' }}>$</span>
+                                                                    <input value={insurance.coverage_amount_raw}
+                                                                        onChange={e => setInsurance(p => ({ ...p, coverage_amount_raw: e.target.value.replace(/[^0-9.]/g, '') }))}
+                                                                        placeholder="20000000" style={{ ...inputStyle, paddingLeft: 28, fontVariantNumeric: 'tabular-nums' }}
+                                                                        inputMode="numeric" onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                                </div>
+                                                                <p style={{ fontSize: 11.5, color: C.ink4, margin: '5px 0 0' }}>Enter number without commas. $20,000,000 is standard.</p>
+                                                            </div>
+                                                            <div>
+                                                                <label style={labelStyle}>Policy expiry date</label>
+                                                                <div style={{ position: 'relative' }}>
+                                                                    <Calendar size={13} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
+                                                                    <input type="date" value={insurance.expires_at} onChange={e => setInsurance(p => ({ ...p, expires_at: e.target.value }))}
+                                                                        style={{ ...inputStyle, paddingLeft: 40 }} onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                                </div>
+                                                            </div>
+                                                            {/* Save / collapse button */}
+                                                            {insComplete && (
+                                                                <button onClick={() => toggleSection('insurance', true)}
+                                                                    style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: C.sage, color: C.card, fontWeight: 600, fontSize: 13.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: UI }}>
+                                                                    <CheckCircle2 size={15} /> Looks good — save insurance details
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                            {insurance.skip && (
+                                                <div style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    <Info size={13} color={C.ink4} style={{ flexShrink: 0 }} />
+                                                    <p style={{ fontSize: 12.5, color: C.ink4, margin: 0, lineHeight: 1.5 }}>
+                                                        You won't receive paid job leads until insurance is verified. Add from <strong>Licences &amp; Documents</strong> later.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* ── WHITE CARD SECTION ── */}
+                                {(() => {
+                                    const isCollapsed = !!collapsedSections['whitecard'];
+                                    const wcComplete = !whiteCardSkip && whiteCardNumber.trim().length >= 5;
+                                    return (
+                                        <div style={{ background: whiteCardSkip ? C.panel : C.card, border: `1.5px solid ${whiteCardSkip ? C.line : isCollapsed ? C.sage : C.brassB}`, borderRadius: 16, overflow: 'hidden', transition: 'all 0.2s' }}>
+                                            <div style={{ padding: '14px 18px', borderBottom: isCollapsed || whiteCardSkip ? 'none' : `1px solid ${C.brassB}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: whiteCardSkip ? 'transparent' : isCollapsed ? C.sageL : C.brassL }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    {isCollapsed ? <CheckCircle2 size={16} color={C.sage} /> : <FileText size={16} color={whiteCardSkip ? C.ink4 : C.brass} />}
+                                                    <div>
+                                                        <span style={{ fontSize: 13.5, fontWeight: 700, color: whiteCardSkip ? C.ink4 : isCollapsed ? C.sage : C.ink }}>White Card (Construction Induction)</span>
+                                                        {isCollapsed && (
+                                                            <span style={{ display: 'block', fontSize: 11.5, color: C.ink3, fontVariantNumeric: 'tabular-nums' }}>{whiteCardNumber}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 8 }}>
+                                                    {isCollapsed && (
+                                                        <button onClick={() => toggleSection('whitecard', false)}
+                                                            style={{ fontSize: 11.5, fontWeight: 600, color: C.brass, background: 'none', border: `1px solid ${C.brassB}`, borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>Edit</button>
+                                                    )}
+                                                    {!isCollapsed && (
+                                                        <button
+                                                            onClick={() => { if (!whiteCardRequired) setWhiteCardSkip(s => !s); }}
+                                                            disabled={whiteCardRequired}
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, border: `1px solid ${whiteCardRequired ? C.brassB : whiteCardSkip ? C.sage : C.line}`, background: whiteCardRequired ? C.amberL : whiteCardSkip ? C.sageL : 'transparent', color: whiteCardRequired ? C.amber : whiteCardSkip ? C.sage : C.ink3, fontSize: 11.5, fontWeight: 600, cursor: whiteCardRequired ? 'not-allowed' : 'pointer', transition: 'all 0.15s' }}>
+                                                            {whiteCardRequired ? <><ShieldCheck size={11} /> Required</> : whiteCardSkip ? <><CheckCircle2 size={11} /> Skipped</> : <><SkipForward size={11} /> Skip</>}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <AnimatePresence>
+                                                {!isCollapsed && !whiteCardSkip && (
+                                                    <motion.div key="wc-form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} style={{ overflow: 'hidden' }}>
+                                                        <div style={{ padding: '18px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                                            <div style={{ padding: '10px 14px', background: C.panel, borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                                                                <Info size={13} color={C.ink3} style={{ flexShrink: 0, marginTop: 1 }} />
+                                                                <p style={{ fontSize: 12, color: C.ink2, margin: 0, lineHeight: 1.55 }}>
+                                                                    The General Construction Induction (White Card) is required for most on-site construction work in Australia.
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <label style={labelStyle}>White Card number</label>
+                                                                <input value={whiteCardNumber} onChange={e => setWhiteCardNumber(e.target.value.toUpperCase())}
+                                                                    placeholder="e.g. WC-NSW-123456"
+                                                                    style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.08em', fontSize: 15 }}
+                                                                    onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                                                <p style={{ fontSize: 11.5, color: C.ink4, margin: '5px 0 0' }}>Enter the card number exactly as printed on your White Card.</p>
+                                                            </div>
+                                                            {wcComplete && (
+                                                                <button onClick={() => toggleSection('whitecard', true)}
+                                                                    style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: C.sage, color: C.card, fontWeight: 600, fontSize: 13.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: UI }}>
+                                                                    <CheckCircle2 size={15} /> Looks good — save White Card
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                            {whiteCardSkip && (
+                                                <div style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    <Info size={13} color={C.ink4} style={{ flexShrink: 0 }} />
+                                                    <p style={{ fontSize: 12.5, color: C.ink4, margin: 0, lineHeight: 1.5 }}>
+                                                        You can add your White Card later from <strong>Licences &amp; Documents</strong> in your dashboard.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
 
                             <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
                                 <button onClick={() => setStep(4)} style={{ padding: '15px 22px', borderRadius: 12, border: `1px solid ${C.line}`, background: C.paper, color: C.ink2, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1151,149 +1327,19 @@ export default function TradieOnboardingPage() {
                                 </button>
                                 <button onClick={() => setStep(6)} disabled={!step5Valid}
                                     style={{ flex: 1, padding: '15px 22px', borderRadius: 12, border: 'none', background: step5Valid ? C.ink : C.ink3, color: C.card, fontSize: 14, fontWeight: 600, cursor: step5Valid ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 0.15s' }}>
-                                    Continue <ArrowRight size={14} />
+                                    Review &amp; submit <ArrowRight size={14} />
                                 </button>
                             </div>
                         </motion.div>
                     )}
 
                     {/* ═══════════════════════════════════════════════════════════
-                        STEP 6 — Insurance (NEW)
+                        STEP 6 — Review & Submit
                     ═══════════════════════════════════════════════════════════ */}
                     {step === 6 && (
-                        <motion.div key="s6" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
-                            <div style={{ marginBottom: 24 }}>
-                                <p style={{ fontSize: 12, fontWeight: 600, color: C.brass, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Step 6 of 7</p>
-                                <h1 style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink, margin: '0 0 10px', letterSpacing: '-0.025em', lineHeight: 1.15 }}>Public liability insurance</h1>
-                                <p style={{ fontSize: 14.5, color: C.ink2, margin: 0, lineHeight: 1.6, maxWidth: 480 }}>
-                                    Required before you can receive paid job leads. Australian law requires most trades to carry public liability insurance.
-                                </p>
-                            </div>
-
-                            {/* Why this matters */}
-                            <div style={{ padding: '14px 18px', background: C.amberL, border: `1px solid ${C.amber}40`, borderRadius: 12, marginBottom: 20, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                                <Shield size={18} color={C.amber} style={{ flexShrink: 0, marginTop: 1 }} />
-                                <div>
-                                    <p style={{ fontSize: 13, fontWeight: 700, color: C.amber, margin: '0 0 4px' }}>Why we require this</p>
-                                    <p style={{ fontSize: 12.5, color: C.ink2, margin: 0, lineHeight: 1.55 }}>
-                                        If something goes wrong on site, your public liability insurance protects both you and the homeowner.
-                                        A $20M policy is standard for most Australian trades. Our admin verifies the policy with your insurer.
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Skip toggle */}
-                            <button onClick={() => setInsurance(p => ({ ...p, skip: !p.skip }))}
-                                style={{ width: '100%', padding: '14px 18px', borderRadius: 12, border: `1.5px solid ${insurance.skip ? C.sage : C.line}`, background: insurance.skip ? C.sageL : C.paper, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: 16, transition: 'all 0.2s' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                    <SkipForward size={15} color={insurance.skip ? C.sage : C.ink3} />
-                                    <div style={{ textAlign: 'left' }}>
-                                        <p style={{ fontSize: 13.5, fontWeight: 600, color: insurance.skip ? C.sage : C.ink2, margin: 0 }}>I'll add insurance from my dashboard</p>
-                                        <p style={{ fontSize: 12, color: C.ink4, margin: '2px 0 0' }}>You won't receive paid job leads until this is verified.</p>
-                                    </div>
-                                </div>
-                                <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${insurance.skip ? C.sage : C.line}`, background: insurance.skip ? C.sage : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
-                                    {insurance.skip && <Check size={12} color={C.card} strokeWidth={3} />}
-                                </div>
-                            </button>
-
-                            <AnimatePresence>
-                                {!insurance.skip && (
-                                    <motion.div key="ins-form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.24 }} style={{ overflow: 'hidden' }}>
-                                        <div style={{ background: C.card, border: `1.5px solid ${C.brassB}`, borderRadius: 16, padding: '22px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                                            {/* Insurer name */}
-                                            <div>
-                                                <label style={labelStyle}>Insurer name</label>
-                                                <input value={insurance.insurer_name}
-                                                    onChange={e => setInsurance(p => ({ ...p, insurer_name: e.target.value }))}
-                                                    placeholder="e.g. QBE, Allianz, CGU, IAG, Vero"
-                                                    style={inputStyle}
-                                                    onFocus={inputFocusOn} onBlur={inputFocusOff} />
-                                            </div>
-
-                                            {/* Policy number */}
-                                            <div>
-                                                <label style={labelStyle}>Policy number</label>
-                                                <input value={insurance.policy_number}
-                                                    onChange={e => setInsurance(p => ({ ...p, policy_number: e.target.value.toUpperCase() }))}
-                                                    placeholder="e.g. PLB-2024-123456"
-                                                    style={{ ...inputStyle, fontFamily: 'monospace', letterSpacing: '0.05em' }}
-                                                    onFocus={inputFocusOn} onBlur={inputFocusOff} />
-                                            </div>
-
-                                            {/* Coverage amount */}
-                                            <div>
-                                                <label style={labelStyle}>Coverage amount (AUD)</label>
-                                                <div style={{ position: 'relative' }}>
-                                                    <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: C.ink3, fontSize: 15, fontWeight: 600, pointerEvents: 'none' }}>$</span>
-                                                    <input value={insurance.coverage_amount_raw}
-                                                        onChange={e => setInsurance(p => ({ ...p, coverage_amount_raw: e.target.value.replace(/[^0-9.]/g, '') }))}
-                                                        placeholder="20,000,000"
-                                                        style={{ ...inputStyle, paddingLeft: 28, fontVariantNumeric: 'tabular-nums' }}
-                                                        inputMode="numeric"
-                                                        onFocus={inputFocusOn} onBlur={inputFocusOff} />
-                                                </div>
-                                                <p style={{ fontSize: 11.5, color: C.ink4, margin: '5px 0 0' }}>$20,000,000 ($20M) is standard for most Australian trades. Enter the number without commas.</p>
-                                            </div>
-
-                                            {/* Policy holder name */}
-                                            <div>
-                                                <label style={labelStyle}>Policy holder name</label>
-                                                <input value={insurance.holder_name}
-                                                    onChange={e => setInsurance(p => ({ ...p, holder_name: e.target.value }))}
-                                                    placeholder="Name as on the policy certificate"
-                                                    style={inputStyle}
-                                                    onFocus={inputFocusOn} onBlur={inputFocusOff} />
-                                                <p style={{ fontSize: 11.5, color: C.ink4, margin: '5px 0 0' }}>Usually your business name or your personal name for sole traders.</p>
-                                            </div>
-
-                                            {/* Expiry date */}
-                                            <div>
-                                                <label style={labelStyle}>Policy expiry date</label>
-                                                <div style={{ position: 'relative' }}>
-                                                    <Calendar size={13} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
-                                                    <input type="date" value={insurance.expires_at}
-                                                        onChange={e => setInsurance(p => ({ ...p, expires_at: e.target.value }))}
-                                                        style={{ ...inputStyle, paddingLeft: 40 }}
-                                                        onFocus={inputFocusOn} onBlur={inputFocusOff} />
-                                                </div>
-                                            </div>
-
-                                            {/* Optional document URL */}
-                                            <div>
-                                                <label style={labelStyle}>Certificate of currency URL <span style={{ color: C.ink4, textTransform: 'none', letterSpacing: 0 }}>(optional — speeds up verification)</span></label>
-                                                <input value={insurance.document_url}
-                                                    onChange={e => setInsurance(p => ({ ...p, document_url: e.target.value }))}
-                                                    placeholder="Paste S3/cloud URL after uploading your certificate…"
-                                                    style={{ ...inputStyle, fontSize: 13 }}
-                                                    onFocus={inputFocusOn} onBlur={inputFocusOff} />
-                                                <p style={{ fontSize: 11.5, color: C.ink4, margin: '5px 0 0' }}>Upload your certificate of currency from your dashboard and paste the URL here. Our team can verify much faster with this.</p>
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-
-                            <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-                                <button onClick={handleStep6Back} style={{ padding: '15px 22px', borderRadius: 12, border: `1px solid ${C.line}`, background: C.paper, color: C.ink2, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <ArrowLeft size={14} /> Back
-                                </button>
-                                <button onClick={() => setStep(7)} disabled={!step6Valid}
-                                    style={{ flex: 1, padding: '15px 22px', borderRadius: 12, border: 'none', background: step6Valid ? C.ink : C.ink3, color: C.card, fontSize: 14, fontWeight: 600, cursor: step6Valid ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 0.15s' }}>
-                                    Review & submit <ArrowRight size={14} />
-                                </button>
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {/* ═══════════════════════════════════════════════════════════
-                        STEP 7 — Review & Submit (was step 5, UPDATED SUMMARY)
-                    ═══════════════════════════════════════════════════════════ */}
-                    {step === 7 && (
-                        <motion.div key="s7" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
+                        <motion.div key="s6r" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
                             <div style={{ marginBottom: 28 }}>
-                                <p style={{ fontSize: 12, fontWeight: 600, color: C.brass, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Step 7 of 7</p>
+                                <p style={{ fontSize: 12, fontWeight: 600, color: C.brass, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Step 6 of 6</p>
                                 <h1 style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink, margin: '0 0 10px', letterSpacing: '-0.025em', lineHeight: 1.15 }}>Almost done — quick review</h1>
                                 <p style={{ fontSize: 14.5, color: C.ink2, margin: 0, lineHeight: 1.6, maxWidth: 480 }}>Take a look at your details, then submit for our team to verify.</p>
                             </div>
@@ -1365,10 +1411,10 @@ export default function TradieOnboardingPage() {
 
                                 {/* Insurance summary */}
                                 {!insurance.skip && (
-                                    <div style={{ padding: '18px 22px' }}>
+                                    <div style={{ padding: '18px 22px', borderBottom: !whiteCardSkip && whiteCardNumber ? `1px solid ${C.lineSoft}` : 'none' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                             <p style={{ fontSize: 10, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.14em', margin: 0 }}>Insurance</p>
-                                            <button onClick={() => setStep(6)} style={{ fontSize: 11, color: C.brass, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Edit</button>
+                                            <button onClick={() => setStep(5)} style={{ fontSize: 11, color: C.brass, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Edit</button>
                                         </div>
                                         <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '6px 14px', fontSize: 13 }}>
                                             <span style={{ color: C.ink3 }}>Insurer</span><span style={{ color: C.ink, fontWeight: 500 }}>{insurance.insurer_name}</span>
@@ -1378,12 +1424,26 @@ export default function TradieOnboardingPage() {
                                         </div>
                                     </div>
                                 )}
-                                {insurance.skip && certEntries.length === 0 && (
+
+                                {/* White Card summary */}
+                                {!whiteCardSkip && whiteCardNumber && (
                                     <div style={{ padding: '18px 22px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                                            <p style={{ fontSize: 10, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.14em', margin: 0 }}>White Card</p>
+                                            <button onClick={() => setStep(5)} style={{ fontSize: 11, color: C.brass, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Edit</button>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '6px 14px', fontSize: 13 }}>
+                                            <span style={{ color: C.ink3 }}>Card #</span><span style={{ color: C.ink, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{whiteCardNumber}</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {(insurance.skip || !insurance.insurer_name) && (
+                                    <div style={{ padding: '14px 22px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: C.amberL, borderRadius: 10 }}>
                                             <AlertCircle size={14} color={C.amber} />
                                             <p style={{ fontSize: 12.5, color: C.ink2, margin: 0, lineHeight: 1.55 }}>
-                                                Insurance skipped — add from <strong>Dashboard → Insurance</strong> before you can receive paid leads.
+                                                Insurance skipped — add from <strong>Licences &amp; Documents</strong> before you can receive paid leads.
                                             </p>
                                         </div>
                                     </div>
@@ -1400,7 +1460,7 @@ export default function TradieOnboardingPage() {
                                     <li>Our team reviews your profile — usually within 1 business day.</li>
                                     <li>Any submitted licences are verified against the relevant state registry.</li>
                                     <li>Any submitted insurance policy is confirmed with your insurer.</li>
-                                    <li>Once all three are approved, you'll start receiving matched job leads automatically.</li>
+                                    <li>Once approved, you'll start receiving matched job leads automatically.</li>
                                 </ol>
                             </div>
 
@@ -1414,7 +1474,7 @@ export default function TradieOnboardingPage() {
                             )}
 
                             <div style={{ display: 'flex', gap: 12 }}>
-                                <button onClick={() => setStep(6)} disabled={submitting} style={{ padding: '15px 22px', borderRadius: 12, border: `1px solid ${C.line}`, background: C.paper, color: C.ink2, fontSize: 14, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <button onClick={() => setStep(5)} disabled={submitting} style={{ padding: '15px 22px', borderRadius: 12, border: `1px solid ${C.line}`, background: C.paper, color: C.ink2, fontSize: 14, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                                     <ArrowLeft size={14} /> Back
                                 </button>
                                 <button onClick={handleFinalSubmit} disabled={submitting}
@@ -1432,11 +1492,9 @@ export default function TradieOnboardingPage() {
             <style>{`
         * { box-sizing: border-box; }
         body { margin: 0; }
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600&family=Inter:wght@400;500;600;700&display=swap');
         .cat-grid-onboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-spin { animation: spin 1s linear infinite; }
-        ::selection { background: ${C.brass}; color: ${C.card}; }
         select option { font-size: 14px; }
         input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: pointer; }
         @media (max-width: 640px) {
@@ -1448,7 +1506,7 @@ export default function TradieOnboardingPage() {
           input[type="text"], input[type="email"], input[type="tel"], input[type="password"] { font-size: 16px !important; }
         }
         input[type="range"] { -webkit-appearance: none; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: ${C.ink}; border: 3px solid ${C.card}; border-radius: 50%; cursor: pointer; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #1A1A1A; border: 3px solid #FFFFFF; border-radius: 50%; cursor: pointer; }
       `}</style>
         </div>
     );

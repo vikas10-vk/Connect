@@ -150,7 +150,7 @@ export default function LandingPage() {
   const dashboardHref = user?.role === 'tradie' ? '/tradie/dashboard' : '/dashboard';
 
   return (
-    <div className="min-h-screen bg-[#FBF8EF] font-sans overflow-x-hidden" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen font-sans overflow-x-hidden" style={{ fontFamily: "'DM Sans', sans-serif", background: '#FFF8E7' }}>
 
       {/* ── Nav ── */}
       <nav className={`sticky top-0 z-50 transition-all duration-300 bg-[#071D36] ${scrolled ? 'shadow-lg shadow-[#071D36]/10' : ''}`}>
@@ -164,8 +164,12 @@ export default function LandingPage() {
             </Link>
 
             <div className="hidden md:flex items-center gap-8">
-              <Link href="/search" className="text-sm font-semibold text-white/80 hover:text-[#D4AA3A] transition-colors">Browse Tradies</Link>
-              <Link href="/how-it-works" className="text-sm font-semibold text-white/80 hover:text-[#D4AA3A] transition-colors">How it Works</Link>
+              <Link href="/search" className="text-sm font-semibold transition-colors" style={{ color: 'rgba(255,255,255,0.8)' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#D4AA3A')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.8)')}>Browse Tradies</Link>
+              <Link href="/how-it-works" className="text-sm font-semibold transition-colors" style={{ color: 'rgba(255,255,255,0.8)' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#D4AA3A')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.8)')}>How it Works</Link>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -173,38 +177,52 @@ export default function LandingPage() {
                 <>
                   {/* Tradie entry — separated visually */}
                   <Link href="/tradie/onboarding"
-                    className="hidden md:flex items-center gap-1.5 text-sm font-bold text-white/70 hover:text-[#D4AA3A] transition-colors px-3 py-2 rounded-xl hover:bg-white/5 whitespace-nowrap border-r border-white/15 pr-4">
-                    <Shield className="w-4 h-4" /> Join as a Tradie
+                    className="hidden md:flex items-center gap-1.5 text-sm font-bold transition-colors px-3 py-2 rounded-xl whitespace-nowrap border-r pr-4"
+                    style={{ color: 'rgba(255,255,255,0.75)', borderColor: 'rgba(255,255,255,0.15)' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#D4AA3A')}
+                    onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.75)')}>
+                    <Shield className="w-4 h-4" style={{ color: '#5BB3FF' }} /> Join as a Tradie
                   </Link>
 
                   {/* Homeowner buttons */}
-                  <Link href="/login" className="text-sm font-bold text-white/80 hover:text-[#D4AA3A] transition-colors px-2 sm:px-3 py-2">Sign in</Link>
-                  <Link href="/signup" className="bg-[#D4AA3A] text-[#071D36] px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm hover:bg-[#E8C766] transition-colors shadow-md shadow-[#D4AA3A]/20 whitespace-nowrap">
+                  <Link href="/login" className="text-sm font-bold transition-colors px-2 sm:px-3 py-2"
+                    style={{ color: 'rgba(255,255,255,0.8)' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#D4AA3A')}
+                    onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.8)')}>Sign in</Link>
+                  <Link href="/signup" className="px-3 py-2 sm:px-5 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap"
+                    style={{ background: '#D4AA3A', color: '#071D36', boxShadow: '0 4px 12px rgba(212,170,58,0.25)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#E8C766')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '#D4AA3A')}>
                     Get Started
                   </Link>
                 </>
               ) : (
                 <div className="flex items-center gap-2">
                   <Link href={dashboardHref}
-                    className="hidden sm:flex items-center gap-2 text-sm font-bold text-[#D4AA3A] hover:opacity-80 transition-opacity">
-                    <LayoutGrid className="w-4 h-4" /> Dashboard
+                    className="hidden sm:flex items-center gap-2 text-sm font-bold transition-opacity hover:opacity-80"
+                    style={{ color: '#D4AA3A' }}>
+                    <LayoutGrid className="w-4 h-4" style={{ color: '#5BB3FF' }} /> Dashboard
                   </Link>
                   <div className="flex items-center gap-3">
                     {/* Circular avatar with initials */}
                     <Link href={dashboardHref} className="flex items-center gap-2.5 group">
-                      <div className="w-9 h-9 rounded-full bg-[#D4AA3A] flex items-center justify-center text-white font-black text-sm shadow-md shadow-[#D4AA3A]/30 ring-2 ring-white group-hover:ring-[#D4AA3A]/30 transition-all">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm shadow-md transition-all"
+                        style={{ background: '#D4AA3A', color: '#071D36', boxShadow: '0 4px 12px rgba(212,170,58,0.3)' }}>
                         {(user?.name || user?.email || 'U').slice(0, 1).toUpperCase()}
                       </div>
                       <div className="hidden sm:block">
                         <p className="text-xs font-black text-white leading-none truncate max-w-[100px]">
                           {user?.name?.split(' ')[0] || user?.email?.split('@')[0]}
                         </p>
-                        <p className="text-[10px] text-[#D4AA3A] font-bold mt-0.5">View dashboard →</p>
+                        <p className="text-[10px] font-bold mt-0.5" style={{ color: '#D4AA3A' }}>View dashboard →</p>
                       </div>
                     </Link>
                     <button
                       onClick={logout}
-                      className="w-8 h-8 rounded-full bg-gray-100 hover:bg-red-50 hover:text-red-500 transition-all flex items-center justify-center text-gray-400 border border-gray-200"
+                      className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
+                      style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.12)' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,80,80,0.15)'; e.currentTarget.style.color = '#FF6B6B'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
                       title="Sign out"
                     >
                       <LogOut className="w-3.5 h-3.5" />
@@ -217,13 +235,19 @@ export default function LandingPage() {
 
           {/* Mobile row 2 */}
           <div className="flex md:hidden items-center gap-1 pb-2 overflow-x-auto -mx-1 px-1">
-            <Link href="/search" className="text-xs font-semibold text-white/75 hover:text-[#D4AA3A] whitespace-nowrap px-3 py-1.5 rounded-lg hover:bg-white/5">Browse Tradies</Link>
-            <span className="text-white/20 text-xs">|</span>
-            <Link href="/how-it-works" className="text-xs font-semibold text-white/75 hover:text-[#D4AA3A] whitespace-nowrap px-3 py-1.5 rounded-lg hover:bg-white/5">How it Works</Link>
+            <Link href="/search" className="text-xs font-semibold whitespace-nowrap px-3 py-1.5 rounded-lg transition-colors"
+              style={{ color: 'rgba(255,255,255,0.75)' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#D4AA3A')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.75)')}>Browse Tradies</Link>
+            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+            <Link href="/how-it-works" className="text-xs font-semibold whitespace-nowrap px-3 py-1.5 rounded-lg transition-colors"
+              style={{ color: 'rgba(255,255,255,0.75)' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#D4AA3A')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.75)')}>How it Works</Link>
             {!isAuthenticated && (
               <>
-                <span className="text-white/20 text-xs">|</span>
-                <Link href="/tradie/onboarding" className="text-xs font-semibold text-[#D4AA3A] whitespace-nowrap px-3 py-1.5 rounded-lg hover:bg-white/5">Join as a Tradie</Link>
+                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
+                <Link href="/tradie/onboarding" className="text-xs font-semibold whitespace-nowrap px-3 py-1.5 rounded-lg" style={{ color: '#D4AA3A' }}>Join as a Tradie</Link>
               </>
             )}
           </div>
@@ -312,7 +336,7 @@ export default function LandingPage() {
           transition={{ delay: 0.3 }}
           className="max-w-2xl mx-auto mt-5"
         >
-          <div className="bg-white/80 backdrop-blur border border-gray-100 rounded-2xl px-4 py-3 shadow-sm">
+          <div className="backdrop-blur rounded-2xl px-4 py-3 shadow-sm" style={{ background: 'rgba(255,255,255,0.9)', border: '1px solid #E8D9B0' }}>
             <div className="flex items-center justify-between gap-2 flex-wrap">
               {MARKET_STATS.map((stat, i) => (
                 <React.Fragment key={stat.label}>
@@ -364,7 +388,7 @@ export default function LandingPage() {
             <motion.div key={i}
               initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }} transition={{ delay: i * 0.08 }}
-              className="relative bg-white rounded-3xl p-6 sm:p-7 border border-gray-100 shadow-sm hover:shadow-md hover:border-[#D4AA3A]/20 transition-all">
+              className="relative bg-white rounded-3xl p-6 sm:p-7 border border-[#D7E4F1] shadow-sm hover:shadow-md hover:border-[#D4AA3A]/40 transition-all">
               <div className="text-4xl sm:text-5xl font-black text-[#D4AA3A]/10 mb-4 leading-none">{s.num}</div>
               <h3 className="text-sm sm:text-base font-black text-gray-900 mb-2">{s.title}</h3>
               <p className="text-sm text-gray-500 leading-relaxed">{s.body}</p>
@@ -386,9 +410,7 @@ export default function LandingPage() {
 
       {/* ── Tradie CTA — both Sign in and Join now ── */}
       <section className="py-12 sm:py-20 px-4 sm:px-6">
-        <div className="max-w-5xl mx-auto bg-white rounded-3xl sm:rounded-[2.5rem] p-8 sm:p-12 md:p-16 text-center relative overflow-hidden shadow-2xl shadow-[#D4AA3A]/5 border border-gray-100">
-          <div className="absolute top-0 right-0 w-48 sm:w-64 h-48 sm:h-64 bg-[#D4AA3A]/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-36 sm:w-48 h-36 sm:h-48 bg-[#D4AA3A]/10 rounded-full translate-y-1/2 -translate-x-1/4 blur-2xl pointer-events-none" />
+        <div className="max-w-5xl mx-auto bg-white rounded-3xl sm:rounded-[2rem] p-8 sm:p-12 md:p-16 text-center relative overflow-hidden shadow-2xl shadow-[#071D36]/10 border border-[#D7E4F1]">
           <div className="relative z-10">
             <p className="text-xs font-black text-[#D4AA3A] uppercase tracking-widest mb-4">For tradies</p>
             <h2 className="text-2xl sm:text-3xl md:text-5xl font-black text-[#1C0E06] tracking-tight mb-5 sm:mb-6">
@@ -419,7 +441,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="bg-transparent text-[#1C0E06] pt-12 sm:pt-16 pb-8 sm:pb-10 px-4 sm:px-6 border-t border-gray-100">
+      <footer className="pt-12 sm:pt-16 pb-8 sm:pb-10 px-4 sm:px-6" style={{ background: '#FFF8E7', borderTop: '1px solid #E8D9B0', color: '#071D36' }}>
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-8 sm:gap-10 mb-10 sm:mb-14">
             <div className="col-span-2 space-y-4">

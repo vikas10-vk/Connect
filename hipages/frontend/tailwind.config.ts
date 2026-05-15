@@ -10,12 +10,13 @@ const config: Config = {
         extend: {
             colors: {
                 brand: {
-                    terracotta: '#D84315',
-                    cream: '#FBF8F3',
+                    terracotta: '#071D36',
+                    cream: '#FFF8E7',
                     navy: '#071D36',
                     gold: '#D4AA3A',
-                    ivory: '#FBF8EF',
-                    sand: '#F1EBDD',
+                    ivory: '#FFF8E7',
+                    sand: '#F5EDD0',
+                    iconblue: '#5BB3FF',
                 },
             },
             fontSize: {

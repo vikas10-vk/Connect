@@ -69,9 +69,15 @@ ALLOWED_TRANSITIONS: dict[tuple[str, str], list[str]] = {
     ("partial_stop", "completed"): ["homeowner", "admin"],
     ("partial_stop", "disputed"):  ["homeowner"],
 
+    # Homeowner confirms the job is done — releases payment to tradie.
+    ("completed",  "confirmed"): ["homeowner"],
+
     # Homeowner has 48h after completion to dispute. After 48h, system auto-closes.
     ("completed",  "disputed"): ["homeowner"],
     ("completed",  "closed"):   ["system", "admin"],
+
+    # Confirmed jobs auto-close after payment release (system) or admin can close manually.
+    ("confirmed",  "closed"):   ["system", "admin"],
 
     # Admin resolves dispute by closing the job.
     ("disputed",   "closed"):   ["admin"],
@@ -95,8 +101,10 @@ TRANSITION_NOTES: dict[tuple[str, str], str] = {
     ("awaiting_scope_approval", "partial_stop"): "Scope approval timed out — tradie stopped work.",
     ("partial_stop", "completed"):              "Partial stop resolved — job marked complete.",
     ("partial_stop", "disputed"):               "Homeowner raised a dispute on partial stop.",
+    ("completed",   "confirmed"):               "Homeowner confirmed job complete — payment released to tradie.",
     ("completed",   "disputed"):                "Homeowner raised a dispute within 48h of completion.",
     ("completed",   "closed"):                  "Job closed after 48h with no dispute.",
+    ("confirmed",   "closed"):                  "Job closed after payment release.",
     ("disputed",    "closed"):                  "Dispute resolved by admin.",
 }
 

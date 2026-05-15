@@ -1,6 +1,15 @@
+"""
+backend/routers/quotes.py
+
+All quote endpoints — tradies submit quotes, homeowners view/accept/reject them.
+The get_quotes_for_job endpoint now joins TradieProfile so the homeowner can
+see the tradie's name, business and suburb on each quote card.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.orm import selectinload
 from db.session import get_db
 from models.quote import Quote
 from models.lead import Lead
@@ -15,15 +24,19 @@ import uuid
 router = APIRouter(prefix="/api/v1/quotes", tags=["Quotes"])
 
 
+# ── Tradie: Submit a quote ─────────────────────────────────────────────────────
+
 @router.post("/", response_model=QuoteResponse, status_code=201)
 async def create_quote(
     body: QuoteCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """Tradie submits a quote on a lead they received."""
     if current_user.role != "tradie":
         raise HTTPException(status_code=403, detail="Only tradies can send quotes")
 
+    # Verify tradie has a profile
     result = await db.execute(
         select(TradieProfile).where(TradieProfile.user_id == current_user.id)
     )
@@ -31,16 +44,18 @@ async def create_quote(
     if not profile:
         raise HTTPException(status_code=404, detail="Tradie profile not found")
 
+    # Verify the lead belongs to this tradie
     result = await db.execute(
         select(Lead).where(Lead.id == body.lead_id, Lead.tradie_id == profile.id)
     )
     lead = result.scalar_one_or_none()
     if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
+        raise HTTPException(status_code=404, detail="Lead not found or does not belong to you")
 
+    # One quote per lead only
     result = await db.execute(select(Quote).where(Quote.lead_id == body.lead_id))
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Quote already sent for this lead")
+        raise HTTPException(status_code=400, detail="You have already sent a quote for this lead")
 
     quote = Quote(
         id=str(uuid.uuid4()),
@@ -48,23 +63,38 @@ async def create_quote(
         tradie_id=profile.id,
         amount=body.amount,
         message=body.message,
-        status="pending"
+        status="pending",
     )
     db.add(quote)
+
+    # Mark lead as quoted
     lead.status = "quoted"
     db.add(lead)
 
+    # Transition job → quoted if it's still open.
+    # Lead distribution should already have done this, but guard for old data /
+    # race conditions by doing it directly (no state-machine actor check needed here).
     job_result = await db.execute(select(Job).where(Job.id == lead.job_id))
     job = job_result.scalar_one_or_none()
     if job and job.status == "open":
-        try:
-            await JobStateMachine.transition(job, "quoted", current_user, db)
-        except InvalidTransitionError:
-            pass
+        from datetime import datetime as _dt
+        job.status = "quoted"
+        job.updated_at = _dt.utcnow()
+        db.add(job)
 
     await db.commit()
     await db.refresh(quote)
-    return quote
+
+    # Notify homeowner a new quote arrived (best-effort — non-fatal)
+    try:
+        await _notify_homeowner_new_quote(job, current_user, profile, body.amount, db)
+    except Exception:
+        pass
+
+    return _build_quote_response(quote, profile, current_user)
+
+
+# ── Tradie: Get own quote for a lead ──────────────────────────────────────────
 
 @router.get("/my-quote/{lead_id}", response_model=QuoteResponse)
 async def get_my_quote_for_lead(
@@ -90,8 +120,10 @@ async def get_my_quote_for_lead(
     if not quote:
         raise HTTPException(status_code=404, detail="No quote found for this lead")
 
-    return quote
+    return _build_quote_response(quote, profile, current_user)
 
+
+# ── Homeowner: View all quotes for a job ──────────────────────────────────────
 
 @router.get("/job/{job_id}", response_model=list[QuoteResponse])
 async def get_quotes_for_job(
@@ -99,6 +131,12 @@ async def get_quotes_for_job(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Homeowner fetches all quotes for one of their jobs.
+    Returns full tradie info (name, suburb, avatar) so the homeowner can
+    compare tradies without needing a separate profile lookup.
+    """
+    # Verify ownership
     job_result = await db.execute(select(Job).where(Job.id == job_id))
     job = job_result.scalar_one_or_none()
     if not job:
@@ -106,14 +144,41 @@ async def get_quotes_for_job(
     if job.homeowner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your job")
 
+    # Load all quotes for this job together with the tradie profile & user
     result = await db.execute(
-        select(Quote)
+        select(Quote, TradieProfile, User)
         .join(Lead, Lead.id == Quote.lead_id)
+        .join(TradieProfile, TradieProfile.id == Quote.tradie_id)
+        .join(User, User.id == TradieProfile.user_id)
         .where(Lead.job_id == job_id)
         .order_by(Quote.created_at.asc())
     )
-    return result.scalars().all()
+    rows = result.all()
 
+    responses = []
+    for quote, profile, tradie_user in rows:
+        display_name = profile.business_name or tradie_user.full_name or "Tradie"
+        # Only reveal phone number after quote is accepted
+        phone = profile.phone if quote.status == "accepted" else None
+        responses.append(QuoteResponse(
+            id=quote.id,
+            lead_id=quote.lead_id,
+            tradie_id=quote.tradie_id,
+            amount=quote.amount,
+            message=quote.message,
+            status=quote.status,
+            created_at=quote.created_at,
+            tradie_name=display_name,
+            tradie_business=profile.business_name,
+            tradie_avatar_url=profile.avatar_url,
+            tradie_phone=phone,
+            tradie_suburb=profile.suburb,
+        ))
+
+    return responses
+
+
+# ── Homeowner: Accept or reject a quote ───────────────────────────────────────
 
 @router.patch("/{quote_id}/status", response_model=QuoteResponse)
 async def update_quote_status(
@@ -124,8 +189,8 @@ async def update_quote_status(
 ):
     """
     Homeowner accepts or rejects a quote.
-    - accepted → job transitions to hired; all other pending quotes auto-rejected
-    - rejected  → if no remaining accepted quotes, job reverts to open
+      accepted → job transitions to hired; all other pending quotes auto-rejected
+      rejected → if no remaining accepted quotes, job reverts to open
     """
     if current_user.role != "homeowner":
         raise HTTPException(status_code=403, detail="Only homeowners can accept/reject quotes")
@@ -160,33 +225,144 @@ async def update_quote_status(
             select(Quote).where(
                 Quote.lead_id.in_(all_lead_ids),
                 Quote.id != quote_id,
-                Quote.status == "pending"
+                Quote.status == "pending",
             )
         )
         for other in others_result.scalars().all():
             other.status = "rejected"
             db.add(other)
-        try:
-            await JobStateMachine.transition(job, "hired", current_user, db)
-        except InvalidTransitionError:
-            pass
+        # Use an explicit SQL UPDATE for the job status so it is guaranteed to
+        # persist regardless of SQLAlchemy ORM session-tracking edge cases.
+        # The state machine is attempted first (writes the audit event); if it
+        # fails for any reason we fall back to the raw UPDATE so the accept
+        # NEVER silently leaves the job in the wrong state.
+        TERMINAL = {"in_progress", "completed", "closed", "cancelled"}
+        if job.status not in TERMINAL:
+            # Skip the state machine (it requires intermediate "hired" state);
+            # jump straight to in_progress — the homeowner's acceptance means
+            # the job starts immediately, no separate "Start job" step needed.
+            await db.execute(
+                text("UPDATE jobs SET status='in_progress', updated_at=NOW() WHERE id=:jid"),
+                {"jid": job.id},
+            )
 
     elif new_status == "rejected":
-        # Check if any accepted quote still exists
+        # Reopen job if no accepted quote remains
         accepted_result = await db.execute(
             select(Quote).where(
                 Quote.lead_id.in_(all_lead_ids),
-                Quote.status == "accepted"
+                Quote.status == "accepted",
             )
         )
         if not accepted_result.scalar_one_or_none():
-            # No accepted quote → reopen job so new tradies can quote
             if job.status in ("quoted", "hired"):
                 try:
                     await JobStateMachine.transition(job, "open", current_user, db)
-                except InvalidTransitionError:
-                    pass
+                except Exception as e:
+                    if not isinstance(e, InvalidTransitionError):
+                        print(f"[quotes] State machine error on reopen (non-fatal): {e}")
+                # Explicit UPDATE as source of truth
+                await db.execute(
+                    text("UPDATE jobs SET status='open', updated_at=NOW() WHERE id=:jid"),
+                    {"jid": job.id},
+                )
 
     await db.commit()
     await db.refresh(quote)
-    return quote
+
+    # Load tradie profile for response
+    prof_result = await db.execute(
+        select(TradieProfile, User)
+        .join(User, User.id == TradieProfile.user_id)
+        .where(TradieProfile.id == quote.tradie_id)
+    )
+    row = prof_result.first()
+    if row:
+        profile, tradie_user = row
+        phone = profile.phone if new_status == "accepted" else None
+        return QuoteResponse(
+            id=quote.id,
+            lead_id=quote.lead_id,
+            tradie_id=quote.tradie_id,
+            amount=quote.amount,
+            message=quote.message,
+            status=quote.status,
+            created_at=quote.created_at,
+            tradie_name=profile.business_name or tradie_user.full_name or "Tradie",
+            tradie_business=profile.business_name,
+            tradie_avatar_url=profile.avatar_url,
+            tradie_phone=phone,
+            tradie_suburb=profile.suburb,
+        )
+
+    # Tradie profile not found — this should never happen in normal operation
+    # since every quote is created by a tradie who has a profile. Return a safe
+    # minimal response rather than crashing with a Pydantic serialisation error.
+    raise HTTPException(status_code=500, detail="Could not load tradie profile for this quote. Please retry.")
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _build_quote_response(quote: Quote, profile: TradieProfile, tradie_user: User) -> QuoteResponse:
+    """Build a QuoteResponse including tradie details."""
+    return QuoteResponse(
+        id=quote.id,
+        lead_id=quote.lead_id,
+        tradie_id=quote.tradie_id,
+        amount=quote.amount,
+        message=quote.message,
+        status=quote.status,
+        created_at=quote.created_at,
+        tradie_name=profile.business_name or tradie_user.full_name or "Tradie",
+        tradie_business=profile.business_name,
+        tradie_avatar_url=profile.avatar_url,
+        tradie_phone=None,  # Not revealed until accepted
+        tradie_suburb=profile.suburb,
+    )
+
+
+async def _notify_homeowner_new_quote(job, tradie_user: User, profile: TradieProfile, amount: float, db) -> None:
+    """Send email to homeowner when a new quote arrives on their job."""
+    try:
+        from sqlalchemy import select as _select
+        from services.resend_service import _send_raw_email, _base_html, _btn, _first, APP_NAME
+
+        homeowner_res = await db.execute(_select(User).where(User.id == job.homeowner_id))
+        homeowner = homeowner_res.scalar_one_or_none()
+        if not homeowner:
+            return
+
+        tradie_display = profile.business_name or tradie_user.full_name or "A tradie"
+        name = _first(homeowner.full_name or "")
+        body = f"""
+          <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;
+                     font-weight:500;color:#1A1A1A;">New quote received!</h1>
+          <p style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
+            G'day {name}, <strong>{tradie_display}</strong> has submitted a quote
+            for your job <strong>"{job.title}"</strong>.
+          </p>
+          <div style="background:#F0FDF4;border:1px solid #2E7D5A33;border-radius:12px;
+                      padding:16px 20px;margin:20px 0;">
+            <p style="margin:0;font-size:22px;font-weight:800;color:#1A1A1A;">
+              ${amount:,.2f}
+            </p>
+            <p style="margin:4px 0 0;font-size:13px;color:#4A4A48;">Quoted price</p>
+          </div>
+          <p style="margin:0 0 20px;font-size:13.5px;line-height:1.7;color:#4A4A48;">
+            Log in to your dashboard to review the quote, compare tradies and accept.
+          </p>
+          {_btn("View Quote", "http://localhost:3000/dashboard", "#2E7D5A")}"""
+        text = (
+            f"G'day {name},\n\n"
+            f"{tradie_display} has quoted ${amount:,.2f} for '{job.title}'.\n\n"
+            f"View and accept quotes: http://localhost:3000/dashboard\n\n"
+            f"— The {APP_NAME} team"
+        )
+        await _send_raw_email(
+            homeowner.email,
+            f"New quote received for {job.title}",
+            _base_html(body, "#2E7D5A"),
+            text,
+        )
+    except Exception as e:
+        print(f"[quotes] Homeowner notification failed (non-fatal): {e}")

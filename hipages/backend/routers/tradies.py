@@ -70,11 +70,16 @@ from schemas.tradie_schema import (
 from services.auth_service import get_current_user
 from services.geocoding_service import geocode_tradie_suburb
 from services.notification_service import notify_tradie_new_inquiry
+from services.category_resolver import resolve_to_canonical_trade
 
 # ── Constants ──────────────────────────────────────────────────────────────
 URGENT_VALUES        = {"asap", "emergency"}
 HIGH_VALUE_THRESHOLD = 1000.0
 
+# The single canonical "approved" status value used everywhere.
+# Django admin sets verification_status = "verified" — this constant
+# ensures every gate in this file matches that value consistently.
+APPROVED_STATUS = "verified"
 
 
 router = APIRouter(prefix="/api/v1/tradies", tags=["Tradies"])
@@ -82,11 +87,6 @@ router = APIRouter(prefix="/api/v1/tradies", tags=["Tradies"])
 
 # ── Redis dependency ───────────────────────────────────────────────────────
 async def get_redis() -> aioredis.Redis:
-    """
-    Returns a Redis client. Uses a separate namespace (db=1) for availability
-    cache so it never collides with Celery broker (db=0) or location pings.
-    Location pings use db=2.
-    """
     return aioredis.from_url(
         os.getenv("REDIS_URL", "redis://localhost:6379"),
         db=1,
@@ -99,17 +99,17 @@ async def get_redis() -> aioredis.Redis:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class OnboardingSubmitRequest(BaseModel):
-    business_name : str                 = Field(..., min_length=2, max_length=255)
-    abn           : str                 = Field(..., min_length=11, max_length=20)
-    suburb        : str                 = Field(..., min_length=1, max_length=100)
-    state         : str                 = Field(..., min_length=2, max_length=10)
-    postcode      : str                 = Field(..., min_length=4, max_length=10)
+    business_name : str                     = Field(..., min_length=2, max_length=255)
+    abn           : str                     = Field(..., min_length=11, max_length=20)
+    suburb        : str                     = Field(..., min_length=1, max_length=100)
+    state         : str                     = Field(..., min_length=2, max_length=10)
+    postcode      : str                     = Field(..., min_length=4, max_length=10)
     solo_or_team  : Literal["solo", "team"] = "solo"
-    team_size     : str | None          = None
-    phone         : str | None          = None
-    bio           : str | None          = None
-    category_ids  : list[str]           = Field(default_factory=list, min_length=1)
-    radius_km     : int                 = Field(default=25, ge=5, le=50)
+    team_size     : str | None              = None
+    phone         : str | None              = None
+    bio           : str | None              = None
+    category_ids  : list[str]               = Field(default_factory=list, min_length=1)
+    radius_km     : int                     = Field(default=25, ge=5, le=50)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -117,40 +117,36 @@ class OnboardingSubmitRequest(BaseModel):
 # ═══════════════════════════════════════════════════════════════════════════
 
 class CertificationSubmitRequest(BaseModel):
-    """Submit a licence number for a trade category."""
     category_id    : str             = Field(..., description="Level-1 category ID this licence covers")
     licence_number : str             = Field(..., min_length=2, max_length=100)
     issuing_state  : str             = Field(..., description="VIC | NSW | QLD | WA | SA | TAS | NT | ACT")
-    issuing_body   : Optional[str]   = Field(None, max_length=100, description="e.g. VBA, NSW Fair Trading, QBCC")
-    holder_name    : str             = Field(..., min_length=2, max_length=255, description="Name exactly as printed on the licence")
+    issuing_body   : Optional[str]   = Field(None, max_length=100)
+    holder_name    : str             = Field(..., min_length=2, max_length=255)
     issued_at      : Optional[date]  = None
     expires_at     : Optional[date]  = None
-    photo_url      : Optional[str]   = Field(None, description="S3 URL of optional licence card photo — speeds up admin verification")
-    team_member_id : Optional[str]   = Field(None, description="Set this when submitting a cert for a business worker. Leave None for the business owner / solo tradie.")
+    photo_url      : Optional[str]   = Field(None)
+    team_member_id : Optional[str]   = Field(None)
 
 
 class InsurancePolicySubmitRequest(BaseModel):
-    """Submit a public liability or other insurance policy for the business."""
-    insurance_type        : str            = Field(default=InsuranceType.PUBLIC_LIABILITY, description="public_liability | workers_compensation | professional_indemnity")
+    insurance_type        : str            = Field(default=InsuranceType.PUBLIC_LIABILITY)
     insurer_name          : str            = Field(..., min_length=2, max_length=255)
     policy_number         : str            = Field(..., min_length=2, max_length=100)
-    coverage_amount_cents : int            = Field(..., gt=0, description="Coverage amount in cents. $20M = 2_000_000_000")
-    holder_name           : str            = Field(..., min_length=2, max_length=255, description="Policy holder name — must match the business")
+    coverage_amount_cents : int            = Field(..., gt=0)
+    holder_name           : str            = Field(..., min_length=2, max_length=255)
     issued_at             : Optional[date] = None
-    expires_at            : date           = Field(..., description="Policy expiry — required")
-    document_url          : Optional[str]  = Field(None, description="S3 URL of certificate of currency — optional but speeds up verification")
+    expires_at            : date           = Field(...)
+    document_url          : Optional[str]  = Field(None)
 
 
 class WorkerInviteRequest(BaseModel):
-    """Business owner adds a new worker to their team."""
     full_name  : str = Field(..., min_length=2, max_length=255)
     email      : str = Field(..., min_length=5, max_length=255)
     phone_real : str = Field(..., min_length=8, max_length=20)
-    password   : str = Field(..., min_length=8, description="Initial password for the worker — they should change on first login")
+    password   : str = Field(..., min_length=8)
 
 
 class WorkerUpdateRequest(BaseModel):
-    """Owner updates a worker's details."""
     full_name  : Optional[str]  = Field(None, max_length=255)
     phone_real : Optional[str]  = Field(None, max_length=20)
     is_active  : Optional[bool] = None
@@ -170,7 +166,6 @@ VALID_INSURANCE_TYPES = {
 
 
 async def _require_tradie_profile(user: User, db: AsyncSession) -> TradieProfile:
-    """Load the current user's tradie profile or raise 404."""
     res = await db.execute(
         select(TradieProfile).where(TradieProfile.user_id == user.id)
     )
@@ -181,7 +176,6 @@ async def _require_tradie_profile(user: User, db: AsyncSession) -> TradieProfile
 
 
 async def _require_owner_of_business(profile: TradieProfile, member_id: str, db: AsyncSession) -> TeamMember:
-    """Load a TeamMember and confirm it belongs to this profile's business."""
     res = await db.execute(
         select(TeamMember).where(
             TeamMember.id == member_id,
@@ -198,6 +192,8 @@ def _cert_response(cert: TradieCertification) -> dict:
     return {
         "id":               cert.id,
         "category_id":      cert.category_id,
+        "category_name":    cert.category.name if cert.category else None,
+        "category_slug":    cert.category.slug if cert.category else None,
         "licence_number":   cert.licence_number,
         "issuing_state":    cert.issuing_state,
         "issuing_body":     cert.issuing_body,
@@ -235,23 +231,23 @@ def _insurance_response(policy: InsurancePolicy) -> dict:
 
 def _worker_response(member: TeamMember) -> dict:
     return {
-        "id":             member.id,
-        "full_name":      member.full_name,
-        "email":          member.email,
-        "role":           member.role,
-        "is_active":      member.is_active,
+        "id":              member.id,
+        "full_name":       member.full_name,
+        "email":           member.email,
+        "role":            member.role,
+        "is_active":       member.is_active,
         "can_accept_jobs": member.can_accept_jobs,
-        "avatar_url":     member.avatar_url,
-        "selfie_url":     member.selfie_url,
-        "jobs_completed": member.jobs_completed,
-        "no_show_count":  member.no_show_count,
-        "rating_avg":     float(member.rating_avg) if member.rating_avg else None,
-        "created_at":     member.created_at,
+        "avatar_url":      member.avatar_url,
+        "selfie_url":      member.selfie_url,
+        "jobs_completed":  member.jobs_completed,
+        "no_show_count":   member.no_show_count,
+        "rating_avg":      float(member.rating_avg) if member.rating_avg else None,
+        "created_at":      member.created_at,
     }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# EXISTING ENDPOINTS — PRESERVED EXACTLY
+# EXISTING ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.post("/onboarding/submit", status_code=201)
@@ -260,14 +256,6 @@ async def submit_onboarding(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Create the tradie profile, link service categories, seed preferences,
-    and create the owner TeamMember row (keeps solo + business on one code path).
-
-    UPDATED: now sets is_primary=True for the first category and auto-creates
-    an owner row in team_members so the solo tradie is on the same dispatch
-    code path as business owners.
-    """
     if current_user.role != "tradie":
         raise HTTPException(status_code=403, detail="Only tradies can submit onboarding.")
 
@@ -295,7 +283,6 @@ async def submit_onboarding(
     if body.solo_or_team == "team" and not body.team_size:
         raise HTTPException(status_code=400, detail="Please tell us your team size.")
 
-    # ── Create profile ────────────────────────────────────────────
     profile = TradieProfile(
         id                  = str(uuid.uuid4()),
         user_id             = current_user.id,
@@ -320,8 +307,7 @@ async def submit_onboarding(
 
     await db.flush()
 
-    # ── Link categories (first one is primary) ────────────────────
-    seen = set()
+    seen  = set()
     first = True
     for cat_id in body.category_ids:
         if cat_id in seen:
@@ -332,33 +318,24 @@ async def submit_onboarding(
         )
         if not cat_res.scalar_one_or_none():
             continue
-        link = TradieCategory(
-            tradie_id=profile.id,
-            category_id=cat_id,
-            is_primary=first,
-        )
+        link = TradieCategory(tradie_id=profile.id, category_id=cat_id, is_primary=first)
         db.add(link)
         first = False
 
-    # ── Auto-create owner TeamMember row ─────────────────────────
-    # Solo tradie = business of one. Owner row keeps the dispatch
-    # code path identical for solo and team accounts.
     owner_member = TeamMember(
-        id          = str(uuid.uuid4()),
-        business_id = profile.id,
-        user_id     = current_user.id,
-        full_name   = current_user.full_name,
-        email       = current_user.email,
-        phone_real  = (body.phone or "").strip() or (current_user.phone or ""),
-        role        = TeamMemberRole.OWNER,
-        # hashed_password is NULL — owner authenticates via users table
+        id              = str(uuid.uuid4()),
+        business_id     = profile.id,
+        user_id         = current_user.id,
+        full_name       = current_user.full_name,
+        email           = current_user.email,
+        phone_real      = (body.phone or "").strip() or (current_user.phone or ""),
+        role            = TeamMemberRole.OWNER,
         hashed_password = None,
         is_active       = True,
-        can_accept_jobs = False,   # flips to True after certs + insurance verified
+        can_accept_jobs = False,
     )
     db.add(owner_member)
 
-    # ── Geocode (non-blocking) ────────────────────────────────────
     try:
         lat, lng = await geocode_tradie_suburb(profile.suburb, profile.state)
         if lat:
@@ -368,7 +345,6 @@ async def submit_onboarding(
     except Exception as e:
         print(f"[onboarding] geocode failed for {profile.suburb}, {profile.state}: {e}")
 
-    # ── Seed TradiePreference with home suburb ────────────────────
     seed_suburb = {
         "suburb":     body.suburb.strip(),
         "state_code": body.state.strip().upper(),
@@ -591,8 +567,11 @@ async def get_tradie_public_profile(
     profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=404, detail="Tradie not found")
-    if profile.verification_status != "approved":
+
+    # FIX 1: was "approved" — Django admin sets "verified", not "approved"
+    if profile.verification_status != APPROVED_STATUS:
         raise HTTPException(status_code=404, detail="Tradie not found")
+
     categories = [
         CategoryBrief(id=tc.category.id, name=tc.category.name)
         for tc in profile.tradie_categories
@@ -665,7 +644,7 @@ async def get_dashboard(
         )
         .order_by(Lead.sent_at.desc())
     )
-    leads = leads_result.scalars().all()
+    leads               = leads_result.scalars().all()
     review_count        = len(profile.reviews)
     avg_rating          = (
         round(sum(r.rating for r in profile.reviews) / review_count, 1)
@@ -674,14 +653,14 @@ async def get_dashboard(
     total_leads         = len(leads)
     responded           = sum(1 for l in leads if l.status == "quoted")
     response_rate       = (
-        round((responded / total_leads) * 100, 1)
-        if total_leads > 0 else 0.0
+        round((responded / total_leads) * 100, 1) if total_leads > 0 else 0.0
     )
     total_credits_spent = sum(l.credits_charged for l in leads)
+
     lead_cards = []
     for lead in leads:
         job           = lead.job
-        is_urgent     = (job.urgency in URGENT_VALUES     if job and job.urgency     else False)
+        is_urgent     = (job.urgency in URGENT_VALUES         if job and job.urgency     else False)
         is_high_value = (job.budget_max >= HIGH_VALUE_THRESHOLD if job and job.budget_max else False)
         lead_cards.append(LeadResponse(
             id=lead.id,
@@ -704,6 +683,7 @@ async def get_dashboard(
             is_high_value=is_high_value,
             job_status=job.status if job else None,
         ))
+
     return {
         "stats": {
             "avg_rating":          avg_rating,
@@ -722,22 +702,13 @@ async def get_dashboard(
 # NEW ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════
 
-# ── Onboarding status ─────────────────────────────────────────────────────
-
 @router.get("/onboarding/status")
 async def get_onboarding_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Full verification status for the tradie dashboard.
-    Returns profile status, all certifications, all insurance policies,
-    and all team members with their individual verification gates.
-    Frontend uses this to render the verification checklist.
-    """
     profile = await _require_tradie_profile(current_user, db)
 
-    # Certifications held directly by this tradie profile (solo owner)
     cert_res = await db.execute(
         select(TradieCertification)
         .options(selectinload(TradieCertification.category))
@@ -746,7 +717,6 @@ async def get_onboarding_status(
     )
     certs = cert_res.scalars().all()
 
-    # Insurance policies
     ins_res = await db.execute(
         select(InsurancePolicy)
         .where(InsurancePolicy.tradie_profile_id == profile.id)
@@ -754,7 +724,6 @@ async def get_onboarding_status(
     )
     policies = ins_res.scalars().all()
 
-    # Team members (for business accounts)
     member_res = await db.execute(
         select(TeamMember)
         .where(TeamMember.business_id == profile.id)
@@ -762,7 +731,6 @@ async def get_onboarding_status(
     )
     members = member_res.scalars().all()
 
-    # Build per-member cert summary
     member_list = []
     for m in members:
         m_cert_res = await db.execute(
@@ -776,15 +744,17 @@ async def get_onboarding_status(
             "certifications": [_cert_response(c) for c in m_certs],
         })
 
-    # Compute overall readiness gate
     has_verified_cert      = any(c.status == CertificationStatus.VERIFIED for c in certs)
     has_verified_insurance = any(
         p.status == InsuranceStatus.VERIFIED
         and p.insurance_type == InsuranceType.PUBLIC_LIABILITY
         for p in policies
     )
+
+    # FIX 2 & 3: was "approved" — Django admin sets "verified", not "approved"
+    profile_verified      = profile.verification_status == APPROVED_STATUS
     ready_to_receive_jobs = (
-        profile.verification_status == "approved"
+        profile_verified
         and has_verified_cert
         and has_verified_insurance
     )
@@ -798,30 +768,20 @@ async def get_onboarding_status(
             "is_available":        profile.is_available,
             "solo_or_team":        profile.solo_or_team,
         },
-        "certifications":           [_cert_response(c) for c in certs],
-        "insurance_policies":       [_insurance_response(p) for p in policies],
-        "team_members":             member_list,
+        "certifications":     [_cert_response(c) for c in certs],
+        "insurance_policies": [_insurance_response(p) for p in policies],
+        "team_members":       member_list,
         "gates": {
-            "profile_approved":        profile.verification_status == "approved",
-            "has_verified_cert":       has_verified_cert,
-            "has_verified_insurance":  has_verified_insurance,
-            "ready_to_receive_jobs":   ready_to_receive_jobs,
+            "profile_approved":       profile_verified,          # True when verification_status == "verified"
+            "has_verified_cert":      has_verified_cert,
+            "has_verified_insurance": has_verified_insurance,
+            "ready_to_receive_jobs":  ready_to_receive_jobs,
         },
     }
 
 
-# ── Category tree ─────────────────────────────────────────────────────────
-
 @router.get("/categories/tree")
-async def get_category_tree(
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Returns the full 3-level category tree for the booking wizard and
-    tradie onboarding. Each level-2 node includes its service questions.
-    Only active categories are returned.
-    """
-    # Load all active categories in one query
+async def get_category_tree(db: AsyncSession = Depends(get_db)):
     res = await db.execute(
         select(Category)
         .options(
@@ -835,22 +795,17 @@ async def get_category_tree(
 
     def format_question(q: ServiceQuestion) -> dict:
         return {
-            "id":           q.id,
-            "question":     q.question_text,
-            "answer_type":  q.answer_type,
-            "options":      q.options,
-            "placeholder":  q.placeholder,
-            "is_required":  q.is_required,
-            "sort_order":   q.sort_order,
+            "id":          q.id,
+            "question":    q.question_text,
+            "answer_type": q.answer_type,
+            "options":     q.options,
+            "placeholder": q.placeholder,
+            "is_required": q.is_required,
+            "sort_order":  q.sort_order,
         }
 
     def format_task(task: Category) -> dict:
-        return {
-            "id":          task.id,
-            "name":        task.name,
-            "slug":        task.slug,
-            "description": task.description,
-        }
+        return {"id": task.id, "name": task.name, "slug": task.slug, "description": task.description}
 
     def format_subcat(sub: Category) -> dict:
         return {
@@ -884,25 +839,8 @@ async def submit_certification(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Submit a trade licence number for admin verification.
-
-    The tradie enters their licence number, issuing state, and holder name.
-    An admin will manually verify against the state registry and mark
-    verified or rejected with a structured reason.
-
-    Use team_member_id to submit a cert on behalf of a business worker.
-    Leave it None to submit the cert for yourself (solo tradie / owner).
-
-    Validation:
-    - category_id must be a level-1 (trade) category
-    - issuing_state must be a valid Australian state/territory code
-    - expires_at must be in the future
-    - Cannot submit a duplicate pending cert for the same category
-    """
     profile = await _require_tradie_profile(current_user, db)
 
-    # Validate category is level-1
     cat_res = await db.execute(
         select(Category).where(
             Category.id == body.category_id,
@@ -910,41 +848,32 @@ async def submit_certification(
             Category.is_active == True,
         )
     )
-    if not cat_res.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail="category_id must be a valid active level-1 trade category.",
-        )
+    category = cat_res.scalar_one_or_none()
+    if not category:
+        raise HTTPException(status_code=400, detail="category_id must be a valid active level-1 trade category.")
+    canonical_category = await resolve_to_canonical_trade(db, category)
+    if not canonical_category:
+        raise HTTPException(status_code=400, detail="category_id must resolve to a valid trade category.")
+    category_id = canonical_category.id
 
-    # Validate state
     state_upper = body.issuing_state.upper()
     if state_upper not in VALID_STATES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"issuing_state must be one of: {', '.join(sorted(VALID_STATES))}",
-        )
+        raise HTTPException(status_code=400, detail=f"issuing_state must be one of: {', '.join(sorted(VALID_STATES))}")
 
-    # Validate expiry is in the future
     if body.expires_at and body.expires_at <= date.today():
-        raise HTTPException(
-            status_code=400,
-            detail="Licence has already expired. Submit a current licence.",
-        )
+        raise HTTPException(status_code=400, detail="Licence has already expired. Submit a current licence.")
 
-    # Determine ownership
     tradie_profile_id = None
     team_member_id    = None
 
     if body.team_member_id:
-        # Submitting for a worker — confirm they belong to this business
         member = await _require_owner_of_business(profile, body.team_member_id, db)
         team_member_id = member.id
     else:
         tradie_profile_id = profile.id
 
-    # Block duplicate pending/in_review cert for same category + same owner
     existing_q = select(TradieCertification).where(
-        TradieCertification.category_id == body.category_id,
+        TradieCertification.category_id == category_id,
         TradieCertification.status.in_([CertificationStatus.PENDING, CertificationStatus.IN_REVIEW]),
     )
     if tradie_profile_id:
@@ -954,16 +883,13 @@ async def submit_certification(
 
     existing_res = await db.execute(existing_q)
     if existing_res.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail="A pending certification for this category already exists. Wait for admin review or delete the existing submission.",
-        )
+        raise HTTPException(status_code=400, detail="A pending certification for this category already exists.")
 
     cert = TradieCertification(
         id                = str(uuid.uuid4()),
         tradie_profile_id = tradie_profile_id,
         team_member_id    = team_member_id,
-        category_id       = body.category_id,
+        category_id       = category_id,
         licence_number    = body.licence_number.strip().upper(),
         issuing_state     = state_upper,
         issuing_body      = (body.issuing_body or "").strip() or None,
@@ -978,8 +904,8 @@ async def submit_certification(
     await db.refresh(cert)
 
     return {
-        "id":     cert.id,
-        "status": cert.status,
+        "id":      cert.id,
+        "status":  cert.status,
         "message": "Licence submitted for admin verification. You'll receive an email when reviewed.",
     }
 
@@ -989,7 +915,6 @@ async def get_my_certifications(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all certifications submitted by this tradie (not workers)."""
     profile = await _require_tradie_profile(current_user, db)
     res = await db.execute(
         select(TradieCertification)
@@ -1007,10 +932,6 @@ async def delete_certification(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Delete a pending certification. Verified certifications cannot be deleted
-    — contact support if a verified cert needs to be removed.
-    """
     profile = await _require_tradie_profile(current_user, db)
     res = await db.execute(
         select(TradieCertification).where(
@@ -1022,10 +943,7 @@ async def delete_certification(
     if not cert:
         raise HTTPException(status_code=404, detail="Certification not found")
     if cert.status == CertificationStatus.VERIFIED:
-        raise HTTPException(
-            status_code=400,
-            detail="Verified certifications cannot be deleted. Contact support.",
-        )
+        raise HTTPException(status_code=400, detail="Verified certifications cannot be deleted. Contact support.")
     await db.delete(cert)
     await db.commit()
 
@@ -1038,31 +956,14 @@ async def submit_insurance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Submit a business insurance policy for admin verification.
-
-    Public liability insurance is a hard dispatch gate — tradies without
-    a verified public liability policy cannot be assigned jobs.
-    The minimum required coverage is checked by admin during verification.
-
-    Workers' compensation and professional indemnity are additional tracks —
-    submit multiple policies as separate requests.
-    """
     profile = await _require_tradie_profile(current_user, db)
 
     if body.insurance_type not in VALID_INSURANCE_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"insurance_type must be one of: {', '.join(VALID_INSURANCE_TYPES)}",
-        )
+        raise HTTPException(status_code=400, detail=f"insurance_type must be one of: {', '.join(VALID_INSURANCE_TYPES)}")
 
     if body.expires_at <= date.today():
-        raise HTTPException(
-            status_code=400,
-            detail="Insurance policy has already expired. Submit a current policy.",
-        )
+        raise HTTPException(status_code=400, detail="Insurance policy has already expired. Submit a current policy.")
 
-    # Block duplicate pending policy for same type
     existing_res = await db.execute(
         select(InsurancePolicy).where(
             InsurancePolicy.tradie_profile_id == profile.id,
@@ -1071,10 +972,7 @@ async def submit_insurance(
         )
     )
     if existing_res.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail=f"A pending {body.insurance_type} policy already exists. Wait for admin review or delete it.",
-        )
+        raise HTTPException(status_code=400, detail=f"A pending {body.insurance_type} policy already exists.")
 
     policy = InsurancePolicy(
         id                    = str(uuid.uuid4()),
@@ -1094,8 +992,8 @@ async def submit_insurance(
     await db.refresh(policy)
 
     return {
-        "id":     policy.id,
-        "status": policy.status,
+        "id":      policy.id,
+        "status":  policy.status,
         "message": "Insurance policy submitted for admin verification. You'll receive an email when reviewed.",
     }
 
@@ -1105,7 +1003,6 @@ async def get_my_insurance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all insurance policies for this tradie business."""
     profile = await _require_tradie_profile(current_user, db)
     res = await db.execute(
         select(InsurancePolicy)
@@ -1122,7 +1019,6 @@ async def delete_insurance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a pending insurance policy. Verified policies cannot be deleted."""
     profile = await _require_tradie_profile(current_user, db)
     res = await db.execute(
         select(InsurancePolicy).where(
@@ -1134,12 +1030,125 @@ async def delete_insurance(
     if not policy:
         raise HTTPException(status_code=404, detail="Insurance policy not found")
     if policy.status == InsuranceStatus.VERIFIED:
-        raise HTTPException(
-            status_code=400,
-            detail="Verified insurance policies cannot be deleted. Contact support.",
-        )
+        raise HTTPException(status_code=400, detail="Verified insurance policies cannot be deleted. Contact support.")
     await db.delete(policy)
     await db.commit()
+
+
+# ── Edit request endpoints ────────────────────────────────────────────────
+
+class EditRequestBody(BaseModel):
+    reason: str = Field(..., min_length=10, max_length=1000, description="Reason for requesting an edit")
+
+
+@router.post("/certifications/{cert_id}/request-edit", status_code=200)
+async def request_cert_edit(
+    cert_id: str,
+    body: EditRequestBody,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tradie requests permission to edit a submitted/verified certification."""
+    profile = await _require_tradie_profile(current_user, db)
+    res = await db.execute(
+        select(TradieCertification).where(
+            TradieCertification.id == cert_id,
+            TradieCertification.tradie_profile_id == profile.id,
+        )
+    )
+    cert = res.scalar_one_or_none()
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certification not found.")
+
+    # Store the request note — admin sees this in the panel
+    cert.edit_request_note = body.reason.strip()
+    db.add(cert)
+    await db.commit()
+
+    # Notify admin via email if SendGrid configured
+    await _send_edit_request_email(
+        doc_type="Licence",
+        doc_ref=cert.licence_number,
+        tradie_name=profile.business_name or current_user.email,
+        tradie_email=current_user.email,
+        reason=body.reason.strip(),
+    )
+
+    return {"message": "Edit request sent to admin. You'll be notified once reviewed."}
+
+
+@router.post("/insurance/{policy_id}/request-edit", status_code=200)
+async def request_insurance_edit(
+    policy_id: str,
+    body: EditRequestBody,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tradie requests permission to edit a submitted/verified insurance policy."""
+    profile = await _require_tradie_profile(current_user, db)
+    res = await db.execute(
+        select(InsurancePolicy).where(
+            InsurancePolicy.id == policy_id,
+            InsurancePolicy.tradie_profile_id == profile.id,
+        )
+    )
+    policy = res.scalar_one_or_none()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Insurance policy not found.")
+
+    policy.edit_request_note = body.reason.strip()
+    db.add(policy)
+    await db.commit()
+
+    await _send_edit_request_email(
+        doc_type="Insurance Policy",
+        doc_ref=policy.policy_number,
+        tradie_name=profile.business_name or current_user.email,
+        tradie_email=current_user.email,
+        reason=body.reason.strip(),
+    )
+
+    return {"message": "Edit request sent to admin. You'll be notified once reviewed."}
+
+
+async def _send_edit_request_email(
+    doc_type: str,
+    doc_ref: str,
+    tradie_name: str,
+    tradie_email: str,
+    reason: str,
+) -> None:
+    """Notify admin that a tradie has requested to edit a document."""
+    import logging
+    logger = logging.getLogger(__name__)
+    SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+    ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@proconnect.com.au")
+
+    if not SENDGRID_API_KEY:
+        logger.info(f"[Edit Request] {tradie_name} ({tradie_email}) wants to edit {doc_type} #{doc_ref}. Reason: {reason}")
+        return
+
+    try:
+        import sendgrid
+        from sendgrid.helpers.mail import Mail
+        body_text = (
+            f"Edit Request — {doc_type}\n\n"
+            f"Tradie:     {tradie_name}\n"
+            f"Email:      {tradie_email}\n"
+            f"Document:   {doc_type} — {doc_ref}\n\n"
+            f"Reason for edit:\n{reason}\n\n"
+            f"Please review this in the admin panel and unlock the document if approved."
+        )
+        mail = Mail(
+            from_email="noreply@proconnect.com.au",
+            to_emails=ADMIN_EMAIL,
+            subject=f"[Edit Request] {tradie_name} — {doc_type} #{doc_ref}",
+            plain_text_content=body_text,
+        )
+        sg = sendgrid.SendGridAPIClient(api_key=SENDGRID_API_KEY)
+        sg.send(mail)
+    except Exception as e:
+        logger.error(f"Failed to send edit-request email: {e}")
 
 
 # ── Availability toggle ───────────────────────────────────────────────────
@@ -1150,42 +1159,24 @@ async def toggle_availability(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    """
-    Pause or resume accepting new bookings.
-
-    On pause: immediately deletes the Redis availability cache key so the
-    matching algorithm stops routing leads to this tradie. The DB is the
-    source of truth — Redis is just a fast read cache.
-
-    On resume: sets is_available=True in the DB. The next lead-matching query
-    will re-populate the cache automatically with a 120-second TTL.
-
-    Only approved tradies can toggle availability. Pending/rejected tradies
-    cannot appear available.
-    """
     profile = await _require_tradie_profile(current_user, db)
 
-    if profile.verification_status != "approved":
+    # FIX 4: was "approved" — Django admin sets "verified", not "approved"
+    if profile.verification_status != APPROVED_STATUS:
         raise HTTPException(
             status_code=403,
             detail="Your account must be approved before you can accept bookings.",
         )
 
-    new_state = not profile.is_available
+    new_state            = not profile.is_available
     profile.is_available = new_state
     db.add(profile)
     await db.commit()
 
-    # Invalidate the Redis availability cache key immediately.
-    # Pattern: availability:tradie:{profile_id}
-    # This ensures the lead-matching Celery task sees the new state on its
-    # next run and does not route leads to a paused tradie.
     cache_key = f"availability:tradie:{profile.id}"
     try:
         await redis.delete(cache_key)
     except Exception as e:
-        # Non-fatal — the DB state is already correct.
-        # The cache will naturally expire via TTL.
         print(f"[availability:toggle] Redis delete failed for {cache_key}: {e}")
     finally:
         await redis.aclose()
@@ -1204,52 +1195,31 @@ async def add_worker(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Business owner adds a new worker to their team.
-
-    The worker gets their own login (email + password set by the owner).
-    They authenticate against the team_members table, not the users table.
-
-    Workers cannot be assigned jobs until:
-      1. They have uploaded a selfie (selfie_url set)
-      2. Every required certification for their assigned categories is verified
-      These gates are checked at job assignment time, not here.
-
-    Workers CANNOT self-assign jobs — enforced at the API layer in the
-    job assignment endpoint via JWT role inspection.
-    """
     if current_user.role != "tradie":
         raise HTTPException(status_code=403, detail="Only tradies can manage team members.")
 
     profile = await _require_tradie_profile(current_user, db)
 
     if profile.solo_or_team != "team":
-        raise HTTPException(
-            status_code=400,
-            detail="Your account is set to solo. Update your profile to 'team' first.",
-        )
+        raise HTTPException(status_code=400, detail="Your account is set to solo. Update your profile to 'team' first.")
 
-    # Email must be unique across team_members
     existing = await db.execute(
         select(TeamMember).where(TeamMember.email == body.email.lower().strip())
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail="A worker with this email already exists.",
-        )
+        raise HTTPException(status_code=400, detail="A worker with this email already exists.")
 
     member = TeamMember(
         id              = str(uuid.uuid4()),
         business_id     = profile.id,
-        user_id         = None,                        # workers authenticate via team_members table
+        user_id         = None,
         full_name       = body.full_name.strip(),
         email           = body.email.lower().strip(),
         phone_real      = body.phone_real.strip(),
         role            = TeamMemberRole.WORKER,
         hashed_password = _bcrypt.hashpw(body.password[:72].encode("utf-8"), _bcrypt.gensalt(rounds=12)).decode("utf-8"),
         is_active       = True,
-        can_accept_jobs = False,                       # must pass cert + selfie gate
+        can_accept_jobs = False,
     )
     db.add(member)
     await db.commit()
@@ -1266,16 +1236,12 @@ async def list_workers(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    List all workers in the current tradie's business.
-    Includes per-worker certifications so the owner can see verification status.
-    """
     profile = await _require_tradie_profile(current_user, db)
 
     res = await db.execute(
         select(TeamMember)
         .where(TeamMember.business_id == profile.id)
-        .order_by(TeamMember.role.desc(), TeamMember.created_at)   # owner first
+        .order_by(TeamMember.role.desc(), TeamMember.created_at)
     )
     members = res.scalars().all()
 
@@ -1302,7 +1268,6 @@ async def update_worker(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a worker's details. Owner only."""
     profile = await _require_tradie_profile(current_user, db)
     member  = await _require_owner_of_business(profile, member_id, db)
 
@@ -1312,7 +1277,6 @@ async def update_worker(
         member.phone_real = body.phone_real.strip()
     if body.is_active is not None:
         member.is_active = body.is_active
-        # If deactivating, also block job acceptance
         if not body.is_active:
             member.can_accept_jobs = False
 
@@ -1321,10 +1285,7 @@ async def update_worker(
     await db.commit()
     await db.refresh(member)
 
-    return {
-        **_worker_response(member),
-        "message": "Worker updated.",
-    }
+    return {**_worker_response(member), "message": "Worker updated."}
 
 
 @router.delete("/team/workers/{member_id}", status_code=200)
@@ -1333,10 +1294,6 @@ async def deactivate_worker(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Deactivate a worker. We soft-delete (is_active=False) rather than hard
-    delete to preserve the job assignment history and dispute audit trail.
-    """
     profile = await _require_tradie_profile(current_user, db)
     member  = await _require_owner_of_business(profile, member_id, db)
 

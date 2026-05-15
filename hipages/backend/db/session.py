@@ -6,7 +6,17 @@
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
+# Walk up from this file's directory until we find a .env file.
+# Structure: hipages/backend/db/session.py → look at backend/, then hipages/, etc.
+def _find_dotenv(start: Path) -> Path | None:
+    for parent in [start, *start.parents]:
+        candidate = parent / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
+
+_dotenv_path = _find_dotenv(Path(__file__).parent)
+load_dotenv(dotenv_path=_dotenv_path, override=True)
 
 import logging
 import os

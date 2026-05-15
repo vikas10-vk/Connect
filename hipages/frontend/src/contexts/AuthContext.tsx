@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import api from "../lib/api"
 import { saveToken, removeToken, getToken } from "../lib/auth"
 
-export type UserRole = 'homeowner' | 'tradie'
+export type UserRole = 'homeowner' | 'tradie' | 'admin'
 
 export interface User {
   id: string
@@ -31,8 +31,8 @@ export interface TradieProfile {
   reviewCount: number
   credits: number
   responseRate: number
-  // Verification state — drives dashboard UI
-  verification_status: 'pending_review' | 'approved' | 'rejected' | 'needs_documents' | 'suspended'
+  // Mirrors backend VERIFICATION_STATUS_CHOICES exactly — "verified" not "approved"
+  verification_status: 'pending_review' | 'in_review' | 'verified' | 'rejected' | 'suspended' | 'needs_documents'
   solo_or_team?: 'solo' | 'team'
   team_size?: string | null
   phone?: string | null
@@ -53,7 +53,7 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<void>
   logout: () => void
   updateUser: (data: Partial<User>) => void
-  fetchUser: () => Promise<any>;
+  fetchUser: () => Promise<any>
 }
 
 interface RegisterData {
@@ -64,6 +64,20 @@ interface RegisterData {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+// ── Extract a readable message from FastAPI / Pydantic error responses ────────
+// Pydantic 422 errors: detail is an array [{msg, loc, type}, ...]
+// Other FastAPI errors: detail is a plain string
+function extractErrorMessage(error: any, fallback: string): string {
+  const detail = error?.response?.data?.detail
+  if (!detail) return fallback
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    // Strip Pydantic v2's "Value error, " prefix if present
+    return detail[0]?.msg?.replace(/^Value error,\s*/i, '') || fallback
+  }
+  return fallback
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -84,16 +98,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ...backendUser,
         name: backendUser.full_name || backendUser.name || 'User',
       }
-
       setUser(mappedUser)
 
-      // If tradie, optionally fetch tradie profile
       if (mappedUser.role === 'tradie') {
         try {
           const profileRes = await api.get(`/tradies/profile/me`)
           setTradieProfile(profileRes.data)
         } catch {
-          // Ignore if profile fetch fails - tradie profile may not exist yet
+          // Profile may not exist yet — ignore
         }
       }
       return mappedUser
@@ -118,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const user = await fetchUser()
       return user
     } catch (error: any) {
-      throw new Error(error.response?.data?.detail || 'Invalid email or password')
+      throw new Error(extractErrorMessage(error, 'Invalid email or password'))
     } finally {
       setIsLoading(false)
     }
@@ -131,18 +143,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: data.email,
         password: data.password,
         full_name: data.name,
-        role: data.role
+        role: data.role,
       })
-      // After register, auto login
+      // Backend sends OTP on register — log user in so context is populated,
+      // then caller redirects to /verify-email.
       await login(data.email, data.password, data.role)
     } catch (error: any) {
       setIsLoading(false)
-      throw new Error(error.response?.data?.detail || 'Registration failed')
+      throw new Error(extractErrorMessage(error, 'Registration failed. Please try again.'))
     }
   }, [login])
 
   const logout = useCallback(() => {
     const nextPath = user?.role === 'tradie' ? '/tradie/login' : '/login'
+    // Admin gets sent to /login — no separate admin login page exposed
     setUser(null)
     setTradieProfile(null)
     removeToken()
@@ -157,19 +171,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        tradieProfile,
-        isLoading,
-        isAuthenticated: !!user,
-        login,
-        register,
-        logout,
-        updateUser,
-        fetchUser,
-      }}
-    >
+    <AuthContext.Provider value={{
+      user, tradieProfile, isLoading,
+      isAuthenticated: !!user,
+      login, register, logout, updateUser, fetchUser,
+    }}>
       {children}
     </AuthContext.Provider>
   )

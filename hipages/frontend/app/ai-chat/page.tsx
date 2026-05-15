@@ -19,7 +19,7 @@ export default function AIChatPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-brand-cream flex items-center justify-center">
+      <div className="min-h-screen bg-brand-ivory flex items-center justify-center">
         <div className="w-8 h-8 rounded-xl bg-brand-terracotta animate-pulse" />
       </div>
     );
@@ -28,7 +28,7 @@ export default function AIChatPage() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-brand-cream flex flex-col">
+    <div className="min-h-screen bg-brand-ivory flex flex-col">
       {/* Header */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-[100]">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
@@ -53,7 +53,7 @@ export default function AIChatPage() {
             <div className="w-7 h-7 rounded-lg bg-brand-terracotta flex items-center justify-center text-white group-hover:scale-105 transition-transform">
               <Zap className="w-4 h-4 fill-current" />
             </div>
-            <span className="text-base font-bold tracking-tight text-brand-terracotta hidden sm:block">
+            <span className="text-base font-bold tracking-tight text-brand-gold hidden sm:block">
               ProConnect
             </span>
           </Link>

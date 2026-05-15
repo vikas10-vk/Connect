@@ -52,11 +52,11 @@ export default function JobConfirmCard({ data, props }: JobConfirmCardProps) {
                 <p className="font-bold text-gray-900">{data.title}</p>
 
                 <div className="flex flex-wrap gap-2">
-                    <span className="inline-flex items-center gap-1 text-xs bg-brand-cream text-gray-600 px-3 py-1 rounded-full">
+                    <span className="inline-flex items-center gap-1 text-xs bg-brand-ivory text-gray-600 px-3 py-1 rounded-full">
                         <Zap className="w-3 h-3 text-brand-terracotta" />
                         {data.category}
                     </span>
-                    <span className="inline-flex items-center gap-1 text-xs bg-brand-cream text-gray-600 px-3 py-1 rounded-full">
+                    <span className="inline-flex items-center gap-1 text-xs bg-brand-ivory text-gray-600 px-3 py-1 rounded-full">
                         <MapPin className="w-3 h-3" />
                         {data.suburb}, {data.state}
                     </span>

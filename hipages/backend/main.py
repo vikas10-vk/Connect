@@ -46,6 +46,7 @@ from routers.preferences import router as preferences_router
 from routers.ai_chat import router as ai_chat_router
 from routers.suburbs import router as suburbs_router
 from routers.job_assignments import router as job_assignments_router
+from routers.admin import router as admin_router
 
 logger = logging.getLogger(__name__)
 
@@ -196,8 +197,12 @@ app.include_router(swms_router)
 app.include_router(earnings_router)
 app.include_router(preferences_router)
 app.include_router(ai_chat_router)
-app.include_router(suburbs_router)
+# Suburbs router: mounted under /api/v1 for consistency with all other routers.
+# The router itself carries prefix="/suburbs", so full paths are /api/v1/suburbs/search etc.
+# The Next.js proxy at app/api/suburbs/route.ts is updated to match.
+app.include_router(suburbs_router, prefix="/api/v1")
 app.include_router(job_assignments_router)
+app.include_router(admin_router)
 
 
 # =============================================================================

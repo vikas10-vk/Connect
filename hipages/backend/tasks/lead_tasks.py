@@ -39,6 +39,7 @@ import random
 from datetime import datetime, timedelta
 
 from celery import shared_task
+from sqlalchemy import select
 
 from models.user import User
 from models.category import Category
@@ -49,7 +50,11 @@ from models.quote import Quote
 from models.review import Review
 from models.tradie_profile import TradieProfile
 from models.tradie_category import TradieCategory
+from models.tradie_certification import TradieCertification, CertificationStatus
+from models.insurance_policy import InsurancePolicy, InsuranceStatus, InsuranceType
 from models.tradie_preference import TradiePreference
+from models.tradie_pass import TradiePass
+from services.category_resolver import canonical_trade_category
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -126,6 +131,110 @@ def _suburb_in_list(target_suburb: str, service_suburbs_json) -> bool:
         return False
 
 
+def _required_documents_for_category(category: Category | None) -> set[str]:
+    """
+    Backend mirror of frontend/src/lib/tradie-verification.ts.
+    Keep this conservative: every returned document must be satisfied before
+    production lead distribution can send work in that service.
+    """
+    if not category:
+        return {"abn", "public_liability"}
+
+    slug = (category.slug or "").lower().strip()
+    name = (category.name or "").lower().strip()
+    key = slug or name.replace(" ", "-")
+
+    basic = {"cleaning", "handyman"}
+    standard_insurance = {
+        "painting", "plastering", "flooring", "tiling", "landscaping",
+        "glazing", "pest-control",
+    }
+    site_safety = {"carpentry", "concreting", "fencing"}
+    high_risk = {"roofing", "solar", "solar-installation", "demolition", "building", "bathroom-renovation"}
+    strict = {
+        "electrical", "electrician", "plumbing", "plumber", "gas-fitting", "gas-fitter",
+        "hvac", "air-conditioning", "air-conditioner", "security", "waterproofing",
+        "kitchen-renovation",
+    }
+
+    if key in basic:
+        return {"abn"}
+    if key in standard_insurance:
+        return {"abn", "public_liability"}
+    if key in site_safety:
+        return {"abn", "public_liability", "white_card"}
+    if key in high_risk:
+        return {"abn", "public_liability", "trade_licence", "white_card", "swms"}
+    if key in strict or any(p in name for p in ("electric", "plumb", "gas", "solar", "building", "demolition", "waterproof", "roof", "security", "air condition", "hvac", "refriger")):
+        return {"abn", "public_liability", "trade_licence", "white_card"}
+
+    return {"abn", "public_liability"}
+
+
+async def _tradie_satisfies_service_docs(db, profile: TradieProfile, category: Category | None) -> tuple[bool, list[str]]:
+    required = _required_documents_for_category(category)
+    missing: list[str] = []
+
+    pass_res = await db.execute(select(TradiePass).where(TradiePass.tradie_id == profile.id))
+    tradie_pass = pass_res.scalar_one_or_none()
+
+    if "abn" in required:
+        has_abn = profile.verification_status == "verified" or bool(tradie_pass and tradie_pass.abn_verified)
+        if not has_abn:
+            missing.append("abn")
+
+    if "public_liability" in required:
+        ins_res = await db.execute(
+            select(InsurancePolicy.id).where(
+                InsurancePolicy.tradie_profile_id == profile.id,
+                InsurancePolicy.insurance_type == InsuranceType.PUBLIC_LIABILITY,
+                InsurancePolicy.status == InsuranceStatus.VERIFIED,
+            ).limit(1)
+        )
+        if not ins_res.scalar_one_or_none():
+            missing.append("public_liability")
+
+    if "trade_licence" in required:
+        category_id = category.id if category else None
+        cert_res = await db.execute(
+            select(TradieCertification.category_id).where(
+                TradieCertification.tradie_profile_id == profile.id,
+                TradieCertification.status == CertificationStatus.VERIFIED,
+            )
+        )
+        cert_category_ids = set(cert_res.scalars().all())
+        has_matching_cert = category_id in cert_category_ids
+
+        if not has_matching_cert and category_id:
+            cert_categories_res = await db.execute(
+                select(Category).where(Category.id.in_(cert_category_ids))
+            )
+            for cert_category in cert_categories_res.scalars().all():
+                canonical = await canonical_trade_category(db, cert_category)
+                if canonical and canonical.id == category_id:
+                    has_matching_cert = True
+                    break
+
+        if not has_matching_cert:
+            missing.append("trade_licence")
+
+    if "white_card" in required:
+        has_white_card = bool(
+            tradie_pass and (
+                getattr(tradie_pass, "white_card_verified", False)
+                or getattr(tradie_pass, "wc_verified", False)
+            )
+        )
+        if not has_white_card:
+            missing.append("white_card")
+
+    if "swms" in required:
+        if not bool(tradie_pass and tradie_pass.swms_uploaded):
+            missing.append("swms")
+
+    return len(missing) == 0, missing
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # EXISTING TASK — PRESERVED EXACTLY
 # ═══════════════════════════════════════════════════════════════════════════
@@ -142,60 +251,199 @@ async def _distribute_leads(job_id: str, session_factory):
             print(f"[leads] Job {job_id} not found")
             return
 
-        # 2. Idempotency guard — match_intelligence is stamped on success
+        # 2. Idempotency guard — only skip if we already found at least 1 lead.
+        #    If previous run found 0 leads (no tradies matched), allow retry so that
+        #    newly-onboarded tradies or tradies who just turned on availability can be matched.
         if job.match_intelligence:
-            print(f"[leads] Job {job_id} already processed (idempotency) — skip")
-            return
+            try:
+                mi = json.loads(job.match_intelligence)
+                if mi.get("matched", 0) > 0:
+                    print(f"[leads] Job {job_id} already has {mi['matched']} lead(s) — skip")
+                    return
+                print(f"[leads] Job {job_id} had 0 leads before — retrying distribution")
+            except Exception:
+                pass
 
-        if not job.lat or not job.lng:
-            print(f"[leads] Job {job_id} has no coordinates — skip")
-            return
+        # Geocoding is non-fatal — fall back to suburb-name-only matching
+        has_coords = bool(job.lat and job.lng)
+        if not has_coords:
+            print(f"[leads] Job {job_id} has no coordinates — matching by suburb name only")
 
         print(f"[leads] ─────────────────────────────────────────────────")
         print(f"[leads] JOB: {job.title} | {job.suburb}, {job.state}")
-        print(f"[leads]   Coords: ({job.lat:.4f}, {job.lng:.4f})")
+        if has_coords:
+            print(f"[leads]   Coords: ({job.lat:.4f}, {job.lng:.4f})")
         print(f"[leads]   Category: {job.category_id}")
 
-        # 3. SQL filter: approved + available + geocoded
+        cat_res = await db.execute(select(Category).where(Category.id == job.category_id))
+        job_category = cat_res.scalar_one_or_none()
+        canonical_category = await canonical_trade_category(db, job_category) if job_category else None
+        if canonical_category and canonical_category.id != job.category_id:
+            print(f"[leads]   Normalising job category {job.category_id} -> {canonical_category.id} ({canonical_category.name})")
+            job.category_id = canonical_category.id
+            job_category = canonical_category
+            db.add(job)
+
+        child_res = await db.execute(select(Category.id).where(Category.parent_id == job.category_id))
+        child_ids = [row[0] for row in child_res.all()]
+        grandchild_ids = []
+        if child_ids:
+            grandchild_res = await db.execute(select(Category.id).where(Category.parent_id.in_(child_ids)))
+            grandchild_ids = [row[0] for row in grandchild_res.all()]
+        match_category_ids = [job.category_id, *child_ids, *grandchild_ids]
+
+        # 3. SQL filter — in DEV mode we relax approval + geocoding requirements
+        #    so that test tradies receive leads without going through full verification.
+        IS_DEV = os.getenv("ENVIRONMENT", "development") == "development"
+
+        base_filters = [
+            TradieCategory.category_id.in_(match_category_ids),
+            TradieProfile.is_available == True,
+            User.is_active == True,
+        ]
+        if IS_DEV:
+            # Dev: accept any tradie that has a profile and is active
+            print(f"[leads]   DEV mode — skipping verification_status/lat/lng/is_verified filters")
+        else:
+            # Production: strict — only verified, geocoded tradies
+            # Django admin sets verification_status="verified" (NOT "approved")
+            base_filters += [
+                TradieProfile.verification_status == "verified",
+                TradieProfile.lat.is_not(None),
+                TradieProfile.lng.is_not(None),
+                User.is_verified == True,
+            ]
+
         candidates_q = (
             select(TradieProfile, User, TradiePreference)
             .join(TradieCategory, TradieCategory.tradie_id == TradieProfile.id)
             .join(User, User.id == TradieProfile.user_id)
             .outerjoin(TradiePreference, TradiePreference.tradie_id == TradieProfile.id)
-            .where(
-                TradieCategory.category_id == job.category_id,
-                TradieProfile.verification_status == "approved",
-                TradieProfile.is_available == True,
-                TradieProfile.lat.is_not(None),
-                TradieProfile.lng.is_not(None),
-                User.is_verified == True,
-                User.is_active == True,
-            )
+            .where(*base_filters)
         )
         result = await db.execute(candidates_q)
         rows = result.all()
+
+        if not IS_DEV:
+            doc_eligible_rows = []
+            for profile, user, pref in rows:
+                ok, missing = await _tradie_satisfies_service_docs(db, profile, job_category)
+                if ok:
+                    doc_eligible_rows.append((profile, user, pref))
+                else:
+                    print(
+                        f"[leads]   Skip {profile.business_name}: "
+                        f"missing verified docs for {job_category.name if job_category else 'service'} "
+                        f"({', '.join(missing)})"
+                    )
+            rows = doc_eligible_rows
+
         print(f"[leads]   Eligible tradies (sql): {len(rows)}")
 
         if not rows:
-            print(f"[leads]   0 tradies — notifying homeowner")
-            await _store_match_intelligence(db, job, 0, 0)
-            await _notify_homeowner_no_tradies(db, job)
-            await db.commit()
-            return
+            print(f"[leads]   0 tradies — trying NLP title/description fallback...")
 
-        # 4. Geo filter
+            # ── Safety net: the job's category_id may be wrong (phantom UUID created
+            #    by an old bug, or incorrectly resolved before the category fix was
+            #    deployed). Re-resolve the correct canonical trade category using the
+            #    job's title and description via the same NLP resolver the booking
+            #    wizard uses. This is far more accurate than a slug CONTAINS query.
+            from services.category_resolver import resolve_trade_category as _resolve
+
+            search_text = " ".join(
+                part for part in [job.title or "", job.description or ""] if part
+            ).strip()
+
+            real_category = None
+            if search_text:
+                real_category = await _resolve(db, search_text)
+
+            if real_category and real_category.id != job.category_id:
+                print(
+                    f"[leads]   NLP remap: {job.category_id} → "
+                    f"{real_category.id} ({real_category.name}) "
+                    f"[matched from: '{search_text[:60]}']"
+                )
+                job.category_id = real_category.id
+                db.add(job)
+
+                # Rebuild the child/grandchild id list for the remapped category
+                child_res2 = await db.execute(
+                    select(Category.id).where(Category.parent_id == real_category.id)
+                )
+                child_ids2 = [r[0] for r in child_res2.all()]
+                grandchild_ids2: list[str] = []
+                if child_ids2:
+                    gc_res2 = await db.execute(
+                        select(Category.id).where(Category.parent_id.in_(child_ids2))
+                    )
+                    grandchild_ids2 = [r[0] for r in gc_res2.all()]
+                remap_ids = [real_category.id, *child_ids2, *grandchild_ids2]
+
+                new_filters = base_filters.copy()
+                new_filters[0] = TradieCategory.category_id.in_(remap_ids)
+                retry_q = (
+                    select(TradieProfile, User, TradiePreference)
+                    .join(TradieCategory, TradieCategory.tradie_id == TradieProfile.id)
+                    .join(User, User.id == TradieProfile.user_id)
+                    .outerjoin(TradiePreference, TradiePreference.tradie_id == TradieProfile.id)
+                    .where(*new_filters)
+                )
+                retry_result = await db.execute(retry_q)
+                rows = retry_result.all()
+
+                if not IS_DEV:
+                    doc_eligible_rows = []
+                    for profile, user, pref in rows:
+                        ok, missing = await _tradie_satisfies_service_docs(db, profile, real_category)
+                        if ok:
+                            doc_eligible_rows.append((profile, user, pref))
+                        else:
+                            print(
+                                f"[leads]   Skip {profile.business_name}: "
+                                f"missing verified docs for {real_category.name} "
+                                f"({', '.join(missing)})"
+                            )
+                    rows = doc_eligible_rows
+
+                print(f"[leads]   After NLP remap — eligible tradies: {len(rows)}")
+            else:
+                if not search_text:
+                    print(f"[leads]   No title/description to resolve from")
+                elif not real_category:
+                    print(f"[leads]   NLP could not resolve a category from: '{search_text[:60]}'")
+                else:
+                    print(f"[leads]   NLP resolved same category — no change")
+
+            if not rows:
+                print(f"[leads]   0 tradies even after fallback — notifying homeowner")
+                await _store_match_intelligence(db, job, 0, 0)
+                await _notify_homeowner_no_tradies(db, job)
+                await db.commit()
+                return
+
+        # 4. Geo filter — gracefully handle missing coordinates on job or tradie
         in_range, out_of_range = [], []
         for profile, user, pref in rows:
-            dist = haversine_distance(job.lat, job.lng, profile.lat, profile.lng)
-            if dist <= (profile.radius_km or 25) or _suburb_in_list(job.suburb, pref.service_suburbs if pref else None):
+            suburb_match = _suburb_in_list(job.suburb, pref.service_suburbs if pref else None)
+
+            if has_coords and profile.lat and profile.lng:
+                dist = haversine_distance(job.lat, job.lng, profile.lat, profile.lng)
+                in_radius = dist <= (profile.radius_km or 25)
+            else:
+                # No coordinates available — include everyone (suburb match is a bonus)
+                dist = 0.0
+                in_radius = True
+
+            if in_radius or suburb_match:
                 print(f"[leads]   ✓ {profile.business_name} ({dist:.1f}km)")
                 in_range.append((dist, profile))
             else:
                 out_of_range.append((dist, profile))
                 print(f"[leads]   ✗ {profile.business_name} ({dist:.1f}km, out of range)")
 
-        # 5. Expand radius 1.5× if < 3 found
-        if len(in_range) < 3 and out_of_range:
+        # 5. Expand radius 1.5× if < 3 found (only meaningful when coords exist)
+        if len(in_range) < 3 and out_of_range and has_coords:
             print(f"[leads]   Expanding radius 1.5×...")
             for dist, profile in out_of_range:
                 if dist <= (profile.radius_km or 25) * 1.5:
@@ -212,8 +460,9 @@ async def _distribute_leads(job_id: str, session_factory):
             await db.commit()
             return
 
-        # 6. Create leads (skip duplicates)
+        # 6. Create leads (skip duplicates) and collect new ones for notification
         leads_created = 0
+        new_lead_profiles = []   # (profile, user) for email notifications
         for dist, profile in selected:
             exists = await db.execute(
                 select(Lead).where(Lead.job_id == job_id, Lead.tradie_id == profile.id)
@@ -230,10 +479,26 @@ async def _distribute_leads(job_id: str, session_factory):
             ))
             leads_created += 1
             print(f"[leads]   → Lead: {profile.business_name} ({dist:.1f}km)")
+            new_lead_profiles.append(profile)
 
         await _store_match_intelligence(db, job, leads_created, len(in_range))
+
+        # ── Transition job from "open" → "quoted" now that tradies are notified ──
+        # This is the system-level transition that unlocks homeowner accept flow.
+        # We do this directly (not via the state machine) so it works even before
+        # the job_events table migration has been applied.
+        if job.status == "open":
+            job.status = "quoted"
+            db.add(job)
+            print(f"[leads]   Job status: open → quoted")
+
         await db.commit()
         print(f"[leads] DONE — {leads_created} lead(s) for {job_id}")
+
+        # 7. Email each tradie about the new lead (best-effort, non-fatal)
+        if new_lead_profiles:
+            await _notify_tradies_new_lead(db, job, new_lead_profiles)
+
         print(f"[leads] ─────────────────────────────────────────────────")
 
 
@@ -268,6 +533,84 @@ async def _notify_homeowner_no_tradies(db, job):
             print(f"[leads]   → Homeowner {homeowner.email} notified")
     except Exception as e:
         print(f"[leads]   Warning: notification failed: {e}")
+
+
+async def _notify_tradies_new_lead(db, job, profiles: list) -> None:
+    """
+    Email each tradie when they receive a new lead.
+    This is the primary trigger that brings tradies into their dashboard.
+    """
+    try:
+        from sqlalchemy import select
+        from services.resend_service import _send_raw_email, _base_html, _btn, _first, APP_NAME
+
+        urgency_map = {
+            "emergency":      ("🚨 URGENT", "#A33030"),
+            "asap":           ("⚡ ASAP",    "#B85C00"),
+            "next_few_days":  ("📅 This week", "#0077AA"),
+            "next_few_weeks": ("🗓 This month", "#5B7560"),
+            "flexible":       ("🌿 Flexible",  "#5B7560"),
+        }
+        urgency_label, urgency_color = urgency_map.get(
+            job.urgency or "flexible", ("📅 New job", "#0077AA")
+        )
+
+        for profile in profiles:
+            try:
+                user_res = await db.execute(
+                    select(User).where(User.id == profile.user_id)
+                )
+                tradie_user = user_res.scalar_one_or_none()
+                if not tradie_user or not tradie_user.email:
+                    continue
+
+                name = _first(tradie_user.full_name or profile.business_name or "")
+                body = f"""
+                  <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;
+                             font-weight:500;color:#1A1A1A;">New job lead for you!</h1>
+                  <p style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
+                    G'day {name}, a new job has been posted in your area and you've been matched.
+                    Log in quickly — leads are sent to up to 3 tradies and the homeowner picks one.
+                  </p>
+                  <div style="background:#F8F5EE;border:1px solid #E6D9B5;border-radius:16px;
+                              padding:20px 24px;margin:0 0 20px;">
+                    <p style="margin:0 0 4px;font-size:11px;font-weight:700;
+                              color:{urgency_color};text-transform:uppercase;letter-spacing:.08em;">
+                      {urgency_label}
+                    </p>
+                    <p style="margin:0 0 8px;font-size:20px;font-weight:800;color:#1A1A1A;">
+                      {job.title or "New job"}
+                    </p>
+                    <p style="margin:0;font-size:13.5px;color:#4A4A48;">
+                      📍 {job.suburb or "Location TBC"}{', ' + job.state if job.state else ''}
+                    </p>
+                  </div>
+                  <p style="margin:0 0 20px;font-size:13px;color:#8A8882;">
+                    View the full job details, photos and quote from your dashboard.
+                    Don't delay — tradies who respond quickly win more jobs.
+                  </p>
+                  {_btn("View Lead & Quote", "http://localhost:3000/tradie/dashboard", "#A68A4E")}
+                  <p style="margin:24px 0 0;font-size:12px;color:#B8B5AE;text-align:center;">
+                    You received this because you are listed as a {profile.business_name or 'tradie'}
+                    in the {job.suburb or 'local'} area.
+                  </p>"""
+                text = (
+                    f"G'day {name},\n\n"
+                    f"New job: {job.title or 'New job'} in {job.suburb or 'your area'}.\n\n"
+                    f"Log in to view and quote: http://localhost:3000/tradie/dashboard\n\n"
+                    f"— The {APP_NAME} team"
+                )
+                await _send_raw_email(
+                    tradie_user.email,
+                    f"⚡ New lead: {job.title or 'New job'} — {job.suburb or 'your area'}",
+                    _base_html(body, "#A68A4E"),
+                    text,
+                )
+                print(f"[leads]   → Email sent to {tradie_user.email}")
+            except Exception as e:
+                print(f"[leads]   Warning: email to tradie {profile.id} failed: {e}")
+    except Exception as e:
+        print(f"[leads]   Warning: tradie notifications failed: {e}")
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)

@@ -17,7 +17,7 @@ UPDATED — all existing endpoints preserved exactly. New endpoints added:
   POST /{job_id}/dispute              Homeowner raises a dispute (in completed or partial_stop).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -31,12 +31,14 @@ from models.tradie_certification import TradieCertification, CertificationStatus
 from models.tradie_profile import TradieProfile
 from schemas.job_schema import JobCreate, JobUpdate, JobResponse, JobWithDetailsResponse, JobPhotoResponse
 from services.auth_service import get_current_user
+from services.category_resolver import resolve_trade_category
 from services.job_state_machine import JobStateMachine, InvalidTransitionError
 from services.geocoding_service import geocode_suburb
 from pydantic import BaseModel, Field
 from datetime import datetime, date, timedelta
 from typing import Optional
 import asyncio
+import json
 import uuid
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["Jobs"])
@@ -46,23 +48,71 @@ router = APIRouter(prefix="/api/v1/jobs", tags=["Jobs"])
 # EXISTING ENDPOINTS — PRESERVED EXACTLY
 # ═══════════════════════════════════════════════════════════════════════════
 
+async def _distribute_leads_background(job_id: str) -> None:
+    """
+    Fallback: run lead distribution in-process when Celery is unavailable.
+    Creates its own DB engine/session (same pattern as the Celery task).
+    """
+    try:
+        from tasks.lead_tasks import _distribute_leads, _make_session_factory
+        engine, session_factory = _make_session_factory()
+        try:
+            await _distribute_leads(job_id, session_factory)
+            print(f"[leads] Background fallback completed for job {job_id}")
+        finally:
+            try:
+                await engine.dispose()
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[leads] Background fallback failed for job {job_id}: {e}")
+
+
 @router.post("/", response_model=JobResponse, status_code=201)
 async def create_job(
     body: JobCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     if current_user.role != "homeowner":
         raise HTTPException(status_code=403, detail="Only homeowners can post jobs")
 
-    result = await db.execute(select(Category).where(Category.slug == body.category_slug))
-    category = result.scalar_one_or_none()
+    # ── Category resolution — three-pass strategy ─────────────────────────────
+    #
+    # Pass 1 (fast path): try the submitted category_slug as an exact DB lookup.
+    #   The homeowner picker sends a canonical slug like "plumbing" or "gas-fitting"
+    #   directly. resolve_trade_category() will find it on the first slug== query
+    #   without touching any NLP code. This is the normal production path.
+    #
+    # Pass 2 (description NLP): if the slug didn't resolve (e.g. user somehow sent
+    #   a free-text value), run the keyword/alias resolver against the job title
+    #   and description only — NOT the slug — so the slug doesn't pollute the text.
+    #
+    # Pass 3 (synonym map): if passes 1–2 both fail, try resolve_trade_category on
+    #   just the raw slug string, which runs it through SYNONYM_TO_CANONICAL_SLUG
+    #   (e.g. slug "plumber" → canonical "plumbing").
+    #
+    # Keeping these three passes separate ensures that an exact canonical slug from
+    # the UI always wins instantly, while free-text descriptions still work as a
+    # fallback for AI-chat or legacy callers.
+    # ──────────────────────────────────────────────────────────────────────────
+    category = await resolve_trade_category(db, body.category_slug)
+
+    if not category and (body.title or body.description):
+        category = await resolve_trade_category(
+            db,
+            " ".join(part for part in [body.title, body.description or ""] if part),
+        )
 
     if not category:
-        name = " ".join(word.capitalize() for word in body.category_slug.split("-"))
-        category = Category(id=str(uuid.uuid4()), name=name, slug=body.category_slug)
-        db.add(category)
-        await db.flush()
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown service '{body.category_slug}'. "
+                "Please select a valid service from the list."
+            )
+        )
 
     data = body.model_dump(exclude={"category_slug", "intent_level"})
     data["category_id"] = category.id
@@ -81,6 +131,7 @@ async def create_job(
     await db.commit()
     await db.refresh(job)
 
+    celery_queued = False
     try:
         from tasks.lead_tasks import distribute_leads
         task = await asyncio.get_event_loop().run_in_executor(
@@ -89,11 +140,63 @@ async def create_job(
         job.lead_task_id = task.id
         db.add(job)
         await db.commit()
-        print(f"[leads] Queued distribution for job {job.id}, task_id={task.id}")
+        celery_queued = True
+        print(f"[leads] Queued via Celery for job {job.id}, task_id={task.id}")
     except Exception as e:
-        print(f"[leads] Warning: could not queue lead distribution: {e}")
+        print(f"[leads] Celery unavailable ({e}) — falling back to in-process background task")
+
+    if not celery_queued:
+        # Celery not running — distribute leads immediately in a FastAPI background task
+        background_tasks.add_task(_distribute_leads_background, job.id)
+        print(f"[leads] Background fallback scheduled for job {job.id}")
 
     return job
+
+
+@router.post("/{job_id}/retry-leads", status_code=202)
+async def retry_lead_distribution(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Re-trigger lead distribution for a job that received 0 leads.
+    Homeowner can call this from their dashboard; admin can also call it.
+    Only works when the job is in 'open' or 'quoted' status.
+    The idempotency guard in _distribute_leads allows retry when matched==0.
+    """
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if current_user.role == "homeowner" and job.homeowner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your job")
+    if job.status not in ("open", "quoted"):
+        raise HTTPException(status_code=400, detail=f"Cannot retry leads for a job in '{job.status}' status")
+
+    # Reset match_intelligence so the idempotency guard doesn't block
+    job.match_intelligence = None
+    db.add(job)
+    await db.commit()
+
+    celery_queued = False
+    try:
+        from tasks.lead_tasks import distribute_leads
+        task = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: distribute_leads.apply_async(args=[job_id])
+        )
+        job.lead_task_id = task.id
+        db.add(job)
+        await db.commit()
+        celery_queued = True
+    except Exception:
+        pass
+
+    if not celery_queued:
+        background_tasks.add_task(_distribute_leads_background, job_id)
+
+    return {"message": "Lead distribution re-queued", "job_id": job_id}
 
 
 @router.get("/my-jobs", response_model=list[JobWithDetailsResponse])
@@ -538,7 +641,7 @@ async def submit_review(
         raise HTTPException(status_code=404, detail="Job not found")
     if job.homeowner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your job")
-    if job.status not in ("completed", "closed"):
+    if job.status not in ("completed", "confirmed", "closed"):
         raise HTTPException(status_code=400, detail="You can only review completed jobs")
 
     if job.completed_at:
@@ -609,7 +712,14 @@ class ScopeChangeRespondRequest(BaseModel):
 
 
 class CompleteJobRequest(BaseModel):
-    photo_after_url:  str           = Field(..., description="S3 URL of the after photo — mandatory at job completion")
+    # Accepts 1–3 after-photo URLs. At least one is required.
+    # Stored as a JSON array in the photo_after_url column (TEXT).
+    photo_after_urls: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=3,
+        description="1–3 S3 URLs of completion photos (at least one required, max 3)",
+    )
     completion_note:  Optional[str] = Field(None, max_length=1000)
 
 
@@ -937,7 +1047,8 @@ async def complete_job(
             db=db,
             note="Tradie marked job complete and uploaded after photo.",
             extra_job_fields={
-                "photo_after_url": body.photo_after_url,
+                # Store all URLs as a JSON array; first URL is the primary for display.
+                "photo_after_url": json.dumps(body.photo_after_urls),
                 "completion_note": body.completion_note,
             },
         )
@@ -947,6 +1058,7 @@ async def complete_job(
     await db.commit()
     return {
         "status": job.status,
+        "photo_after_urls": body.photo_after_urls,
         "message": "Job marked as complete. The homeowner has 48 hours to confirm or raise a dispute.",
         "dispute_window_hours": 48,
     }
@@ -980,17 +1092,27 @@ async def confirm_complete(
         )
 
     if job.confirmed_by_user_at:
-        return {"message": "Job already confirmed.", "confirmed_at": job.confirmed_by_user_at}
+        # confirmed_by_user_at was set by a previous request, but status may not
+        # have been persisted if that request's second commit failed (partial write).
+        # Repair the status now so the UI can reflect the correct state.
+        if job.status != "confirmed":
+            job.status     = "confirmed"
+            job.updated_at = datetime.utcnow()
+            db.add(job)
+            await db.commit()
+        return {"message": "Job already confirmed.", "confirmed_at": job.confirmed_by_user_at, "status": "confirmed"}
 
-    job.confirmed_by_user_at = datetime.utcnow()
-    job.updated_at           = datetime.utcnow()
+    now = datetime.utcnow()
+    job.confirmed_by_user_at = now
+    job.status               = "confirmed"
+    job.updated_at           = now
     db.add(job)
     await db.commit()
 
     return {
-        "status": job.status,
+        "status": "confirmed",
         "confirmed_at": job.confirmed_by_user_at,
-        "message": "Job confirmed. Thank you! Payment will be released to the tradie.",
+        "message": "Job confirmed. Thank you!",
     }
 
 

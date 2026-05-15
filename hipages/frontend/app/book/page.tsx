@@ -9,14 +9,14 @@ import {
   Mail, Lock, User, Eye, EyeOff, Loader2,
   AlertCircle, MapPin, ImagePlus, Trash2,
   AlertTriangle, BookmarkCheck, Sparkles, Plus,
-  RefreshCw, Save, CheckCircle2,
+  Save, CheckCircle2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { cn } from '@/src/lib/utils';
 import { useAuth } from '@/src/contexts/AuthContext';
 import api from '@/src/lib/api';
-import { TRADIE_CATEGORIES } from '@/src/constants/categories';
+import { TRADIE_CATEGORIES, getCategorySlug, CATEGORY_NAMES } from '@/src/constants/categories';
 import { PROBLEM_SUGGESTIONS, detectCategory } from '@/src/constants/problems';
 
 const DRAFT_KEY = 'proconnect_job_draft';
@@ -122,7 +122,8 @@ interface UploadedPhoto {
   key: string; url: string; preview: string; name: string;
 }
 
-const toSlug = (cat: string) => cat.toLowerCase().replace(/ /g, '-');
+// Use getCategorySlug for accurate DB slug resolution
+const toSlug = getCategorySlug;
 
 function parseApiError(err: any): string {
   const data = err?.response?.data;
@@ -173,7 +174,7 @@ function CancelModal({ step, selectedCategory, jobTitle, onSave, onDiscard, onRe
           </div>
           {(selectedCategory || jobTitle) && (
             <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
-              {selectedCategory && <p className="text-xs text-gray-600"><span className="font-bold">Category:</span> {selectedCategory}</p>}
+              {selectedCategory && <p className="text-xs text-gray-600"><span className="font-bold">Service:</span> {selectedCategory}</p>}
               {jobTitle && <p className="text-xs text-gray-600"><span className="font-bold">Job:</span> {jobTitle}</p>}
             </div>
           )}
@@ -299,7 +300,7 @@ function JobSummaryCard({
       {/* Stats row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 bg-white border-b border-gray-100">
         {[
-          { label: 'Category', value: selectedCategory || '—', step: 1 },
+          { label: 'Service', value: selectedCategory || '—', step: 1 },
           { label: 'Urgency', value: selectedUrgency?.label || '—', step: 2 },
           { label: 'Photos', value: photos.length > 0 ? `${photos.length} attached` : 'None', step: 2 },
         ].map(({ label, value, step }) => (
@@ -370,6 +371,30 @@ function BookingContent() {
   // ── P5: Auto-save indicator ──
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [saveIndicator, setSaveIndicator] = useState<'saving' | 'saved' | null>(null);
+
+  // ── Canonical categories fetched from API (same source as tradie picker) ──
+  // Both homeowners and tradies must see the identical list so that whatever the
+  // homeowner selects maps to exactly the same category_id the tradie registered under.
+  const [apiCategories, setApiCategories] = useState<typeof TRADIE_CATEGORIES>(TRADIE_CATEGORIES);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+
+  useEffect(() => {
+    api.get('/categories')
+      .then(res => {
+        // Backend returns { name, slug, icon_slug, description }
+        // Map to the same shape as TRADIE_CATEGORIES for drop-in replacement.
+        const mapped = (res.data as { name: string; slug: string; icon_slug?: string; description?: string }[])
+          .map(c => ({
+            name: c.name,
+            slug: c.slug,
+            icon: TRADIE_CATEGORIES.find(t => t.slug === c.slug)?.icon ?? '🔧',
+            description: c.description ?? '',
+          }));
+        if (mapped.length > 0) setApiCategories(mapped);
+      })
+      .catch(() => { /* silently fall back to hardcoded TRADIE_CATEGORIES */ })
+      .finally(() => setCategoriesLoaded(true));
+  }, []);
 
   // Step 1
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
@@ -548,13 +573,21 @@ function BookingContent() {
     if (!categorySearch.trim()) return;
     const cat = detectCategory(categorySearch);
     if (cat) {
-      setSelectedCategory(cat);
-      if (!description) setDescription(categorySearch);
-      setFieldErrors(e => ({ ...e, category: '' }));
-      setStep(2);
-    } else {
-      if (!description) setDescription(categorySearch);
+      // Only accept the detected category if it exists in the canonical API-fetched list.
+      // This prevents setting a non-canonical name that would fail to match tradies.
+      const isCanonical = apiCategories.some(c => c.name.toLowerCase() === cat.toLowerCase());
+      if (isCanonical) {
+        setSelectedCategory(cat);
+        if (!description) setDescription(categorySearch);
+        setFieldErrors(e => ({ ...e, category: '' }));
+        setStep(2);
+        return;
+      }
     }
+    // Could not auto-detect a canonical category — carry the text into description
+    // so the user can still describe their problem, but keep them on Step 1 to
+    // explicitly pick a service tile.
+    if (!description) setDescription(categorySearch);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -583,10 +616,21 @@ function BookingContent() {
   const handleSuggestionClick = (s: typeof PROBLEM_SUGGESTIONS[0]) => {
     setCategorySearch(s.problem);
     setShowDropdown(false);
-    setSelectedCategory(s.category);
-    if (!description) setDescription(s.problem);
-    setFieldErrors(e => ({ ...e, category: '' }));
-    setStep(2);
+    // Validate the suggestion's category against the API-fetched canonical list.
+    // PROBLEM_SUGGESTIONS.category should always match TRADIE_CATEGORIES[].name,
+    // but we verify here so a stale suggestion never silently sets a wrong category.
+    const canonical = apiCategories.find(c => c.name.toLowerCase() === s.category.toLowerCase());
+    if (canonical) {
+      setSelectedCategory(canonical.name);
+      if (!description) setDescription(s.problem);
+      setFieldErrors(e => ({ ...e, category: '' }));
+      setStep(2);
+    } else {
+      // Category in suggestion doesn't match canonical list — keep user on Step 1
+      // and pre-fill description so they can manually pick the right service tile.
+      if (!description) setDescription(s.problem);
+      setFieldErrors(e => ({ ...e, category: `Could not auto-select "${s.category}". Please pick a service below.` }));
+    }
   };
 
   // ── P3: Postcode-only search in manual entry ─────────────────────────────
@@ -619,11 +663,21 @@ function BookingContent() {
       category: selectedCategory,
       photo_urls: photos.map(p => p.url),
     }).then(res => {
-      setJobTitle(res.data.title);
-      setJobType(res.data.job_type);
-      setServiceType(res.data.service_type);
-      setAiExplanation(res.data.explanation);
-      setAiMissingInfo(res.data.missing_info || '');
+      const explanation = res.data.explanation || '';
+      // If the AI returned an empty brief (e.g. Groq failed but backend returned 200),
+      // treat it as an error so the user sees the fallback message instead of a blank step.
+      if (!explanation) {
+        setAiError(true);
+        setJobTitle(res.data.title || `${selectedCategory} job`);
+        setJobType(res.data.job_type || 'residential');
+        setServiceType(res.data.service_type || 'repair');
+      } else {
+        setJobTitle(res.data.title);
+        setJobType(res.data.job_type);
+        setServiceType(res.data.service_type);
+        setAiExplanation(explanation);
+        setAiMissingInfo(res.data.missing_info || '');
+      }
     }).catch(() => {
       setAiError(true);
     }).finally(() => {
@@ -697,7 +751,17 @@ function BookingContent() {
   // ── P2: Validate current step and return errors ───────────────────────────
   const validateStep = (): Record<string, string> => {
     const errors: Record<string, string> = {};
-    if (step === 1 && !selectedCategory) errors.category = 'Please select a service category.';
+    if (step === 1) {
+      if (!selectedCategory) {
+        errors.category = 'Please select a service.';
+      } else {
+        // Guard: confirm the selected category name maps to a known canonical slug.
+        // This catches cases where detectCategory() or a suggestion returned a name
+        // that doesn't exist in the API-fetched list, which would cause a matching failure.
+        const slug = selectedCategorySlug();
+        if (!slug) errors.category = `"${selectedCategory}" is not a recognised service. Please select from the list.`;
+      }
+    }
     if (step === 2) {
       if (description.trim().length < 10) errors.description = `Add more detail — at least 10 characters (${description.length}/10)`;
       if (!urgency) errors.urgency = 'Please select how urgent this job is.';
@@ -734,15 +798,20 @@ function BookingContent() {
   };
 
   const nextStep = async () => {
-    // Auto-detect category in Step 1
+    // Auto-detect category in Step 1 when user typed a description instead of clicking a tile.
+    // Validate the detected name against apiCategories so we only accept canonical names.
     if (step === 1 && !selectedCategory && categorySearch.trim()) {
       const cat = detectCategory(categorySearch);
       if (cat) {
-        setSelectedCategory(cat);
-        if (!description) setDescription(categorySearch);
-        setFieldErrors({});
-        setStep(2);
-        return;
+        // Confirm the detected name exists in the API-fetched canonical list
+        const isCanonical = apiCategories.some(c => c.name.toLowerCase() === cat.toLowerCase());
+        if (isCanonical) {
+          setSelectedCategory(cat);
+          if (!description) setDescription(categorySearch);
+          setFieldErrors({});
+          setStep(2);
+          return;
+        }
       }
     }
 
@@ -774,10 +843,19 @@ function BookingContent() {
   };
 
   const postJob = async () => {
+    // Resolve slug from the fetched canonical list first, fall back to local map.
+    // This guarantees the slug we send is always one the backend can look up
+    // directly without relying on NLP — so the job lands on the exact category
+    // the tradie registered under.
+    const slug = selectedCategorySlug();
+    if (!slug) {
+      throw new Error(`Could not resolve a valid service slug for "${selectedCategory}". Please go back and re-select the service.`);
+    }
+
     const res = await api.post('/jobs', {
       title: jobTitle,
       description: aiExplanation || description,
-      category_slug: toSlug(selectedCategory),
+      category_slug: slug,
       suburb, state, postcode, urgency,
       job_type: jobType, service_type: serviceType,
       job_stage: 'ready_to_hire', intent_level: 'high',
@@ -814,9 +892,21 @@ function BookingContent() {
     }
   };
 
-  const filteredCategories = TRADIE_CATEGORIES.filter(c =>
-    c.toLowerCase().includes(categorySearch.toLowerCase())
+  // Use API-fetched categories (same endpoint as tradie preferences picker).
+  // Falls back to hardcoded TRADIE_CATEGORIES while loading or on fetch error.
+  const filteredCategories = apiCategories.filter(c =>
+    c.name.toLowerCase().includes(categorySearch.toLowerCase()) ||
+    c.description.toLowerCase().includes(categorySearch.toLowerCase())
   );
+
+  // Returns the canonical slug for the currently selected category, or '' if unknown.
+  // This is validated before every job POST so we never send an unresolvable slug.
+  const selectedCategorySlug = (): string => {
+    const match = apiCategories.find(
+      c => c.name.toLowerCase() === selectedCategory.toLowerCase()
+    );
+    return match ? match.slug : getCategorySlug(selectedCategory);
+  };
   const selectedUrgency = URGENCY_OPTIONS.find(u => u.id === urgency);
   const showGuidedQuestions = step === 2 && description.length >= 20 && !!selectedCategory;
   const showManualEntry = !suburb && locationQuery.length >= 3 && !locationLoading && locationSuggestions.length === 0;
@@ -827,20 +917,20 @@ function BookingContent() {
     : null;
 
   return (
-    <div className="min-h-screen bg-[#FBF8EF] font-sans">
+    <div className="min-h-screen font-sans" style={{ background: '#FFF8E7' }}>
       {showCancel && (
         <CancelModal step={step} selectedCategory={selectedCategory} jobTitle={jobTitle}
           onSave={saveDraft} onDiscard={discardDraft} onResume={() => setShowCancel(false)} />
       )}
 
       {/* ── Header ── */}
-      <header className="sticky top-0 z-50 bg-[#FBF8EF]/95 backdrop-blur-md border-b border-[#E9DDBF]">
+      <header className="sticky top-0 z-50 backdrop-blur-md shadow-md" style={{ background: '#071D36', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap justify-between items-center gap-3">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-brand-gold flex items-center justify-center text-white">
-            <Zap className="w-5 h-5 fill-current" />
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#D4AA3A', boxShadow: '0 3px 10px rgba(212,170,58,0.3)' }}>
+            <Zap className="w-5 h-5 fill-current" style={{ color: '#071D36' }} />
           </div>
-          <span className="text-lg sm:text-xl font-black text-brand-gold tracking-tight">ProConnect</span>
+          <span className="text-lg sm:text-xl font-black tracking-tight" style={{ color: '#D4AA3A' }}>ProConnect</span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
           {/* P5: Auto-save indicator */}
@@ -868,7 +958,10 @@ function BookingContent() {
             </button>
           )}
           <button onClick={() => setShowCancel(true)}
-            className="flex items-center gap-2 text-gray-500 font-bold text-sm hover:text-gray-800 transition-colors">
+            className="flex items-center gap-2 font-bold text-sm transition-colors"
+            style={{ color: 'rgba(255,255,255,0.6)' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#D4AA3A')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.6)')}>
             <X className="w-4 h-4" /> Cancel
           </button>
         </div>
@@ -914,11 +1007,11 @@ function BookingContent() {
             <motion.div key="s1" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="space-y-6">
               <div>
                 <h2 className="text-2xl sm:text-3xl font-black text-gray-900">What do you need help with?</h2>
-                <p className="text-gray-500 mt-2">Choose a trade to get matched with verified professionals.</p>
+                <p className="text-gray-500 mt-2">Choose the service you need so we can match the right tradies.</p>
                 {searchParams.get('q') && (
                   <div className="mt-3 flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-4 py-2.5">
                     <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                    <p className="text-xs text-violet-700 font-medium">Your description is ready — pick a category and we'll continue from there.</p>
+                    <p className="text-xs text-violet-700 font-medium">Your description is ready — pick a service and we'll continue from there.</p>
                   </div>
                 )}
                 {/* P2: Category error */}
@@ -943,11 +1036,17 @@ function BookingContent() {
                     onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
                     className="flex-1 min-w-0 bg-transparent border-none focus:outline-none focus:ring-0 text-sm px-3 text-gray-800 placeholder-gray-400 py-3"
                   />
-                  {detectCategory(categorySearch) && (
-                    <span className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-[#D4AA3A] bg-[#D4AA3A]/8 px-2.5 py-1 rounded-full mr-2 whitespace-nowrap">
-                      {detectCategory(categorySearch)}
-                    </span>
-                  )}
+                  {(() => {
+                    const detected = detectCategory(categorySearch);
+                    const canonical = detected
+                      ? apiCategories.find(c => c.name.toLowerCase() === detected.toLowerCase())
+                      : null;
+                    return canonical ? (
+                      <span className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-[#D4AA3A] bg-[#D4AA3A]/8 px-2.5 py-1 rounded-full mr-2 whitespace-nowrap">
+                        {canonical.icon} {canonical.name}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
 
                 <AnimatePresence>
@@ -982,23 +1081,19 @@ function BookingContent() {
                   )}
                 </AnimatePresence>
               </div>
-              <div className="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-4 gap-3 max-h-[60vh] overflow-y-auto pr-1 sm:pr-2 pb-2 custom-scrollbar">
+              <div className="grid grid-cols-2 min-[420px]:grid-cols-2 sm:grid-cols-4 gap-3 max-h-[60vh] overflow-y-auto pr-1 sm:pr-2 pb-2 custom-scrollbar">
                 {filteredCategories.map(cat => (
-                  <button key={cat} onClick={() => {
-                    setSelectedCategory(cat);
+                  <button key={cat.slug} onClick={() => {
+                    setSelectedCategory(cat.name);
                     setFieldErrors(e => ({ ...e, category: '' }));
                     setStep(2);
                   }}
-                    className={cn("p-5 rounded-2xl border-2 flex flex-col items-center gap-3 transition-all group",
-                      selectedCategory === cat ? "border-brand-gold bg-brand-gold/5" : "border-gray-100 bg-white hover:border-brand-gold/30 hover:shadow-md"
+                    className={cn("p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all group text-center",
+                      selectedCategory === cat.name ? "border-brand-gold bg-brand-gold/5" : "border-gray-100 bg-white hover:border-brand-gold/30 hover:shadow-md"
                     )}>
-                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                      selectedCategory === cat ? "bg-brand-gold text-white" : "bg-brand-ivory text-brand-gold group-hover:scale-110"
-                    )}>
-                      <Zap className="w-5 h-5" />
-                    </div>
-                    <span className={cn("text-sm font-bold text-center",
-                      selectedCategory === cat ? "text-brand-gold" : "text-gray-800")}>{cat}</span>
+                    <span className="text-2xl">{cat.icon}</span>
+                    <span className={cn("text-xs font-bold leading-snug",
+                      selectedCategory === cat.name ? "text-brand-gold" : "text-gray-800")}>{cat.name}</span>
                   </button>
                 ))}
               </div>
@@ -1129,7 +1224,7 @@ function BookingContent() {
                 {!aiLoading && (
                   <button onClick={() => setAiVersion(v => v + 1)}
                     className="flex items-center gap-1.5 text-xs font-bold text-brand-gold bg-brand-gold/10 hover:bg-brand-gold/15 px-3 py-2 rounded-xl transition-colors shrink-0 mt-1">
-                    <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+                    Regenerate
                   </button>
                 )}
               </div>
@@ -1466,17 +1561,3 @@ function BookingContent() {
         .animate-shake { animation: shake 0.45s ease-in-out; }
       `}</style>
     </div>
-  );
-}
-
-export default function BookingPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-[#FBF8EF] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-brand-gold animate-spin" />
-      </div>
-    }>
-      <BookingContent />
-    </Suspense>
-  );
-}
