@@ -14,8 +14,8 @@
  *  - Passes isApproved, verificationStatus to children via render prop
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import React, { useEffect, useState, useCallback, Suspense } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import {
   Zap, LayoutDashboard, Inbox, Briefcase,
   ShieldCheck, SlidersHorizontal, UserCircle,
@@ -62,10 +62,11 @@ interface Props {
   children: (ctx: TradieStudioContext) => React.ReactNode;
 }
 
-export default function TradieStudioLayout({ children }: Props) {
+function TradieStudioLayoutInner({ children }: Props) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [isApproved, setIsApproved] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState('pending_review');
@@ -157,13 +158,11 @@ export default function TradieStudioLayout({ children }: Props) {
     const [base, query] = href.split('?');
     if (pathname !== base) return false;
     if (!query) {
-      // Overview — active only when there's no ?tab= param in the URL,
-      // i.e. the current search string is empty.
-      return !window.location.search || window.location.search === '?';
+      // Overview — active only when there's no ?tab= param in the URL.
+      return !searchParams.get('tab');
     }
     const hrefParams = new URLSearchParams(query);
-    const currentParams = new URLSearchParams(window.location.search);
-    return hrefParams.get('tab') === currentParams.get('tab');
+    return hrefParams.get('tab') === searchParams.get('tab');
   };
 
   const initials = (businessName || user?.email || 'T')[0].toUpperCase();
@@ -362,4 +361,11 @@ export default function TradieStudioLayout({ children }: Props) {
     </>
   );
 }
-                                                                                                                                                                                                                                                                      
+
+export default function TradieStudioLayout({ children }: Props) {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FFF8E7' }} />}>
+      <TradieStudioLayoutInner>{children}</TradieStudioLayoutInner>
+    </Suspense>
+  );
+}
