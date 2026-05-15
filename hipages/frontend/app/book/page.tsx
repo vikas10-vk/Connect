@@ -1563,8 +1563,6 @@ function BookingContent() {
     </div>
   );
 }
-  );
-}
 
 export default function BookPage() {
   return (
