@@ -135,7 +135,7 @@ async def create_job(
     try:
         from tasks.lead_tasks import distribute_leads
         task = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: distribute_leads.apply_async(args=[job.id])
+            None, lambda: distribute_leads.apply_async(args=[job.id], queue="critical")
         )
         job.lead_task_id = task.id
         db.add(job)
@@ -184,7 +184,7 @@ async def retry_lead_distribution(
     try:
         from tasks.lead_tasks import distribute_leads
         task = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: distribute_leads.apply_async(args=[job_id])
+            None, lambda: distribute_leads.apply_async(args=[job_id], queue="critical")
         )
         job.lead_task_id = task.id
         db.add(job)
@@ -455,7 +455,7 @@ async def submit_job(
     try:
         from tasks.lead_tasks import distribute_leads
         await asyncio.get_event_loop().run_in_executor(
-            None, lambda: distribute_leads.apply_async(args=[job.id])
+            None, lambda: distribute_leads.apply_async(args=[job.id], queue="critical")
         )
         print(f"[leads] Re-queued distribution for submitted job {job.id}")
     except Exception as e:

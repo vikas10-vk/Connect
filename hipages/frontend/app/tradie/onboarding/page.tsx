@@ -318,8 +318,18 @@ export default function TradieOnboardingPage() {
     }, [allCategories, selectedCatIds]);
 
     const isEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+    // Password rules must mirror backend RegisterRequest.validate_password_strength exactly:
+    //   - min 8 chars (enforced by Field)
+    //   - at least one uppercase letter
+    //   - at least one lowercase letter
+    //   - at least one digit
+    const passwordValid =
+        password.length >= 8 &&
+        /[A-Z]/.test(password) &&
+        /[a-z]/.test(password) &&
+        /\d/.test(password);
     const step1Valid =
-        fullName.trim().length >= 2 && isEmail(email) && password.length >= 8 &&
+        fullName.trim().length >= 2 && isEmail(email) && passwordValid &&
         phone.replace(/\D/g, '').length === 10 && !!selectedSuburb;
     const step3Valid =
         businessName.trim().length >= 2 && abn.replace(/\D/g, '').length === 11 &&
@@ -692,7 +702,21 @@ export default function TradieOnboardingPage() {
                                             {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
                                         </button>
                                     </div>
-                                    {password && password.length < 8 && <p style={{ fontSize: 11.5, color: C.amber, margin: '6px 0 0' }}>Use at least 8 characters.</p>}
+                                    {password && (
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px', marginTop: 8, paddingLeft: 2 }}>
+                                            {[
+                                                { ok: password.length >= 8, label: '8+ characters' },
+                                                { ok: /[A-Z]/.test(password), label: 'Uppercase letter' },
+                                                { ok: /[a-z]/.test(password), label: 'Lowercase letter' },
+                                                { ok: /\d/.test(password), label: 'Number (0–9)' },
+                                            ].map(({ ok, label }) => (
+                                                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: ok ? C.sage : C.ink3 }}>
+                                                    <span style={{ fontSize: 14, lineHeight: 1 }}>{ok ? '✓' : '·'}</span>
+                                                    {label}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 <div>
                                     <label style={labelStyle}>Mobile number</label>
