@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   LayoutDashboard, Users, ShieldCheck, Briefcase, AlertTriangle,
   Star, LogOut, Loader2, CheckCircle2, XCircle, ChevronDown,
-  RefreshCw, Search, X, FileText, Shield, User, Home,
+  Search, X, FileText, Shield, User, Home,
   Menu, ChevronRight, Building2, Clock,
 } from "lucide-react";
 import { useAuth } from "@/src/contexts/AuthContext";
@@ -838,4 +838,13 @@ export default function AdminPanel() {
           {loading ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, gap: 10 }}>
               <Loader2 size={20} color={C.primary} className="animate-spin" />
-              <span style={{ fontSize:
+              <span style={{ fontSize: 13, color: C.ink3, fontWeight: 600 }}>Loading…</span>
+            </div>
+          ) : (
+            tabContent[tab]?.()
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

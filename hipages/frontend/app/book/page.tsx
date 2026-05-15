@@ -1561,3 +1561,15 @@ function BookingContent() {
         .animate-shake { animation: shake 0.45s ease-in-out; }
       `}</style>
     </div>
+  );
+}
+  );
+}
+
+export default function BookPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FFF8E7' }} />}>
+      <BookingContent />
+    </Suspense>
+  );
+}
