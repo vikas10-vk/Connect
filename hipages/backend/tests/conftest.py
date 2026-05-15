@@ -17,8 +17,73 @@ import pytest
 import pytest_asyncio
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from main import app
+from db.session import AsyncSessionLocal
+from models.category import Category, CategoryLevel
+
+
+# =============================================================================
+# Canonical trade categories — seeded once per test session
+# =============================================================================
+#
+# The test DB starts empty. resolve_trade_category() does a DB lookup for the
+# submitted category_slug (e.g. "plumbing"). Without these rows the resolver
+# always returns None and every job-creation test fails with 400.
+#
+# This list mirrors the canonical slugs used throughout the codebase and tests.
+# Level = TRADE (1), is_active = True, no parent.
+
+_CANONICAL_CATEGORIES = [
+    ("Plumbing",            "plumbing"),
+    ("Electrical",          "electrical"),
+    ("Carpentry",           "carpentry"),
+    ("Painting",            "painting"),
+    ("Landscaping",         "landscaping"),
+    ("Roofing",             "roofing"),
+    ("Tiling",              "tiling"),
+    ("Concreting",          "concreting"),
+    ("Fencing",             "fencing"),
+    ("HVAC",                "hvac"),
+    ("Glazing",             "glazing"),
+    ("Pest Control",        "pest-control"),
+    ("Security",            "security"),
+    ("Solar",               "solar"),
+    ("Gas Fitting",         "gas-fitting"),
+    ("Demolition",          "demolition"),
+    ("Waterproofing",       "waterproofing"),
+    ("Cleaning",            "cleaning"),
+    ("Handyman",            "handyman"),
+    ("Building",            "building"),
+    ("Bathroom Renovation", "bathroom-renovation"),
+    ("Kitchen Renovation",  "kitchen-renovation"),
+    ("Plastering",          "plastering"),
+    ("Flooring",            "flooring"),
+]
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def seed_categories():
+    """
+    Insert canonical level-1 trade categories once for the entire test session.
+    Uses get-or-create so the fixture is safe to run against a DB that already
+    has rows (idempotent).
+    """
+    async with AsyncSessionLocal() as db:
+        for name, slug in _CANONICAL_CATEGORIES:
+            result = await db.execute(
+                select(Category).where(Category.slug == slug)
+            )
+            if result.scalar_one_or_none() is None:
+                db.add(Category(
+                    id=str(uuid.uuid4()),
+                    name=name,
+                    slug=slug,
+                    level=CategoryLevel.TRADE,
+                    is_active=True,
+                ))
+        await db.commit()
 
 
 # =============================================================================

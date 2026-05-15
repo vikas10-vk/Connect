@@ -1,6 +1,6 @@
 """
 Set CORS rules on the R2 bucket to allow browser direct uploads from localhost and production.
-Run once: venv\Scripts\python.exe set_r2_cors.py
+Run once: venv/Scripts/python.exe set_r2_cors.py
 """
 import boto3, os, json
 from dotenv import load_dotenv
