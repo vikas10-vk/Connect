@@ -17,36 +17,81 @@ Make sure the following are installed on your machine before you begin:
 
 ---
 
-## Setup Guide
+## 🚀 The Easiest Way: Windows Quick Start
+
+If you are on Windows, you can use the included `.bat` scripts instead of running each step manually. This is the **recommended** way for team members to get started quickly.
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository_url>
+   cd Intership_main/hipages
+   ```
+
+2. **Run the Setup Script:**
+   Double-click `setup.bat` in the `hipages` folder, or run it from the terminal:
+   ```cmd
+   setup.bat
+   ```
+   > This will automatically create the Python virtual environment, install all Python and Node.js dependencies, start Docker, and run the database migrations!
+
+3. **Configure Environment Variables:**
+   Copy `.env.example` to `.env` in the `hipages` folder:
+   ```cmd
+   copy .env.example .env
+   ```
+   Then follow the [Environment Variables Guide](#-configure-environment-variables) below to fill in your `SECRET_KEY`.
+
+4. **Start the Application:**
+   Double-click `start.bat` or run:
+   ```cmd
+   start.bat
+   ```
+   > This script will automatically open 3 terminal windows (Backend, Celery, and Frontend) and launch the application in your browser.
+
+When you're done working, just run `stop.bat` to shut everything down.
+
+---
+
+## 🛠️ Manual Setup Guide (Mac / Linux / Windows)
+
+If you are not on Windows or prefer to run things manually, follow these steps.
 
 ### Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/skanda0480-del/project.git
-cd project/hipages
+git clone <repository_url>
+cd Intership_main/hipages
 ```
 
 ---
 
 ### Step 2 — Configure Environment Variables
 
-Copy the example env file and fill in your values:
+Copy the example env file and fill in your values in the `hipages` directory:
 
 ```bash
 # Windows
-copy .env.example backend\.env
+copy .env.example .env
 
 # Mac / Linux
-cp .env.example backend/.env
+cp .env.example .env
 ```
 
-Then open `backend/.env` and fill in the values below.
+Also create the frontend env file:
 
----
+```bash
+# Windows
+echo NEXT_PUBLIC_API_URL=http://localhost:8000 > frontend\.env.local
+
+# Mac / Linux
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
+```
+
+> ⚠️ **Never commit `.env` or `.env.local` files.** They are already listed in `.gitignore`.
 
 #### 🔑 How to Generate Your `SECRET_KEY`
 
-`SECRET_KEY` is a random string used to sign JWT tokens. **You create it yourself** — it is not from any external service.
+`SECRET_KEY` is a random string used to sign JWT tokens. **You create it yourself** — it is not from any external service. Open `.env` and fill in the values.
 
 Run **one** of these commands to generate a secure key and copy the output into your `.env`:
 
@@ -62,66 +107,11 @@ openssl rand -hex 32
 ```
 
 Paste the output as the value of `SECRET_KEY` in your `.env` file. Example:
-
 ```env
 SECRET_KEY=3f8a2c1e9b7d4f6a0e5c2b8d1a3f7e9c4b6d2a8f1e5c3b7d9a2f4e6c1b8d3a7
 ```
 
-> ✅ Any long random string works. The longer the better. Never share or commit this value.
-
----
-
-#### 📋 Full `.env` Reference
-
-```env
-# ✅ REQUIRED — Database (leave defaults if using Docker)
-DATABASE_URL=postgresql+asyncpg://hipages:devpassword@localhost:5433/hipages_dev
-SYNC_DATABASE_URL=postgresql://hipages:devpassword@localhost:5433/hipages_dev
-
-# ✅ REQUIRED — Redis (leave default if using Docker)
-REDIS_URL=redis://localhost:6379/0
-
-# ✅ REQUIRED — JWT Auth (generate SECRET_KEY using the commands above)
-SECRET_KEY=your-generated-secret-key-here
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# ⚙️ OPTIONAL — Cloudflare R2 (for file/photo uploads)
-R2_ACCOUNT_ID=your_cloudflare_account_id
-R2_ACCESS_KEY_ID=your_r2_access_key
-R2_SECRET_ACCESS_KEY=your_r2_secret_key
-R2_BUCKET_NAME=hipages-upl
-R2_PUBLIC_URL=https://pub-xxxx.r2.dev
-
-# ⚙️ OPTIONAL — Stripe (for payments)
-STRIPE_SECRET_KEY=sk_test_your_key_here
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
-STRIPE_CREDIT_PRICE_ID=price_your_price_id
-
-# ⚙️ OPTIONAL — SendGrid (for emails)
-SENDGRID_API_KEY=
-
-# ⚙️ OPTIONAL — Twilio (for SMS)
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_FROM_NUMBER=
-```
-
-> You can leave all `OPTIONAL` fields blank for basic local development. The app will still run.
-
----
-
-Also create the frontend env file:
-
-```bash
-# Windows
-echo NEXT_PUBLIC_API_URL=http://localhost:8000 > frontend\.env.local
-
-# Mac / Linux
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
-```
-
-> ⚠️ **Never commit `.env` or `.env.local` files.** They are already listed in `.gitignore`.
+> ✅ You can leave all `OPTIONAL` fields in the `.env` blank for basic local development. The app will still run.
 
 ---
 
@@ -133,9 +123,7 @@ Make sure Docker Desktop is open and running, then:
 docker-compose up -d
 ```
 
-This starts:
-- **PostgreSQL** on port `5433`
-- **Redis** on port `6379`
+This starts **PostgreSQL** on port `5433` and **Redis** on port `6379`.
 
 ---
 
@@ -197,21 +185,7 @@ npm run dev
 
 ---
 
-## Windows Quick Start (Alternative)
-
-If you're on Windows, you can use the included `.bat` scripts instead of running each step manually:
-
-| Script | What it does |
-|--------|-------------|
-| `setup.bat` | First-time setup — installs all dependencies |
-| `start.bat` | Starts all services (opens 3 terminals + browser) |
-| `stop.bat` | Stops all running services |
-
-Double-click the scripts or run them from the terminal.
-
----
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 hipages/
@@ -239,7 +213,7 @@ hipages/
 
 ---
 
-## Troubleshooting
+## 🛠️ Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
