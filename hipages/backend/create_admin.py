@@ -6,10 +6,15 @@ Requires PostgreSQL to be running (docker compose up -d db).
 
 Usage
 -----
-  python create_admin.py create  --email admin@example.com --name "Admin Name"
-  python create_admin.py promote --email existing@example.com
+  python create_admin.py create  --email owner@example.com --name "Owner Name"
+  python create_admin.py promote --email owner@example.com
   python create_admin.py demote  --email admin@example.com --to homeowner
   python create_admin.py list
+
+Admin creation and promotion require:
+  - OWNER_ADMIN_EMAILS containing the target email
+  - ADMIN_BOOTSTRAP_TOKEN configured privately outside git
+  - the matching bootstrap token supplied at the prompt
 """
 
 import argparse
@@ -31,6 +36,7 @@ import os
 import bcrypt
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from services.admin_security import AdminBootstrapError, validate_admin_bootstrap
 
 # ── DB connection (sync — no async needed for a CLI tool) ─────────────────────
 DB_URL = os.getenv("SYNC_DATABASE_URL") or os.getenv("DATABASE_URL", "").replace(
@@ -70,9 +76,29 @@ def prompt_password() -> str:
         return pw
 
 
+def prompt_bootstrap_token() -> str:
+    return os.getenv("ADMIN_BOOTSTRAP_TOKEN_INPUT") or getpass.getpass(
+        "  Admin bootstrap token: "
+    )
+
+
+def authorize_admin_change(email: str, supplied_token: str | None) -> str:
+    try:
+        return validate_admin_bootstrap(email, supplied_token or prompt_bootstrap_token())
+    except AdminBootstrapError as exc:
+        print(f"\nAdmin creation blocked: {exc}", file=sys.stderr)
+        print(
+            "Only emails in OWNER_ADMIN_EMAILS can become admin, and the "
+            "ADMIN_BOOTSTRAP_TOKEN must be supplied from a private production secret.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 # ── Commands ───────────────────────────────────────────────────────────────────
 
-def cmd_create(email: str, name: str):
+def cmd_create(email: str, name: str, bootstrap_token: str | None):
+    email = authorize_admin_change(email, bootstrap_token)
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -106,7 +132,8 @@ def cmd_create(email: str, name: str):
         conn.close()
 
 
-def cmd_promote(email: str):
+def cmd_promote(email: str, bootstrap_token: str | None):
+    email = authorize_admin_change(email, bootstrap_token)
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -200,9 +227,23 @@ def main():
     p = sub.add_parser("create",  help="Create a new admin user")
     p.add_argument("--email", required=True)
     p.add_argument("--name",  required=True)
+    p.add_argument(
+        "--bootstrap-token",
+        help=(
+            "Owner-only bootstrap token. Prefer the interactive prompt or "
+            "ADMIN_BOOTSTRAP_TOKEN_INPUT so the token is not stored in shell history."
+        ),
+    )
 
     p = sub.add_parser("promote", help="Promote existing user to admin")
     p.add_argument("--email", required=True)
+    p.add_argument(
+        "--bootstrap-token",
+        help=(
+            "Owner-only bootstrap token. Prefer the interactive prompt or "
+            "ADMIN_BOOTSTRAP_TOKEN_INPUT so the token is not stored in shell history."
+        ),
+    )
 
     p = sub.add_parser("demote",  help="Demote admin to regular role")
     p.add_argument("--email", required=True)
@@ -212,8 +253,8 @@ def main():
 
     args = parser.parse_args()
     try:
-        if args.command == "create":  cmd_create(args.email, args.name)
-        elif args.command == "promote": cmd_promote(args.email)
+        if args.command == "create":  cmd_create(args.email, args.name, args.bootstrap_token)
+        elif args.command == "promote": cmd_promote(args.email, args.bootstrap_token)
         elif args.command == "demote":  cmd_demote(args.email, args.to_role)
         elif args.command == "list":    cmd_list()
     except KeyboardInterrupt:
