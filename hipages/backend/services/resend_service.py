@@ -136,6 +136,26 @@ async def send_otp_email(to_email: str, code: str, full_name: str = "") -> bool:
     return await _send_raw_email(to_email, f"Your {APP_NAME} verification code: {code}", _base_html(body), text)
 
 
+async def send_admin_note_email(
+    to_email: str,
+    subject: str,
+    message: str,
+    *,
+    full_name: str = "",
+    accent_color: str = "#2E7D5A",
+) -> bool:
+    name = _first(full_name)
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:24px;font-weight:500;color:#1A1A1A;">A note from {APP_NAME}</h1>
+      <p style="margin:0 0 18px;font-size:14.5px;line-height:1.65;color:#4A4A48;">G'day {name},</p>
+      {_box(message, accent_color, "#F4F8F5")}
+      <p style="margin:18px 0 0;font-size:13px;color:#8A8882;line-height:1.6;">
+        Thanks for helping keep the {APP_NAME} marketplace trustworthy.
+      </p>"""
+    text = f"G'day {name},\n\n{message}\n\n- The {APP_NAME} team"
+    return await _send_raw_email(to_email, subject, _base_html(body, accent_color), text)
+
+
 async def send_tradie_approved_email(to_email: str, full_name: str, business_name: str) -> bool:
     name = _first(full_name)
     url = f"{APP_BASE_URL}/tradie/dashboard"
@@ -182,18 +202,18 @@ async def send_tradie_needs_documents_email(to_email: str, full_name: str, busin
     return await _send_raw_email(to_email, f"Action required: documents needed for your {APP_NAME} application", _base_html(body, "#0077AA"), text)
 
 
-async def send_tradie_suspended_email(to_email: str, full_name: str, business_name: str, notes: Optional[str] = None) -> bool:
+async def send_tradie_suspended_email(to_email: str, full_name: str, business_name: str, reason: Optional[str] = None) -> bool:
     name = _first(full_name)
-    notes_block = _box(f"<strong>Reason:</strong><br>{notes}", "#A33030", "#FFF5F5") if notes else ""
+    reason_block = _box(f"<strong>Reason:</strong><br>{reason}", "#A33030", "#FFF5F5") if reason else ""
     body = f"""
       <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">Your {APP_NAME} account has been suspended</h1>
       <p style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
         G'day {name}, your account for <strong>{business_name}</strong> has been suspended. You will not receive new leads while under review.
       </p>
-      {notes_block}
+      {reason_block}
       <p style="margin:20px 0 0;font-size:14px;line-height:1.7;color:#4A4A48;">Reply to this email to appeal. Our team responds within 2 business days.</p>"""
     text = (f"G'day {name},\n\nYour {APP_NAME} account for '{business_name}' has been suspended.\n\n"
-            + (f"Reason: {notes}\n\n" if notes else "") + f"Reply to appeal.\n\n— The {APP_NAME} team")
+            + (f"Reason: {reason}\n\n" if reason else "") + f"Reply to appeal.\n\n— The {APP_NAME} team")
     return await _send_raw_email(to_email, f"Your {APP_NAME} account has been suspended", _base_html(body), text)
 
 

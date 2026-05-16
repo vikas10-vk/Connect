@@ -71,6 +71,10 @@ from services.auth_service import get_current_user
 from services.geocoding_service import geocode_tradie_suburb
 from services.notification_service import notify_tradie_new_inquiry
 from services.category_resolver import resolve_to_canonical_trade
+from services.tradie_change_requests import (
+    TradieChangeRequestType,
+    create_pending_change_request,
+)
 
 # ── Constants ──────────────────────────────────────────────────────────────
 URGENT_VALUES        = {"asap", "emergency"}
@@ -478,6 +482,27 @@ async def update_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
     updates = body.model_dump(exclude_unset=True)
+    protected_fields = {"abn", "suburb", "state", "postcode"}
+    protected_updates = {
+        field: value
+        for field, value in updates.items()
+        if field in protected_fields and getattr(profile, field) != value
+    }
+    if profile.verification_status == APPROVED_STATUS and protected_updates:
+        current_values = {field: getattr(profile, field) for field in protected_updates}
+        await create_pending_change_request(
+            db,
+            tradie_id=profile.id,
+            requested_by=current_user.id,
+            request_type=TradieChangeRequestType.PROFILE_IDENTITY,
+            payload={
+                "current": current_values,
+                "requested": protected_updates,
+            },
+            note="Verified tradie requested ABN/base location update.",
+        )
+        for field in protected_updates:
+            updates.pop(field, None)
     for field, value in updates.items():
         setattr(profile, field, value)
     if "suburb" in updates and "lat" not in updates:
@@ -488,7 +513,11 @@ async def update_profile(
     db.add(profile)
     await db.commit()
     await db.refresh(profile)
-    return profile
+    response = profile.__dict__.copy()
+    if protected_updates:
+        response["pending_admin_review"] = True
+        response["message"] = "ABN/base location changes were sent to admin for review."
+    return response
 
 
 @router.get("/profile/me", response_model=TradieProfileResponse)

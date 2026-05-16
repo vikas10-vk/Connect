@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Users, ShieldCheck, Briefcase, AlertTriangle,
   Star, LogOut, Loader2, CheckCircle2, XCircle, ChevronDown,
   Search, X, FileText, Shield, User, Home,
-  Menu, ChevronRight, Building2, Clock,
+  Menu, ChevronRight, Building2, Clock, Mail,
 } from "lucide-react";
 import { useAuth } from "@/src/contexts/AuthContext";
 import api from "@/src/lib/api";
@@ -34,7 +34,7 @@ interface Stats {
   completed_jobs: number; open_disputes: number; pending_verifications: number;
 }
 interface VerificationItem {
-  id: string; type: "licence" | "insurance" | "profile";
+  id: string; type: "licence" | "insurance" | "profile" | "change_request";
   tradie_id?: string; business_name?: string; tradie_email?: string; full_name?: string;
   category_name?: string; licence_number?: string; issuing_state?: string;
   issuing_body?: string; holder_name?: string; photo_url?: string; document_url?: string;
@@ -43,6 +43,7 @@ interface VerificationItem {
   status: string; rejection_reason?: string; rejection_note?: string;
   edit_request_note?: string; created_at: string;
   suburb?: string; state?: string; abn?: string; verification_status?: string;
+  request_type?: string; payload?: any; note?: string; admin_note?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -135,7 +136,7 @@ export default function AdminPanel() {
   const [homeowners, setHomeowners]   = useState<any[]>([]);
   const [hwTotal, setHwTotal]         = useState(0);
   const [hwSearch, setHwSearch]       = useState("");
-  const [verification, setVerification] = useState<{ certifications: VerificationItem[]; insurance: VerificationItem[]; profiles: VerificationItem[] } | null>(null);
+  const [verification, setVerification] = useState<{ certifications: VerificationItem[]; insurance: VerificationItem[]; profiles: VerificationItem[]; change_requests?: VerificationItem[] } | null>(null);
   const [jobs, setJobs]               = useState<any[]>([]);
   const [jobsTotal, setJobsTotal]     = useState(0);
   const [jobSearch, setJobSearch]     = useState("");
@@ -228,11 +229,47 @@ export default function AdminPanel() {
     catch (e: any) { alert(e?.response?.data?.detail || "Failed."); }
     finally { setActionLoading(null); }
   };
+  const approveChangeRequest = async (id: string) => {
+    setActionLoading(id);
+    try { await api.post(`/admin/change-requests/${id}/approve`, { admin_note: "Approved by admin." }); await load("verification"); }
+    catch (e: any) { alert(e?.response?.data?.detail || "Failed."); }
+    finally { setActionLoading(null); }
+  };
+  const rejectChangeRequest = async (id: string) => {
+    const admin_note = prompt("Reason shown in admin records / optional message to tradie:") || "";
+    setActionLoading(id);
+    try { await api.post(`/admin/change-requests/${id}/reject`, { admin_note }); await load("verification"); }
+    catch (e: any) { alert(e?.response?.data?.detail || "Failed."); }
+    finally { setActionLoading(null); }
+  };
+  const suspendTradie = async (id: string) => {
+    const reason = prompt("Suspension reason. Be specific; this is emailed to the tradie and disables access:");
+    if (!reason) return;
+    const confirmation = prompt("Type SUSPEND TRADIE to confirm:");
+    if (confirmation !== "SUSPEND TRADIE") return;
+    setActionLoading(id);
+    try { await api.post(`/admin/tradies/${id}/suspend`, { reason, confirmation }); await load("tradies"); }
+    catch (e: any) { alert(e?.response?.data?.detail || "Failed."); }
+    finally { setActionLoading(null); }
+  };
   const deleteReview = async (id: string) => {
     if (!confirm("Permanently delete this review?")) return;
     setActionLoading(id);
     try { await api.delete(`/admin/reviews/${id}`); await load("reviews"); }
     catch (e: any) { alert(e?.response?.data?.detail || "Failed."); }
+    finally { setActionLoading(null); }
+  };
+  const messageReviewer = async (id: string) => {
+    const message = prompt("Message to send to the homeowner who posted this review:");
+    if (!message) return;
+    setActionLoading(id);
+    try {
+      await api.post(`/admin/reviews/${id}/message`, {
+        subject: "Thanks for your ProConnect review",
+        message,
+      });
+      alert("Message sent.");
+    } catch (e: any) { alert(e?.response?.data?.detail || "Failed."); }
     finally { setActionLoading(null); }
   };
 
@@ -242,7 +279,7 @@ export default function AdminPanel() {
     { key: "tradies",      label: "Tradies",      icon: Building2 },
     { key: "homeowners",   label: "Homeowners",   icon: Home },
     { key: "verification", label: "Verification", icon: ShieldCheck,
-      badge: (verification?.certifications.length || 0) + (verification?.insurance.length || 0) + (verification?.profiles.length || 0) || overview?.stats?.pending_verifications },
+      badge: (verification?.certifications.length || 0) + (verification?.insurance.length || 0) + (verification?.profiles.length || 0) + (verification?.change_requests?.length || 0) || overview?.stats?.pending_verifications },
     { key: "jobs",         label: "Jobs",         icon: Briefcase },
     { key: "disputes",     label: "Disputes",     icon: AlertTriangle, badge: overview?.stats?.open_disputes },
     { key: "reviews",      label: "Reviews",      icon: Star },
@@ -389,7 +426,7 @@ export default function AdminPanel() {
                       </button>
                     )}
                     {t.verification_status !== "suspended" && (
-                      <button onClick={() => setTradieVerification(t.id, "suspended")} disabled={actionLoading === t.id}
+                      <button onClick={() => suspendTradie(t.id)} disabled={actionLoading === t.id}
                         style={btnS(C.panel, C.ink4)}>
                         Suspend
                       </button>
@@ -443,7 +480,7 @@ export default function AdminPanel() {
   );
 
   const renderVerification = () => {
-    const total = (verification?.certifications.length || 0) + (verification?.insurance.length || 0) + (verification?.profiles.length || 0);
+    const total = (verification?.certifications.length || 0) + (verification?.insurance.length || 0) + (verification?.profiles.length || 0) + (verification?.change_requests?.length || 0);
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
@@ -477,6 +514,41 @@ export default function AdminPanel() {
                     <button onClick={() => setTradieVerification(p.id!, "rejected")} disabled={actionLoading === p.id}
                       style={btnS(C.redL, C.red)}><XCircle size={11} /> Reject</button>
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Protected change requests */}
+        {(verification?.change_requests?.length ?? 0) > 0 && (
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.12em", margin: "0 0 10px" }}>
+              Protected tradie changes ({verification!.change_requests!.length})
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {verification!.change_requests!.map(req => (
+                <div key={req.id} style={{ ...panelS, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: C.amberL, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <AlertTriangle size={18} color={C.amber} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 220 }}>
+                      <p style={{ fontSize: 13.5, fontWeight: 700, color: C.ink, margin: "0 0 3px" }}>{req.business_name || req.full_name}</p>
+                      <p style={{ fontSize: 12, color: C.ink4, margin: "0 0 8px" }}>{req.tradie_email} · {req.request_type?.replace(/_/g, " ")}</p>
+                      <pre style={{ whiteSpace: "pre-wrap", margin: 0, padding: "10px 12px", background: C.bg, border: `1px solid ${C.line}`, borderRadius: 8, fontSize: 11.5, color: C.ink2, fontFamily: UI, lineHeight: 1.5 }}>
+                        {JSON.stringify(req.payload, null, 2)}
+                      </pre>
+                      {req.note && <p style={{ fontSize: 11.5, color: C.ink4, margin: "8px 0 0" }}>{req.note}</p>}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                      <button onClick={() => approveChangeRequest(req.id)} disabled={actionLoading === req.id}
+                        style={btnS(C.greenL, C.green)}><CheckCircle2 size={11} /> Approve change</button>
+                      <button onClick={() => rejectChangeRequest(req.id)} disabled={actionLoading === req.id}
+                        style={btnS(C.redL, C.red)}><XCircle size={11} /> Reject</button>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 11, color: C.ink4, margin: "10px 0 0" }}>Submitted {timeAgo(req.created_at)}</p>
                 </div>
               ))}
             </div>
@@ -683,6 +755,10 @@ export default function AdminPanel() {
                 <td style={{ ...tdS, maxWidth: 300 }}>{r.comment || <span style={{ color: C.ink4 }}>No comment</span>}</td>
                 <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{r.created_at ? timeAgo(r.created_at) : "—"}</td>
                 <td style={tdS}>
+                  <button onClick={() => messageReviewer(r.id)} disabled={actionLoading === r.id}
+                    style={{ ...btnS(C.greenL, C.green), marginRight: 6 }}>
+                    <Mail size={11} /> Message
+                  </button>
                   <button onClick={() => deleteReview(r.id)} disabled={actionLoading === r.id}
                     style={btnS(C.redL, C.red)}>
                     {actionLoading === r.id ? <Loader2 size={11} className="animate-spin" /> : <XCircle size={11} />} Remove
@@ -766,7 +842,7 @@ export default function AdminPanel() {
             const Icon = n.icon;
             const active = tab === n.key;
             const badge = n.key === "verification"
-              ? ((verification?.certifications.length || 0) + (verification?.insurance.length || 0) + (verification?.profiles.length || 0)) || n.badge
+              ? ((verification?.certifications.length || 0) + (verification?.insurance.length || 0) + (verification?.profiles.length || 0) + (verification?.change_requests?.length || 0)) || n.badge
               : n.key === "disputes" ? (disputes.length || n.badge) : n.badge;
             return (
               <button key={n.key} onClick={() => switchTab(n.key)}

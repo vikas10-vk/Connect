@@ -23,6 +23,10 @@ from models.tradie_profile import TradieProfile
 from models.tradie_preference import TradiePreference
 from models.user import User
 from services.auth_service import get_current_user
+from services.tradie_change_requests import (
+    TradieChangeRequestType,
+    create_pending_change_request,
+)
 
 # ── PREFIX MATCHES AXIOS BASE URL (/api/v1) ───────────────────────────────────
 router = APIRouter(prefix="/api/v1/tradies/preferences", tags=["Tradie Preferences"])
@@ -81,6 +85,10 @@ def _to_dict(pref: TradiePreference) -> dict:
     }
 
 
+def _same_suburbs(a, b) -> bool:
+    return json.dumps(a or [], sort_keys=True) == json.dumps(b or [], sort_keys=True)
+
+
 async def _get_profile(user_id: str, db: AsyncSession) -> TradieProfile:
     result = await db.execute(select(TradieProfile).where(TradieProfile.user_id == user_id))
     profile = result.scalar_one_or_none()
@@ -127,10 +135,30 @@ async def update_my_preferences(
     pref    = await _get_or_create_pref(profile.id, db)
 
     updates = body.model_dump(exclude_unset=True)
+    protected_change_requested = False
     for field, value in updates.items():
         if field == "service_suburbs":
             if value is not None and len(value) > 20:
                 raise HTTPException(status_code=422, detail="Maximum 20 service areas allowed.")
+            current_suburbs = _parse_suburbs(pref.service_suburbs)
+            requested_suburbs = [
+                s.model_dump() if hasattr(s, "model_dump") else dict(s)
+                for s in (value or [])
+            ]
+            if profile.verification_status == "verified" and not _same_suburbs(current_suburbs, requested_suburbs):
+                await create_pending_change_request(
+                    db,
+                    tradie_id=profile.id,
+                    requested_by=current_user.id,
+                    request_type=TradieChangeRequestType.SERVICE_AREAS,
+                    payload={
+                        "current_service_suburbs": current_suburbs,
+                        "requested_service_suburbs": requested_suburbs,
+                    },
+                    note="Verified tradie requested service area update.",
+                )
+                protected_change_requested = True
+                continue
             setattr(pref, "service_suburbs", _serialize_suburbs(value) if value is not None else None)
         else:
             setattr(pref, field, value)
@@ -139,4 +167,8 @@ async def update_my_preferences(
     db.add(pref)
     await db.commit()
     await db.refresh(pref)
-    return _to_dict(pref)
+    response = _to_dict(pref)
+    if protected_change_requested:
+        response["pending_admin_review"] = True
+        response["message"] = "Service area changes were sent to admin for review."
+    return response

@@ -223,6 +223,7 @@ function TradieStudioLayoutInner({ children }: Props) {
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '9px 12px', borderRadius: 10, border: active ? '1px solid rgba(212,170,58,0.25)' : '1px solid transparent',
                 cursor: 'pointer', width: '100%',
+                boxSizing: 'border-box',
                 background: active ? 'rgba(212,170,58,0.13)' : 'transparent',
                 color: active ? C.brass : item.warn ? C.amber : C.navText,
                 fontSize: 13.5, fontWeight: active ? 600 : 500,
@@ -286,7 +287,7 @@ function TradieStudioLayoutInner({ children }: Props) {
       <style>{`
         .ts-shell { display: flex; height: 100vh; overflow: hidden; background: ${C.bg}; font-family: ${UI}; }
         .ts-sidebar {
-          width: 248px; flex-shrink: 0;
+          width: 248px; min-width: 248px; flex: 0 0 248px;
           background: #071D36; border-right: 1px solid rgba(255,255,255,0.08);
           height: 100vh; overflow: hidden;
           position: sticky; top: 0;
@@ -302,7 +303,7 @@ function TradieStudioLayoutInner({ children }: Props) {
           display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(2px); z-index: 99;
         }
         .ts-drawer {
-          position: fixed; top: 0; left: -260px; width: 248px; height: 100vh;
+          position: fixed; top: 0; left: -260px; width: 248px; min-width: 248px; height: 100vh;
           background: #071D36; border-right: 1px solid rgba(255,255,255,0.08);
           z-index: 201; transition: left 0.25s ease;
           box-shadow: 4px 0 32px rgba(0,0,0,0.4);

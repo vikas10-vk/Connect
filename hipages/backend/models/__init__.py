@@ -47,6 +47,7 @@ from models.insurance_policy import InsurancePolicy     # noqa: F401
 from models.team_member import TeamMember               # noqa: F401
 from models.tradie_category import TradieCategory       # noqa: F401
 from models.tradie_preference import TradiePreference   # noqa: F401
+from models.tradie_change_request import TradieChangeRequest  # noqa: F401
 from models.tradie_pass import TradiePass               # noqa: F401
 from models.earnings_record import EarningsRecord       # noqa: F401
 

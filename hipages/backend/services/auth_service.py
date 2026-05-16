@@ -109,6 +109,20 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
 
+    if user.role == "tradie":
+        from models.tradie_profile import TradieProfile
+        profile_res = await db.execute(
+            select(TradieProfile.verification_status).where(TradieProfile.user_id == user.id)
+        )
+        if profile_res.scalar_one_or_none() == "suspended":
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Tradie account suspended. Please contact admin within 24 hours "
+                    "to resolve the issue."
+                ),
+            )
+
     return user
 
 
@@ -134,4 +148,11 @@ async def get_optional_user(
 
     if user and not user.is_active:
         return None
+    if user and user.role == "tradie":
+        from models.tradie_profile import TradieProfile
+        profile_res = await db.execute(
+            select(TradieProfile.verification_status).where(TradieProfile.user_id == user.id)
+        )
+        if profile_res.scalar_one_or_none() == "suspended":
+            return None
     return user

@@ -212,6 +212,10 @@ export default function Preferences() {
   const requiredDocs = useMemo(() => getRequiredDocuments(selectedCategories), [selectedCategories]);
 
   const missingDocumentTypesForCategory = (cat: CategoryItem): RequiredDocumentType[] => {
+    if (profileVerified && initialCatIds.includes(cat.id)) {
+      return [];
+    }
+
     const rule = getServiceRule(cat);
     const missing: RequiredDocumentType[] = [];
 
@@ -342,8 +346,8 @@ export default function Preferences() {
     // Promise.all would hide whether it was the preferences patch or a category
     // add/remove that failed. allSettled lets us report exactly what succeeded
     // and what didn't, which is critical for matching accuracy.
-    const catAddResults    = await Promise.allSettled(toAdd.map(id => api.post(`/categories/my-categories/${id}`).then(() => ({ id, op: 'add' as const }))));
-    const catRemoveResults = await Promise.allSettled(toRemove.map(id => api.delete(`/categories/my-categories/${id}`).then(() => ({ id, op: 'remove' as const }))));
+    const catAddResults    = await Promise.allSettled(toAdd.map(id => api.post(`/categories/my-categories/${id}`).then(res => ({ id, op: 'add' as const, pending_admin_review: !!res.data?.pending_admin_review }))));
+    const catRemoveResults = await Promise.allSettled(toRemove.map(id => api.delete(`/categories/my-categories/${id}`).then(res => ({ id, op: 'remove' as const, pending_admin_review: !!res.data?.pending_admin_review }))));
     const prefResult       = await Promise.allSettled([api.patch('/tradies/preferences/me', { ...settings, service_suburbs: serviceAreas })]);
 
     // Collect failures
@@ -354,7 +358,20 @@ export default function Preferences() {
     const totalFailures = addFailures.length + removeFailures.length + (prefFailure ? 1 : 0);
     const totalOps      = toAdd.length + toRemove.length + 1; // +1 for the prefs patch
 
+    const pendingReview =
+      catAddResults.some((r: any) => r.status === 'fulfilled' && r.value?.pending_admin_review) ||
+      catRemoveResults.some((r: any) => r.status === 'fulfilled' && r.value?.pending_admin_review) ||
+      (prefResult[0]?.status === 'fulfilled' && (prefResult[0] as any).value?.data?.pending_admin_review);
+
     if (totalFailures === 0) {
+      if (pendingReview) {
+        setSelectedCatIds([...initialCatIds]);
+        setServiceAreas([...initialAreas]);
+        setInitialSettings({ ...settings });
+        toast.success('Protected changes sent to admin for approval. Your current approved services and areas stay active.');
+        setSaving(false);
+        return;
+      }
       // All succeeded — update local state baseline
       setInitialCatIds([...selectedCatIds]);
       setInitialSettings({ ...settings });

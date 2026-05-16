@@ -9,6 +9,10 @@ from schemas.category_schema import CategoryCreate, CategoryResponse
 from services.auth_service import get_current_user
 from services.category_resolver import resolve_to_canonical_trade
 from models.user import User
+from services.tradie_change_requests import (
+    TradieChangeRequestType,
+    create_pending_change_request,
+)
 import uuid
 
 router = APIRouter(prefix="/api/v1/categories", tags=["Categories"])
@@ -105,6 +109,25 @@ async def add_my_category(
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Category already added")
 
+    if profile.verification_status == "verified":
+        await create_pending_change_request(
+            db,
+            tradie_id=profile.id,
+            requested_by=current_user.id,
+            request_type=TradieChangeRequestType.SERVICE_ADD,
+            payload={
+                "category_id": category_id,
+                "category_name": trade_category.name,
+                "category_slug": trade_category.slug,
+            },
+            note="Verified tradie requested a new service.",
+        )
+        await db.commit()
+        return {
+            "message": "Service change sent to admin for approval.",
+            "pending_admin_review": True,
+        }
+
     link = TradieCategory(tradie_id=profile.id, category_id=category_id)
     db.add(link)
     await db.commit()
@@ -161,6 +184,27 @@ async def remove_my_category(
     link = result.scalar_one_or_none()
     if not link:
         raise HTTPException(status_code=404, detail="Category not found on your profile")
+
+    if profile.verification_status == "verified":
+        cat_res = await db.execute(select(Category).where(Category.id == category_id))
+        category = cat_res.scalar_one_or_none()
+        await create_pending_change_request(
+            db,
+            tradie_id=profile.id,
+            requested_by=current_user.id,
+            request_type=TradieChangeRequestType.SERVICE_REMOVE,
+            payload={
+                "category_id": category_id,
+                "category_name": category.name if category else None,
+                "category_slug": category.slug if category else None,
+            },
+            note="Verified tradie requested service removal.",
+        )
+        await db.commit()
+        return {
+            "message": "Service removal sent to admin for approval.",
+            "pending_admin_review": True,
+        }
 
     await db.delete(link)
     await db.commit()

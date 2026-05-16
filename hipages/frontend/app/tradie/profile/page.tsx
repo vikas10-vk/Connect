@@ -188,8 +188,25 @@ export default function TradieProfile() {
   const handleSave = async () => {
     setSaving(true); setError(null);
     try {
-      await api.patch('/tradies/profile/me', profile);
-      toast.success('Profile saved.');
+      const res = await api.patch('/tradies/profile/me', profile);
+      if (res.data?.pending_admin_review) {
+        toast.success('Protected ABN/location changes sent to admin for approval.');
+      } else {
+        toast.success('Profile saved.');
+      }
+      setProfile(prev => ({
+        ...prev,
+        business_name: res.data.business_name ?? prev.business_name,
+        bio: res.data.bio ?? prev.bio,
+        phone: res.data.phone ?? prev.phone,
+        suburb: res.data.suburb ?? prev.suburb,
+        state: res.data.state ?? prev.state,
+        postcode: res.data.postcode ?? prev.postcode,
+        radius_km: res.data.radius_km ?? prev.radius_km,
+        is_available: res.data.is_available ?? prev.is_available,
+        abn: res.data.abn ?? prev.abn,
+        avatar_url: res.data.avatar_url ?? prev.avatar_url,
+      }));
     } catch (err: any) {
       const msg = err?.response?.data?.detail || 'Failed to save profile.';
       setError(msg); toast.error(msg);

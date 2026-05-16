@@ -20,6 +20,7 @@ ENDPOINTS:
   DELETE /admin/reviews/{review_id}               Remove a review
 """
 
+import json
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -37,12 +38,19 @@ from models.job import Job
 from models.lead import Lead
 from models.review import Review
 from models.tradie_category import TradieCategory
+from models.tradie_change_request import (
+    TradieChangeRequest,
+    TradieChangeRequestStatus,
+    TradieChangeRequestType,
+)
 from models.tradie_certification import TradieCertification, CertificationStatus
 from models.tradie_pass import TradiePass
 from models.tradie_profile import TradieProfile
+from models.tradie_preference import TradiePreference
 from models.user import User
 from services.auth_service import get_current_user
 from services.category_resolver import canonical_trade_category
+from services.resend_service import send_admin_note_email, send_tradie_suspended_email
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 
@@ -63,6 +71,21 @@ class RejectBody(BaseModel):
 
 class VerificationStatusBody(BaseModel):
     verification_status: str  # "pending" | "in_review" | "verified" | "rejected" | "suspended"
+    note: Optional[str] = None
+
+
+class SuspendTradieBody(BaseModel):
+    reason: str
+    confirmation: str
+
+
+class AdminMessageBody(BaseModel):
+    subject: str
+    message: str
+
+
+class ChangeRequestReviewBody(BaseModel):
+    admin_note: Optional[str] = None
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -81,6 +104,31 @@ def _fmt_tradie(profile: TradieProfile) -> dict:
         "is_available":         profile.is_available,
         "abn":                  profile.abn,
         "created_at":           profile.created_at,
+    }
+
+
+def _payload(req: TradieChangeRequest) -> dict:
+    try:
+        return json.loads(req.payload)
+    except Exception:
+        return {}
+
+
+def _fmt_change_request(req: TradieChangeRequest) -> dict:
+    return {
+        "id": req.id,
+        "type": "change_request",
+        "request_type": req.request_type,
+        "status": req.status,
+        "tradie_id": req.tradie_id,
+        "business_name": req.tradie.business_name if req.tradie else None,
+        "tradie_email": req.tradie.user.email if req.tradie and req.tradie.user else None,
+        "full_name": req.tradie.user.full_name if req.tradie and req.tradie.user else None,
+        "payload": _payload(req),
+        "note": req.note,
+        "admin_note": req.admin_note,
+        "created_at": req.created_at,
+        "reviewed_at": req.reviewed_at,
     }
 
 
@@ -237,7 +285,14 @@ async def get_overview(
         .where(InsurancePolicy.status.in_([InsuranceStatus.PENDING, InsuranceStatus.IN_REVIEW]))
     )
     pending_profiles_r = await db.execute(
-        select(func.count()).select_from(TradieProfile).where(TradieProfile.verification_status == "pending")
+        select(func.count())
+        .select_from(TradieProfile)
+        .where(TradieProfile.verification_status.in_(["pending", "pending_review", "in_review"]))
+    )
+    pending_changes_r = await db.execute(
+        select(func.count())
+        .select_from(TradieChangeRequest)
+        .where(TradieChangeRequest.status == TradieChangeRequestStatus.PENDING)
     )
 
     # Recent tradies (last 5)
@@ -285,7 +340,12 @@ async def get_overview(
             "total_jobs":           total_jobs_r.scalar() or 0,
             "completed_jobs":       completed_jobs_r.scalar() or 0,
             "open_disputes":        open_disputes_r.scalar() or 0,
-            "pending_verifications": (pending_certs_r.scalar() or 0) + (pending_ins_r.scalar() or 0) + (pending_profiles_r.scalar() or 0),
+            "pending_verifications": (
+                (pending_certs_r.scalar() or 0)
+                + (pending_ins_r.scalar() or 0)
+                + (pending_profiles_r.scalar() or 0)
+                + (pending_changes_r.scalar() or 0)
+            ),
         },
         "recent_tradies": recent_tradies,
         "recent_disputes": disputes,
@@ -332,13 +392,193 @@ async def set_tradie_verification(
     admin: User = Depends(require_admin),
     db:    AsyncSession = Depends(get_db),
 ):
-    res = await db.execute(select(TradieProfile).where(TradieProfile.id == tradie_id))
+    res = await db.execute(
+        select(TradieProfile)
+        .options(selectinload(TradieProfile.user))
+        .where(TradieProfile.id == tradie_id)
+    )
     profile = res.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=404, detail="Tradie profile not found.")
     profile.verification_status = body.verification_status
+    profile.verification_notes = body.note
+    profile.reviewed_by = admin.id
+    profile.reviewed_at = datetime.utcnow()
+    if body.verification_status == "verified":
+        profile.verified_at = profile.verified_at or datetime.utcnow()
+        profile.is_available = True
+        if profile.user:
+            profile.user.is_active = True
+    elif body.verification_status in {"rejected", "suspended"}:
+        profile.is_available = False
     await db.commit()
     return {"id": tradie_id, "verification_status": profile.verification_status}
+
+
+@router.post("/tradies/{tradie_id}/suspend")
+async def suspend_tradie(
+    tradie_id: str,
+    body: SuspendTradieBody,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    expected = "SUSPEND TRADIE"
+    if body.confirmation.strip() != expected:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Type '{expected}' to confirm suspension.",
+        )
+    if len(body.reason.strip()) < 20:
+        raise HTTPException(status_code=422, detail="Suspension reason must be at least 20 characters.")
+
+    res = await db.execute(
+        select(TradieProfile)
+        .options(selectinload(TradieProfile.user))
+        .where(TradieProfile.id == tradie_id)
+    )
+    profile = res.scalar_one_or_none()
+    if not profile or not profile.user:
+        raise HTTPException(status_code=404, detail="Tradie profile not found.")
+
+    profile.verification_status = "suspended"
+    profile.verification_notes = body.reason.strip()
+    profile.is_available = False
+    profile.reviewed_by = admin.id
+    profile.reviewed_at = datetime.utcnow()
+    profile.user.is_active = False
+    db.add(profile)
+    db.add(profile.user)
+    await db.commit()
+
+    try:
+        await send_tradie_suspended_email(
+            profile.user.email,
+            profile.user.full_name or "",
+            profile.business_name or profile.user.email,
+            body.reason.strip(),
+        )
+    except Exception:
+        pass
+
+    return {
+        "id": tradie_id,
+        "verification_status": "suspended",
+        "is_active": False,
+        "message": "Tradie suspended, login disabled, and leads paused.",
+    }
+
+
+@router.post("/reviews/{review_id}/message")
+async def message_review_author(
+    review_id: str,
+    body: AdminMessageBody,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(
+        select(Review)
+        .options(selectinload(Review.homeowner))
+        .where(Review.id == review_id)
+    )
+    review = res.scalar_one_or_none()
+    if not review or not review.homeowner:
+        raise HTTPException(status_code=404, detail="Review author not found.")
+    await send_admin_note_email(
+        review.homeowner.email,
+        body.subject,
+        body.message,
+        full_name=review.homeowner.full_name or "",
+        accent_color="#2E7D5A",
+    )
+    return {"sent": True}
+
+
+async def _apply_change_request(req: TradieChangeRequest, db: AsyncSession) -> None:
+    payload = _payload(req)
+    if req.request_type == TradieChangeRequestType.SERVICE_AREAS:
+        pref_res = await db.execute(
+            select(TradiePreference).where(TradiePreference.tradie_id == req.tradie_id)
+        )
+        pref = pref_res.scalar_one_or_none()
+        if not pref:
+            pref = TradiePreference(id=str(uuid.uuid4()), tradie_id=req.tradie_id)
+        pref.service_suburbs = json.dumps(payload.get("requested_service_suburbs") or [])
+        db.add(pref)
+    elif req.request_type == TradieChangeRequestType.SERVICE_ADD:
+        category_id = payload.get("category_id")
+        exists = await db.execute(
+            select(TradieCategory).where(
+                TradieCategory.tradie_id == req.tradie_id,
+                TradieCategory.category_id == category_id,
+            )
+        )
+        if category_id and not exists.scalar_one_or_none():
+            db.add(TradieCategory(tradie_id=req.tradie_id, category_id=category_id))
+    elif req.request_type == TradieChangeRequestType.SERVICE_REMOVE:
+        category_id = payload.get("category_id")
+        link_res = await db.execute(
+            select(TradieCategory).where(
+                TradieCategory.tradie_id == req.tradie_id,
+                TradieCategory.category_id == category_id,
+            )
+        )
+        link = link_res.scalar_one_or_none()
+        if link:
+            await db.delete(link)
+    elif req.request_type == TradieChangeRequestType.PROFILE_IDENTITY:
+        requested = payload.get("requested") or {}
+        profile_res = await db.execute(select(TradieProfile).where(TradieProfile.id == req.tradie_id))
+        profile = profile_res.scalar_one_or_none()
+        if profile:
+            for field in ("abn", "suburb", "state", "postcode"):
+                if field in requested:
+                    setattr(profile, field, requested[field])
+            db.add(profile)
+
+
+@router.post("/change-requests/{request_id}/approve")
+async def approve_change_request(
+    request_id: str,
+    body: ChangeRequestReviewBody | None = None,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(TradieChangeRequest).where(TradieChangeRequest.id == request_id))
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Change request not found.")
+    if req.status != TradieChangeRequestStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Change request already reviewed.")
+    await _apply_change_request(req, db)
+    req.status = TradieChangeRequestStatus.APPROVED
+    req.admin_note = body.admin_note if body else None
+    req.reviewed_by = admin.id
+    req.reviewed_at = datetime.utcnow()
+    db.add(req)
+    await db.commit()
+    return {"id": req.id, "status": req.status}
+
+
+@router.post("/change-requests/{request_id}/reject")
+async def reject_change_request(
+    request_id: str,
+    body: ChangeRequestReviewBody,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(TradieChangeRequest).where(TradieChangeRequest.id == request_id))
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Change request not found.")
+    if req.status != TradieChangeRequestStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Change request already reviewed.")
+    req.status = TradieChangeRequestStatus.REJECTED
+    req.admin_note = body.admin_note
+    req.reviewed_by = admin.id
+    req.reviewed_at = datetime.utcnow()
+    db.add(req)
+    await db.commit()
+    return {"id": req.id, "status": req.status}
 
 
 # ── GET /admin/homeowners ──────────────────────────────────────────────────────
@@ -405,7 +645,7 @@ async def get_pending_verifications(
     profiles_r = await db.execute(
         select(TradieProfile)
         .options(selectinload(TradieProfile.user))
-        .where(TradieProfile.verification_status == "pending")
+        .where(TradieProfile.verification_status.in_(["pending", "pending_review", "in_review"]))
         .order_by(TradieProfile.created_at.asc())
     )
     profiles = [
@@ -421,11 +661,22 @@ async def get_pending_verifications(
         for p in profiles_r.scalars().all()
     ]
 
+    changes_r = await db.execute(
+        select(TradieChangeRequest)
+        .options(
+            selectinload(TradieChangeRequest.tradie).selectinload(TradieProfile.user),
+        )
+        .where(TradieChangeRequest.status == TradieChangeRequestStatus.PENDING)
+        .order_by(TradieChangeRequest.created_at.asc())
+    )
+    change_requests = [_fmt_change_request(req) for req in changes_r.scalars().all()]
+
     return {
         "certifications": certs,
         "insurance":      insurance,
         "profiles":       profiles,
-        "total":          len(certs) + len(insurance) + len(profiles),
+        "change_requests": change_requests,
+        "total":          len(certs) + len(insurance) + len(profiles) + len(change_requests),
     }
 
 

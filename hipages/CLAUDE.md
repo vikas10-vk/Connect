@@ -167,23 +167,29 @@ in_progress → awaiting_scope_approval → in_progress (homeowner approves/reje
 - The admin portal is never exposed or mentioned in the homeowner UI (security by obscurity)
 
 ### Creating admin users:
-Admin users must be created via CLI — they **cannot** sign up through the normal UI (which only allows `homeowner` or `tradie` roles).
+Admin users must be created/promoted via CLI — they **cannot** sign up through the normal UI (which only allows `homeowner` or `tradie` roles).
+
+Admin bootstrap is owner-locked:
+- `OWNER_ADMIN_EMAILS` must contain the target email.
+- `ADMIN_BOOTSTRAP_TOKEN` must be configured privately outside git.
+- The matching token must be supplied interactively or via `ADMIN_BOOTSTRAP_TOKEN_INPUT`.
+- Do not pass real bootstrap tokens as command arguments in shared shells or logs.
 
 ```bash
 # Run inside the fastapi container
 docker compose -f docker-compose.dev.yml exec fastapi python create_admin.py create \
-  --email admin@example.com \
-  --name "Admin Name"
-# Password is prompted interactively (never passed as CLI arg)
+  --email owner@yourdomain.com \
+  --name "Owner Name"
+# Bootstrap token and password are prompted interactively.
 
 # Other commands:
-python create_admin.py promote --email user@example.com   # homeowner → admin
-python create_admin.py demote  --email admin@example.com  # admin → homeowner
+python create_admin.py promote --email owner@yourdomain.com  # owner allowlist + token required
+python create_admin.py demote  --email admin@example.com      # admin → homeowner
 python create_admin.py list                                # list all admin users
 ```
 
 ### `create_admin.py` location:
-`backend/create_admin.py` — uses `psycopg2` (sync), NOT asyncpg. Reads `SYNC_DATABASE_URL` or strips `+asyncpg` from `DATABASE_URL`.
+`backend/create_admin.py` — uses `psycopg2` (sync), NOT asyncpg. Reads `SYNC_DATABASE_URL` or strips `+asyncpg` from `DATABASE_URL`. Admin create/promote calls `services/admin_security.py` before touching the database.
 
 ### `UserRole` type (frontend):
 ```typescript
@@ -417,7 +423,7 @@ Both counts come from `GET /tradies/dashboard/me`.
 14. **Leads badge count** — only counts `status === 'sent'` (unquoted)
 15. **`create_quote` state machine** — replaced invalid transition with direct assignment
 
-### Fixes 16–30 (this session)
+### Fixes 16–32
 
 16. **`create_admin.py`** (NEW FILE) — CLI tool to create/promote/demote admin users using psycopg2 sync. Run inside Docker container. Bypasses the normal signup flow entirely.
 
@@ -460,6 +466,8 @@ Both counts come from `GET /tradies/dashboard/me`.
 30. **`profile/page.tsx` — category name resolution fix** — Changed tree call to `api.get('/categories')`. Categories are now displayed by name (e.g. "Plumbing"), never by UUID. Orphan IDs that can't resolve show "Service" as placeholder.
 
 31. **`profile/page.tsx` — removed availability toggle** — Removed "Availability" toggle button from the edit form (phone field now spans full width). Removed "Available for work / Not available" status dot from profile header. The `is_available` field remains in the save payload (defaults `true`) but is no longer user-editable in the UI.
+
+32. **Admin bootstrap locked down** — Added `services/admin_security.py` and updated `create_admin.py` so admin creation/promotion requires both `OWNER_ADMIN_EMAILS` and a private `ADMIN_BOOTSTRAP_TOKEN`. Normal signup still rejects `admin`; CLI creation is now owner-only unless someone has production secrets/DB access.
 
 ---
 
@@ -545,7 +553,7 @@ def _run_async(coro):
 | Lead distribution | Celery task with in-process fallback via `BackgroundTasks` |
 | Strict-verification services | Require verified licence cert + public liability insurance |
 | Admin login | Goes through `/login` (homeowner page) — silently redirected to `/admin` by role check |
-| Admin user creation | Must use `create_admin.py` CLI — cannot sign up via UI |
+| Admin user creation | Must use `create_admin.py` CLI with `OWNER_ADMIN_EMAILS` + private `ADMIN_BOOTSTRAP_TOKEN` — cannot sign up via UI |
 | No Django admin | Django service was removed. Admin backend is `routers/admin.py` in FastAPI |
 | `/tradies/categories/tree` | Avoid using this — can error in async context. Use `/categories` instead |
 | `alert()` in frontend | Browsers can block it silently. Use inline state-driven error banners instead |
@@ -583,9 +591,10 @@ docker compose -f docker-compose.dev.yml exec fastapi python scripts/fix_accepte
 **Create admin user:**
 ```bash
 docker compose -f docker-compose.dev.yml exec fastapi python create_admin.py create \
-  --email admin@yourdomain.com --name "Admin Name"
+  --email owner@yourdomain.com --name "Owner Name"
+# Bootstrap token and password are prompted interactively.
 ```
 
 ---
 
-*Last updated: 2026-05-15 — Fixes 1–31 complete. Job full lifecycle built end-to-end. Admin system built. Category fixes applied.*
+*Last updated: 2026-05-16 — Fixes 1–32 complete. Job full lifecycle built end-to-end. Admin system built. Admin bootstrap locked to owner allowlist + private token.*
