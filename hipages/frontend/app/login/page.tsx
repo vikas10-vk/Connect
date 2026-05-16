@@ -15,7 +15,6 @@ function LoginForm() {
   const [error, setError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const sessionExpired = searchParams.get('session') === 'expired';
   const returnTo = searchParams.get('returnTo') || '/dashboard';
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,13 +60,6 @@ function LoginForm() {
         <h1 className="text-2xl sm:text-3xl font-bold text-[#071D36]">Welcome back</h1>
         <p className="text-gray-500 text-center">Sign in to your homeowner account</p>
       </div>
-
-      {sessionExpired && (
-        <div className="bg-amber-50 text-amber-700 p-3 rounded-xl text-sm font-medium flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          Your session expired. Please sign in again.
-        </div>
-      )}
 
       {error && (
         <div className="bg-red-50 text-red-500 p-3 rounded-xl text-sm font-medium flex items-center gap-2">

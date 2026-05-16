@@ -53,6 +53,7 @@ function DashboardContent() {
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) router.push('/login');
+      else if (user?.role === 'admin') router.push('/admin');
       else if (user?.role === 'tradie') router.push('/tradie/dashboard');
     }
   }, [isLoading, isAuthenticated, user, router]);

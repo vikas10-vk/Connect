@@ -27,7 +27,7 @@ const SHADOW = "0 1px 3px rgba(15,25,35,0.07),0 1px 2px rgba(15,25,35,0.04)";
 const SHADOW_MD = "0 4px 16px rgba(15,25,35,0.10),0 1px 4px rgba(15,25,35,0.05)";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Tab = "overview" | "tradies" | "homeowners" | "verification" | "jobs" | "disputes" | "reviews";
+type Tab = "overview" | "tradies" | "homeowners" | "verification" | "jobs" | "completed" | "disputes" | "reviews";
 
 interface Stats {
   total_tradies: number; total_homeowners: number; total_jobs: number;
@@ -144,6 +144,11 @@ export default function AdminPanel() {
   const [disputes, setDisputes]       = useState<any[]>([]);
   const [reviews, setReviews]         = useState<any[]>([]);
   const [reviewsTotal, setReviewsTotal] = useState(0);
+  const [completedJobs, setCompletedJobs]   = useState<any[]>([]);
+  const [completedTotal, setCompletedTotal] = useState(0);
+  const [completedSearch, setCompletedSearch] = useState("");
+  const [completedStatusFilter, setCompletedStatusFilter] = useState("");
+  const [expandedCompletedId, setExpandedCompletedId] = React.useState<string | null>(null);
 
   // Auth guard
   useEffect(() => {
@@ -182,11 +187,17 @@ export default function AdminPanel() {
       } else if (t === "reviews") {
         const { data } = await api.get("/admin/reviews?page=1&limit=50");
         setReviews(data.items); setReviewsTotal(data.total);
+      } else if (t === "completed") {
+        const params = new URLSearchParams({ page: "1", limit: "50" });
+        if (completedSearch) params.set("search", completedSearch);
+        if (completedStatusFilter) params.set("status", completedStatusFilter);
+        const { data } = await api.get(`/admin/completed-jobs?${params}`);
+        setCompletedJobs(data.items); setCompletedTotal(data.total);
       }
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Failed to load data.");
     } finally { setLoading(false); }
-  }, [tradieSearch, tradieFilter, hwSearch, jobSearch, jobStatusFilter]);
+  }, [tradieSearch, tradieFilter, hwSearch, jobSearch, jobStatusFilter, completedSearch, completedStatusFilter]);
 
   useEffect(() => { load(tab); }, [tab]);
 
@@ -281,6 +292,7 @@ export default function AdminPanel() {
     { key: "verification", label: "Verification", icon: ShieldCheck,
       badge: (verification?.certifications.length || 0) + (verification?.insurance.length || 0) + (verification?.profiles.length || 0) + (verification?.change_requests?.length || 0) || overview?.stats?.pending_verifications },
     { key: "jobs",         label: "Jobs",         icon: Briefcase },
+    { key: "completed",    label: "Completed",    icon: CheckCircle2, badge: overview?.stats?.completed_jobs || undefined },
     { key: "disputes",     label: "Disputes",     icon: AlertTriangle, badge: overview?.stats?.open_disputes },
     { key: "reviews",      label: "Reviews",      icon: Star },
   ];
@@ -672,6 +684,8 @@ export default function AdminPanel() {
     );
   };
 
+  const [expandedJobId, setExpandedJobId] = React.useState<string | null>(null);
+
   const renderJobs = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -692,18 +706,70 @@ export default function AdminPanel() {
       <p style={{ fontSize: 12, color: C.ink4, margin: 0 }}>{jobsTotal} jobs</p>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", background: C.card, borderRadius: 12, overflow: "hidden", boxShadow: SHADOW }}>
-          <thead><tr>{["Title","Location","Status","Posted"].map(h => <th key={h} style={thS}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Title","Location","Status","Posted","Photos"].map(h => <th key={h} style={thS}>{h}</th>)}</tr></thead>
           <tbody>
             {jobs.length === 0 && !loading && (
-              <tr><td colSpan={4} style={{ ...tdS, textAlign: "center", color: C.ink4, padding: 32 }}>No jobs found</td></tr>
+              <tr><td colSpan={5} style={{ ...tdS, textAlign: "center", color: C.ink4, padding: 32 }}>No jobs found</td></tr>
             )}
             {jobs.map(j => (
-              <tr key={j.id}>
-                <td style={{ ...tdS, fontWeight: 600 }}>{j.title || "Untitled"}</td>
-                <td style={tdS}>{j.suburb || "—"}, {j.state || "—"}</td>
-                <td style={tdS}><StatusPill status={j.status} /></td>
-                <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{j.created_at ? timeAgo(j.created_at) : "—"}</td>
-              </tr>
+              <React.Fragment key={j.id}>
+                <tr
+                  onClick={() => setExpandedJobId(expandedJobId === j.id ? null : j.id)}
+                  style={{ cursor: "pointer", background: expandedJobId === j.id ? C.bg : "transparent" }}
+                >
+                  <td style={{ ...tdS, fontWeight: 600 }}>{j.title || "Untitled"}</td>
+                  <td style={tdS}>{j.suburb || "—"}, {j.state || "—"}</td>
+                  <td style={tdS}><StatusPill status={j.status} /></td>
+                  <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{j.created_at ? timeAgo(j.created_at) : "—"}</td>
+                  <td style={tdS}>
+                    {(j.after_photos?.length > 0 || j.photo_before_url) ? (
+                      <span style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: C.blueL, color: C.blue }}>
+                        {(j.after_photos?.length || 0) + (j.photo_before_url ? 1 : 0)} photo{((j.after_photos?.length || 0) + (j.photo_before_url ? 1 : 0)) !== 1 ? "s" : ""}
+                      </span>
+                    ) : <span style={{ color: C.ink4, fontSize: 12 }}>—</span>}
+                  </td>
+                </tr>
+                {expandedJobId === j.id && (
+                  <tr>
+                    <td colSpan={5} style={{ padding: "14px 18px", background: C.bg, borderBottom: `1px solid ${C.line}` }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {j.completion_note && (
+                          <p style={{ margin: 0, fontSize: 13, color: C.ink2 }}>
+                            <strong>Completion note:</strong> {j.completion_note}
+                          </p>
+                        )}
+                        {(j.photo_before_url || j.after_photos?.length > 0) && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                            {j.photo_before_url && (
+                              <div>
+                                <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Before</p>
+                                <a href={j.photo_before_url} target="_blank" rel="noreferrer">
+                                  <img src={j.photo_before_url} alt="Before" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                                </a>
+                              </div>
+                            )}
+                            {j.after_photos?.length > 0 && (
+                              <div>
+                                <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.06em" }}>After ({j.after_photos.length})</p>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                  {j.after_photos.map((p: any, i: number) => (
+                                    <a key={i} href={p.url} target="_blank" rel="noreferrer">
+                                      <img src={p.url} alt={`After ${i + 1}`} style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.line}` }} />
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!j.photo_before_url && !j.after_photos?.length && !j.completion_note && (
+                          <p style={{ margin: 0, fontSize: 13, color: C.ink4 }}>No photos or completion note for this job.</p>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -772,21 +838,222 @@ export default function AdminPanel() {
     </div>
   );
 
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+  const renderCompleted = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Filters */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ position: "relative", flex: "1 1 200px" }}>
+          <Search size={13} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: C.ink4 }} />
+          <input value={completedSearch} onChange={e => setCompletedSearch(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && load("completed")}
+            placeholder="Search job title…"
+            style={{ width: "100%", padding: "9px 10px 9px 32px", borderRadius: 9, border: `1px solid ${C.line}`, fontSize: 13, color: C.ink, fontFamily: UI, boxSizing: "border-box", background: C.card }} />
+        </div>
+        <select value={completedStatusFilter} onChange={e => setCompletedStatusFilter(e.target.value)}
+          style={{ padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.line}`, fontSize: 13, color: C.ink, fontFamily: UI, background: C.card, minWidth: 160 }}>
+          <option value="">All (completed / confirmed / closed)</option>
+          <option value="completed">Completed</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="closed">Closed</option>
+        </select>
+        <button onClick={() => load("completed")} style={btnS(C.primary, "#fff")}><Search size={13} /> Search</button>
+      </div>
+
+      <p style={{ fontSize: 12, color: C.ink4, margin: 0 }}>{completedTotal} finished job{completedTotal !== 1 ? "s" : ""}</p>
+
+      {completedJobs.length === 0 && !loading && (
+        <div style={{ ...panelS, padding: "48px 24px", textAlign: "center" }}>
+          <CheckCircle2 size={32} color={C.green} style={{ margin: "0 auto 12px" }} />
+          <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 4px" }}>No completed jobs yet</p>
+          <p style={{ fontSize: 13, color: C.ink4, margin: 0 }}>Finished jobs will appear here.</p>
+        </div>
+      )}
+
+      {completedJobs.map(j => (
+        <div key={j.id} style={{ ...panelS, overflow: "visible" }}>
+          {/* ── Summary row (always visible, click to expand) ── */}
+          <div
+            onClick={() => setExpandedCompletedId(expandedCompletedId === j.id ? null : j.id)}
+            style={{ padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+              background: expandedCompletedId === j.id ? C.bg : C.card, borderRadius: 12 }}
+          >
+            {/* Status dot */}
+            <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
+              background: j.status === "confirmed" ? C.green : j.status === "closed" ? C.ink4 : C.amber }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {j.title || "Untitled job"}
+              </p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: C.ink4 }}>
+                {j.category || "—"} · {j.suburb || "—"}, {j.state || "—"}
+                {j.tradie ? ` · ${j.tradie.business_name}` : ""}
+              </p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              {j.tradie?.quote_amount != null && (
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>${j.tradie.quote_amount.toLocaleString("en-AU")}</span>
+              )}
+              <StatusPill status={j.status} />
+              {j.review && (
+                <span style={{ fontSize: 11, background: C.amberL, color: C.amber, borderRadius: 20, padding: "3px 8px", fontWeight: 700 }}>
+                  {"★".repeat(j.review.rating)}
+                </span>
+              )}
+              {(j.after_photos?.length > 0 || j.photo_before_url) && (
+                <span style={{ fontSize: 11, background: C.blueL, color: C.blue, borderRadius: 20, padding: "3px 8px", fontWeight: 700 }}>
+                  {(j.after_photos?.length || 0) + (j.photo_before_url ? 1 : 0)} photo{((j.after_photos?.length || 0) + (j.photo_before_url ? 1 : 0)) !== 1 ? "s" : ""}
+                </span>
+              )}
+              <ChevronDown size={14} color={C.ink4}
+                style={{ transform: expandedCompletedId === j.id ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+            </div>
+          </div>
+
+          {/* — Expanded detail panel — */}
+          {expandedCompletedId === j.id && (
+            <div style={{ borderTop: `1px solid ${C.line}`, padding: "18px 18px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+              {/* Row 1: Job info + Timeline */}
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 220px", background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
+                  <p style={{ margin: "0 0 8px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Job Details</p>
+                  <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: C.ink }}>{j.title}</p>
+                  {j.description && <p style={{ margin: "0 0 8px", fontSize: 12.5, color: C.ink3, lineHeight: 1.55 }}>{j.description}</p>}
+                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}><strong>Category:</strong> {j.category || "—"}</p>
+                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}><strong>Location:</strong> {j.suburb}, {j.state} {j.postcode}</p>
+                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}><strong>Urgency:</strong> {j.urgency || "—"}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: C.ink3 }}><strong>Job ID:</strong> <span style={{ fontFamily: "monospace", fontSize: 11 }}>{j.id}</span></p>
+                </div>
+                <div style={{ flex: "1 1 220px", background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
+                  <p style={{ margin: "0 0 8px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Timeline</p>
+                  {[
+                    { label: "Posted",    value: j.created_at },
+                    { label: "Completed", value: j.completed_at },
+                    { label: "Confirmed by homeowner", value: j.confirmed_by_user_at },
+                    { label: "Last updated", value: j.updated_at },
+                  ].map(({ label, value }) => (
+                    <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: C.ink4 }}>{label}</span>
+                      <span style={{ fontSize: 12, color: C.ink2, fontWeight: value ? 600 : 400 }}>{fmtDate(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Row 2: Homeowner + Tradie */}
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 200px", background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
+                  <p style={{ margin: "0 0 8px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Homeowner</p>
+                  <p style={{ margin: "0 0 3px", fontSize: 13, fontWeight: 700, color: C.ink }}>{j.homeowner?.name || "—"}</p>
+                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}>{j.homeowner?.email || "—"}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: C.ink3 }}>{j.homeowner?.phone || "No phone"}</p>
+                </div>
+                <div style={{ flex: "1 1 200px", background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
+                  <p style={{ margin: "0 0 8px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Tradie</p>
+                  {j.tradie ? (
+                    <>
+                      <p style={{ margin: "0 0 3px", fontSize: 13, fontWeight: 700, color: C.ink }}>{j.tradie.business_name}</p>
+                      <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}>{j.tradie.full_name}</p>
+                      <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}>{j.tradie.email}</p>
+                      <p style={{ margin: "0 0 6px", fontSize: 12, color: C.ink3 }}>{j.tradie.phone || "No phone"}</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <StatusPill status={j.tradie.verification_status} />
+                        <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>
+                          Quote: ${j.tradie.quote_amount?.toLocaleString("en-AU")}
+                        </span>
+                      </div>
+                      {j.tradie.quote_message && (
+                        <p style={{ margin: "8px 0 0", fontSize: 12, color: C.ink3, fontStyle: "italic", lineHeight: 1.5 }}>"{j.tradie.quote_message}"</p>
+                      )}
+                    </>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 12, color: C.ink4 }}>No accepted quote found</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Row 3: Work evidence photos */}
+              {(j.photo_before_url || j.after_photos?.length > 0) && (
+                <div>
+                  <p style={{ margin: "0 0 10px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Work Evidence</p>
+                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                    {j.photo_before_url && (
+                      <div>
+                        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: C.ink3 }}>BEFORE</p>
+                        <a href={j.photo_before_url} target="_blank" rel="noreferrer">
+                          <img src={j.photo_before_url} alt="Before"
+                            style={{ width: 140, height: 105, objectFit: "cover", borderRadius: 10, border: `2px solid ${C.line}`, display: "block" }} />
+                        </a>
+                      </div>
+                    )}
+                    {j.after_photos?.length > 0 && (
+                      <div>
+                        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: C.green }}>AFTER ({j.after_photos.length})</p>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {j.after_photos.map((p: any, i: number) => (
+                            <a key={i} href={p.url} target="_blank" rel="noreferrer">
+                              <img src={p.url} alt={`After ${i + 1}`}
+                                style={{ width: 140, height: 105, objectFit: "cover", borderRadius: 10, border: `2px solid ${C.green}40`, display: "block" }} />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {j.completion_note && (
+                    <div style={{ marginTop: 10, background: C.greenL, borderRadius: 8, padding: "10px 14px" }}>
+                      <p style={{ margin: 0, fontSize: 12.5, color: C.ink2, lineHeight: 1.6 }}>
+                        <strong>Completion note:</strong> {j.completion_note}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Row 4: Review */}
+              {j.review && (
+                <div style={{ background: C.amberL, borderRadius: 10, padding: "12px 14px" }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Homeowner Review</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 18, color: C.amber, letterSpacing: 2 }}>
+                      {"★".repeat(j.review.rating)}{"☆".repeat(5 - j.review.rating)}
+                    </span>
+                    <span style={{ fontSize: 12, color: C.ink4 }}>{fmtDate(j.review.created_at)}</span>
+                    <StatusPill status={j.review.status} />
+                  </div>
+                  {j.review.comment
+                    ? <p style={{ margin: 0, fontSize: 13, color: C.ink2, lineHeight: 1.6, fontStyle: "italic" }}>"{j.review.comment}"</p>
+                    : <p style={{ margin: 0, fontSize: 12, color: C.ink4 }}>No comment left.</p>
+                  }
+                </div>
+              )}
+              {!j.review && (
+                <p style={{ margin: 0, fontSize: 12, color: C.ink4 }}>No review submitted for this job.</p>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
   const tabContent: Record<Tab, () => React.ReactNode> = {
     overview:     renderOverview,
     tradies:      renderTradies,
     homeowners:   renderHomeowners,
     verification: renderVerification,
     jobs:         renderJobs,
+    completed:    renderCompleted,
     disputes:     renderDisputes,
     reviews:      renderReviews,
   };
 
-  // ── Layout ───────────────────────────────────────────────────────────────────
+  // Layout
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: UI }}>
 
-      {/* Reject modal */}
       {rejectTarget && (
         <RejectModal
           onClose={() => setRejectTarget(null)}
@@ -799,7 +1066,6 @@ export default function AdminPanel() {
 
       <style>{`
         @media (min-width: 768px) {
-          .admin-shell { display: flex !important; }
           .admin-sidebar { display: flex !important; }
           .admin-mobile-nav { display: none !important; }
           .admin-main { margin-left: 220px !important; }
@@ -817,13 +1083,11 @@ export default function AdminPanel() {
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
 
-      {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
         <div onClick={() => setSidebarOpen(false)}
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 39 }} />
       )}
 
-      {/* Sidebar */}
       <div className={`admin-sidebar${sidebarOpen ? " open" : ""}`}
         style={{ position: "fixed", top: 0, left: 0, bottom: 0, width: 220, background: C.primary,
           zIndex: 40, display: "flex", flexDirection: "column", boxShadow: SHADOW_MD }}>
@@ -876,17 +1140,14 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* Main content */}
       <div className="admin-main" style={{ transition: "margin 0.25s" }}>
-        {/* Topbar */}
         <div style={{ position: "sticky", top: 0, zIndex: 30, background: "#071D36",
           borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "0 20px", height: 52,
           display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 2px 12px rgba(7,29,54,0.4)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <button onClick={() => setSidebarOpen(v => !v)}
               style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer", color: "rgba(255,255,255,0.8)",
-                display: "flex", alignItems: "center", padding: "5px 6px", borderRadius: 8 }}
-              className="admin-mobile-menu">
+                display: "flex", alignItems: "center", padding: "5px 6px", borderRadius: 8 }}>
               <Menu size={18} />
             </button>
             <p style={{ fontSize: 15, fontWeight: 700, color: "#D4AA3A", margin: 0 }}>
@@ -903,7 +1164,6 @@ export default function AdminPanel() {
           </button>
         </div>
 
-        {/* Content */}
         <div style={{ padding: "20px 20px 40px", maxWidth: 1200, margin: "0 auto" }}>
           {error && (
             <div style={{ padding: "12px 16px", background: C.redL, border: `1px solid ${C.red}30`,

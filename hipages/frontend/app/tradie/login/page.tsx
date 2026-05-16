@@ -35,8 +35,6 @@ function TradieLoginForm() {
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
 
-    const sessionExpired = searchParams.get('session') === 'expired';
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -132,18 +130,6 @@ function TradieLoginForm() {
                             Sign in to access your tradie dashboard, manage leads, and grow your business.
                         </p>
                     </div>
-
-                    {/* Session expired banner */}
-                    {sessionExpired && (
-                        <div style={{
-                            display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18,
-                            background: C.amberL, border: `1px solid ${C.amber}30`, color: C.amber,
-                            padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 500,
-                        }}>
-                            <AlertCircle size={14} />
-                            Your session expired. Please sign in again.
-                        </div>
-                    )}
 
                     {/* Error */}
                     {error && (

@@ -443,6 +443,12 @@ function BookingContent() {
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
+  // OTP verification (register flow only)
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
 
   // ── Build draft ──────────────────────────────────────────────────────────
   const buildDraft = useCallback(() => ({
@@ -868,6 +874,51 @@ function BookingContent() {
     }
   };
 
+  // Send OTP after account is created (register flow)
+  const handleRegisterAndSendOtp = async () => {
+    const errors = validateStep();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors); triggerShake();
+      toast.error(Object.values(errors)[0]); return;
+    }
+    setLoading(true); setAuthError(''); setOtpError('');
+    try {
+      // Create the account — backend sends OTP email automatically on register
+      await register({ email, password, name: fullName || email.split('@')[0], role: 'homeowner' });
+      // Now send OTP explicitly (account is created & logged in at this point)
+      await api.post('/auth/send-email-otp');
+      setOtpSent(true);
+      toast.success('A 6-digit code was sent to your email.');
+    } catch (err: any) {
+      let msg = parseApiError(err);
+      if (err?.response?.status === 401)
+        msg = 'Could not create account. Email may already be in use.';
+      setAuthError(msg); toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verify the OTP the user typed, then post the job
+  const handleVerifyOtpAndPost = async () => {
+    if (!otpCode || otpCode.length < 4) { setOtpError('Please enter the code from your email.'); return; }
+    setOtpLoading(true); setOtpError('');
+    try {
+      await api.post('/auth/verify-email-otp', { code: otpCode.trim() });
+      setOtpVerified(true);
+      // OTP passed — now post the job
+      await postJob();
+      try { localStorage.removeItem(DRAFT_KEY); } catch { }
+      toast.success('Job posted! Tradies will be in touch. 🎉');
+      router.push('/dashboard');
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || 'Invalid or expired code. Try again.';
+      setOtpError(msg);
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const handleFinalSubmit = async () => {
     const errors = validateStep();
     if (Object.keys(errors).length > 0) {
@@ -877,8 +928,8 @@ function BookingContent() {
     setLoading(true); setAuthError('');
     try {
       if (!isAuthenticated) {
-        if (authMode === 'register') await register({ email, password, name: fullName || email.split('@')[0], role: 'homeowner' });
-        else await login(email, password);
+        // Login flow: straight through — no OTP needed for returning users
+        await login(email, password);
       }
       await postJob();
       try { localStorage.removeItem(DRAFT_KEY); } catch { }
@@ -887,7 +938,7 @@ function BookingContent() {
     } catch (err: any) {
       let msg = parseApiError(err);
       if (err?.response?.status === 401)
-        msg = authMode === 'login' ? 'Wrong email or password. Try again.' : 'Could not create account. Email may already be in use.';
+        msg = 'Wrong email or password. Try again.';
       setAuthError(msg); toast.error(msg); setLoading(false);
     }
   };
@@ -1449,125 +1500,204 @@ function BookingContent() {
 
               {/* Account section */}
               <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-5">
-                <div>
-                  <h2 className="text-2xl font-black text-gray-900">
-                    {authMode === 'register' ? 'Create your free account' : 'Welcome back'}
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {authMode === 'register' ? 'One account to post jobs and receive quotes.' : 'Log in to post your job.'}
-                  </p>
-                </div>
-                <div className="flex bg-brand-ivory rounded-xl p-1">
-                  {(['register', 'login'] as const).map(mode => (
-                    <button key={mode} onClick={() => { setAuthMode(mode); setAuthError(''); setFieldErrors({}); }}
-                      className={cn("flex-1 py-2.5 rounded-lg text-sm font-bold transition-all",
-                        authMode === mode ? "bg-white text-brand-gold shadow-sm" : "text-gray-500"
-                      )}>
-                      {mode === 'register' ? 'Create Account' : 'Log In'}
-                    </button>
-                  ))}
-                </div>
-                {authError && (
-                  <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl text-sm">
-                    <AlertCircle className="w-4 h-4 shrink-0" />{authError}
-                  </div>
-                )}
-                <div className="space-y-3">
-                  {authMode === 'register' && (
-                    <div className="relative">
-                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input type="text" placeholder="Full name" value={fullName} onChange={e => setFullName(e.target.value)}
-                        className="w-full bg-brand-ivory/50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm font-medium focus:outline-none focus:border-brand-gold/50 focus:ring-2 focus:ring-brand-gold/10 transition-all" />
+                {/* ── OTP verification screen (register only, after account created) ── */}
+                {otpSent && !otpVerified ? (
+                  <>
+                    <div>
+                      <h2 className="text-2xl font-black text-gray-900">Verify your email</h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        We sent a 6-digit code to <strong>{email}</strong>. Enter it below to post your job.
+                      </p>
                     </div>
-                  )}
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input type="email" placeholder="Email address" value={email}
-                      onChange={e => { setEmail(e.target.value); setFieldErrors(er => ({ ...er, email: '' })); }}
-                      className={cn("w-full bg-brand-ivory/50 border rounded-xl pl-11 pr-4 py-3.5 text-sm font-medium focus:outline-none focus:ring-2 transition-all",
-                        fieldErrors.email ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-brand-gold/50 focus:ring-brand-gold/10"
-                      )} />
-                    {fieldErrors.email && <p className="text-xs text-red-500 font-medium mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {fieldErrors.email}</p>}
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password}
-                      onChange={e => { setPassword(e.target.value); setFieldErrors(er => ({ ...er, password: '' })); }}
-                      className={cn("w-full bg-brand-ivory/50 border rounded-xl pl-11 pr-12 py-3.5 text-sm font-medium focus:outline-none focus:ring-2 transition-all",
-                        fieldErrors.password ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-brand-gold/50 focus:ring-brand-gold/10"
-                      )} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {otpError && (
+                      <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl text-sm">
+                        <AlertCircle className="w-4 h-4 shrink-0" />{otpError}
+                      </div>
+                    )}
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={otpCode}
+                      onChange={e => { setOtpCode(e.target.value.replace(/\D/g, '')); setOtpError(''); }}
+                      className="w-full bg-brand-ivory/50 border border-gray-200 rounded-xl px-4 py-4 text-2xl font-black text-center tracking-[0.4em] focus:outline-none focus:border-brand-gold/50 focus:ring-2 focus:ring-brand-gold/10 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyOtpAndPost}
+                      disabled={otpLoading || otpCode.length < 4}
+                      className="w-full bg-brand-gold text-white py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      {otpLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</> : <><Check className="w-4 h-4" /> Verify &amp; Post Job</>}
                     </button>
-                    {fieldErrors.password && <p className="text-xs text-red-500 font-medium mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {fieldErrors.password}</p>}
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 text-center">
-                  By continuing you agree to ProConnect's{' '}
-                  <a href="/terms" className="underline">Terms</a> and{' '}
-                  <a href="/privacy" className="underline">Privacy Policy</a>.
-                </p>
+                    <button
+                      type="button"
+                      onClick={async () => { try { await api.post('/auth/resend-email-otp'); toast.success('New code sent.'); } catch { toast.error('Could not resend. Try again.'); } }}
+                      className="w-full text-xs text-gray-400 hover:text-brand-gold transition-colors"
+                    >
+                      Didn't receive it? Resend code
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <h2 className="text-2xl font-black text-gray-900">
+                        {authMode === 'register' ? 'Create your free account' : 'Welcome back'}
+                      </h2>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {authMode === 'register' ? 'One account to post jobs and receive quotes.' : 'Log in to post your job.'}
+                      </p>
+                    </div>
+                    <div className="flex bg-brand-ivory rounded-xl p-1">
+                      {(['register', 'login'] as const).map(mode => (
+                        <button key={mode} onClick={() => { setAuthMode(mode); setAuthError(''); setFieldErrors({}); setOtpSent(false); setOtpCode(''); setOtpError(''); }}
+                          className={cn("flex-1 py-2.5 rounded-lg text-sm font-bold transition-all",
+                            authMode === mode ? "bg-white text-brand-gold shadow-sm" : "text-gray-500"
+                          )}>
+                          {mode === 'register' ? 'Create Account' : 'Log In'}
+                        </button>
+                      ))}
+                    </div>
+                    {authError && (
+                      <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl text-sm">
+                        <AlertCircle className="w-4 h-4 shrink-0" />{authError}
+                      </div>
+                    )}
+                    <div className="space-y-3">
+                      {authMode === 'register' && (
+                        <div className="relative">
+                          <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input type="text" placeholder="Full name" value={fullName} onChange={e => setFullName(e.target.value)}
+                            className="w-full bg-brand-ivory/50 border border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm font-medium focus:outline-none focus:border-brand-gold/50 focus:ring-2 focus:ring-brand-gold/10 transition-all" />
+                        </div>
+                      )}
+                      <div className="relative">
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input type="email" placeholder="Email address" value={email}
+                          onChange={e => { setEmail(e.target.value); setFieldErrors(er => ({ ...er, email: '' })); }}
+                          className={cn("w-full bg-brand-ivory/50 border rounded-xl pl-11 pr-4 py-3.5 text-sm font-medium focus:outline-none focus:ring-2 transition-all",
+                            fieldErrors.email ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-brand-gold/50 focus:ring-brand-gold/10"
+                          )} />
+                        {fieldErrors.email && <p className="text-xs text-red-500 font-medium mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {fieldErrors.email}</p>}
+                      </div>
+                      <div className="relative">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <button type="button" onClick={() => setShowPassword(p => !p)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-gold transition-colors">
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                        <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password}
+                          onChange={e => { setPassword(e.target.value); setFieldErrors(er => ({ ...er, password: '' })); }}
+                          className={cn("w-full bg-brand-ivory/50 border rounded-xl pl-11 pr-12 py-3.5 text-sm font-medium focus:outline-none focus:ring-2 transition-all",
+                            fieldErrors.password ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-brand-gold/50 focus:ring-brand-gold/10"
+                          )} />
+                        {fieldErrors.password && <p className="text-xs text-red-500 font-medium mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {fieldErrors.password}</p>}
+                      </div>
+                    </div>
+                    {authMode === 'login' && (
+                      <div className="text-right">
+                        <Link href="/forgot-password" className="text-xs text-brand-gold hover:underline font-medium">Forgot password?</Link>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
-              {/* P4 FIX: Beautiful summary card */}
-              <JobSummaryCard
-                selectedCategory={selectedCategory}
-                jobTitle={jobTitle}
-                urgency={urgency}
-                suburb={suburb}
-                state={state}
-                postcode={postcode}
-                photos={photos}
-                onEdit={setStep}
-              />
+              {/* Job summary card */}
+              <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+                <h3 className="text-base font-bold text-gray-900 mb-3">Your job summary</h3>
+                <div className="space-y-2">
+                  {selectedCategory && (
+                    <div className="flex justify-between items-center py-1 border-b border-gray-50">
+                      <span className="text-sm text-gray-500">Category</span>
+                      <span className="text-sm font-semibold text-gray-900">{selectedCategory}</span>
+                    </div>
+                  )}
+                  {jobTitle && (
+                    <div className="flex justify-between items-center py-1 border-b border-gray-50">
+                      <span className="text-sm text-gray-500">Title</span>
+                      <span className="text-sm font-semibold text-gray-900 text-right max-w-[60%]">{jobTitle}</span>
+                    </div>
+                  )}
+                  {suburb && (
+                    <div className="flex justify-between items-center py-1 border-b border-gray-50">
+                      <span className="text-sm text-gray-500">Location</span>
+                      <span className="text-sm font-semibold text-gray-900">{suburb}{state ? `, ${state}` : ''}</span>
+                    </div>
+                  )}
+                  {urgency && (
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-sm text-gray-500">Urgency</span>
+                      <span className="text-sm font-semibold text-gray-900">{selectedUrgency?.label || urgency}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </motion.div>
           )}
 
         </AnimatePresence>
+      </main>
 
-        {/* ── Footer nav ── */}
-        <div className="mt-8 flex flex-wrap justify-between items-center gap-3">
-          <button onClick={prevStep}
-            className={cn("flex items-center gap-2 text-gray-700 font-bold text-sm hover:-translate-x-1 transition-transform", step === 1 && "invisible")}>
-            <ArrowLeft className="w-5 h-5" /> Back
+      {/* Footer navigation */}
+      <footer className="sticky bottom-0 z-40 bg-white border-t border-gray-100 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+          <button
+            onClick={prevStep}
+            className="flex items-center gap-2 text-gray-500 hover:text-brand-gold font-medium text-sm transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
           </button>
-
-          {step === 4 && isAuthenticated ? (
-            <button onClick={nextStep} disabled={loading}
-              className="bg-brand-gold text-white px-8 py-3.5 rounded-2xl font-bold text-sm flex items-center gap-2 hover:shadow-xl hover:shadow-brand-gold/25 hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-              {loading ? <><Loader2 className="w-5 h-5 animate-spin" /> Posting...</> : <><Check className="w-5 h-5" /> Post My Job</>}
+          <div className="flex items-center gap-1.5">
+            {[1,2,3,4,5].map(s => (
+              <div key={s} className={cn("rounded-full transition-all",
+                s === step ? "w-6 h-2 bg-brand-gold" : s < step ? "w-2 h-2 bg-brand-gold/50" : "w-2 h-2 bg-gray-200"
+              )} />
+            ))}
+          </div>
+          {step < 5 ? (
+            <button
+              onClick={nextStep}
+              disabled={loading}
+              className="flex items-center gap-2 bg-brand-gold text-white px-5 py-2.5 rounded-2xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:brightness-105"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Next <ChevronRight className="w-4 h-4" /></>}
             </button>
-          ) : step < 5 ? (
-            <button onClick={nextStep} disabled={loading || (step === 3 && aiLoading)}
-              className="bg-brand-gold text-white px-8 py-3.5 rounded-2xl font-bold text-sm flex items-center gap-2 hover:shadow-xl hover:shadow-brand-gold/25 hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-              Next <ChevronRight className="w-5 h-5" />
-            </button>
-          ) : (
-            <button onClick={handleFinalSubmit} disabled={loading || !email || !password}
-              className="bg-brand-gold text-white px-8 py-3.5 rounded-2xl font-bold text-sm flex items-center gap-2 hover:shadow-xl hover:shadow-brand-gold/25 hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-              {loading ? <><Loader2 className="w-5 h-5 animate-spin" /> Posting...</> : <><Check className="w-5 h-5" /> Post My Job</>}
+          ) : (otpSent && !otpVerified) ? null : (
+            <button
+              onClick={authMode === 'register' ? handleRegisterAndSendOtp : handleFinalSubmit}
+              disabled={loading || otpLoading}
+              className="flex items-center gap-2 bg-brand-gold text-white px-5 py-2.5 rounded-2xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:brightness-105"
+            >
+              {loading || otpLoading
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> {authMode === 'register' ? 'Creating account…' : 'Posting job…'}</>
+                : authMode === 'register'
+                  ? <>Create Account &amp; Continue <ChevronRight className="w-4 h-4" /></>
+                  : <>Post Job <ChevronRight className="w-4 h-4" /></>
+              }
             </button>
           )}
         </div>
-      </main>
+      </footer>
 
-      {/* Shake animation */}
-      <style>{`
-        @keyframes shake {
-          0%,100% { transform: translateX(0); }
-          15%,45%,75% { transform: translateX(-6px); }
-          30%,60%,90% { transform: translateX(6px); }
-        }
-        .animate-shake { animation: shake 0.45s ease-in-out; }
-      `}</style>
     </div>
   );
 }
 
+function BookPageInner() {
+  return <BookingContent />;
+}
+
 export default function BookPage() {
   return (
-    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FFF8E7' }} />}>
-      <BookingContent />
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#FFF8E7' }}>
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D4AA3A' }} />
+      </div>
+    }>
+      <BookPageInner />
     </Suspense>
   );
 }

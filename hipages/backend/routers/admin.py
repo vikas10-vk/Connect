@@ -15,6 +15,7 @@ ENDPOINTS:
   POST   /admin/verification/insurance/{policy_id}/approve
   POST   /admin/verification/insurance/{policy_id}/reject
   GET    /admin/jobs                              All jobs (paginated, filterable)
+  GET    /admin/completed-jobs                    Completed/confirmed/closed jobs — full details
   GET    /admin/disputes                          All disputed jobs
   GET    /admin/reviews                           All reviews (for moderation)
   DELETE /admin/reviews/{review_id}               Remove a review
@@ -779,20 +780,34 @@ async def list_jobs(
     _:  User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    q = select(Job)
+    # Build base filter for count and data query
+    filters = []
     if status:
-        q = q.where(Job.status == status)
+        filters.append(Job.status == status)
     if search:
-        q = q.where(Job.title.ilike(f"%{search}%"))
-    count_r = await db.execute(select(func.count()).select_from(q.subquery()))
+        filters.append(Job.title.ilike(f"%{search}%"))
+
+    count_r = await db.execute(select(func.count(Job.id)).where(*filters))
     total   = count_r.scalar() or 0
-    q       = q.order_by(Job.created_at.desc()).offset((page - 1) * limit).limit(limit)
-    result  = await db.execute(q)
-    items   = [
+
+    q = (
+        select(Job)
+        .options(selectinload(Job.photos))
+        .where(*filters)
+        .order_by(Job.created_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    result = await db.execute(q)
+    items  = [
         {
             "id": j.id, "title": j.title, "status": j.status,
             "suburb": j.suburb, "state": j.state,
             "homeowner_id": j.homeowner_id,
+            "photo_before_url": j.photo_before_url,
+            "photo_after_url":  j.photo_after_url,
+            "completion_note":  j.completion_note,
+            "after_photos": [{"url": p.url, "id": p.id} for p in (j.photos or [])],
             "created_at": j.created_at, "updated_at": j.updated_at,
         }
         for j in result.scalars().all()
@@ -850,7 +865,6 @@ async def list_reviews(
     return {"total": total, "page": page, "limit": limit, "items": items}
 
 
-# ── DELETE /admin/reviews/{review_id} ─────────────────────────────────────────
 
 @router.delete("/reviews/{review_id}", status_code=204)
 async def delete_review(
@@ -864,3 +878,119 @@ async def delete_review(
         raise HTTPException(status_code=404, detail="Review not found.")
     await db.delete(review)
     await db.commit()
+
+
+# ── GET /admin/completed-jobs ──────────────────────────────────────────────────
+
+@router.get("/completed-jobs")
+async def list_completed_jobs(
+    page:   int           = Query(1, ge=1),
+    limit:  int           = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    _:  User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    from models.quote import Quote
+
+    DONE_STATUSES = ["completed", "confirmed", "closed"]
+    filter_statuses = [status] if status and status in DONE_STATUSES else DONE_STATUSES
+
+    filters = [Job.status.in_(filter_statuses)]
+    if search:
+        filters.append(Job.title.ilike(f"%{search}%"))
+
+    count_r = await db.execute(select(func.count(Job.id)).where(*filters))
+    total   = count_r.scalar() or 0
+
+    jobs_res = await db.execute(
+        select(Job)
+        .options(
+            selectinload(Job.homeowner),
+            selectinload(Job.photos),
+            selectinload(Job.review),
+            selectinload(Job.category),
+        )
+        .where(*filters)
+        .order_by(Job.completed_at.desc().nulls_last(), Job.updated_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    jobs = jobs_res.scalars().all()
+
+    if not jobs:
+        return {"total": total, "page": page, "limit": limit, "items": []}
+
+    # Bulk-fetch accepted quotes + tradie info for these jobs
+    job_ids = [j.id for j in jobs]
+    quotes_res = await db.execute(
+        select(Quote, TradieProfile, User)
+        .join(Lead,          Lead.id           == Quote.lead_id)
+        .join(TradieProfile, TradieProfile.id  == Quote.tradie_id)
+        .join(User,          User.id           == TradieProfile.user_id)
+        .where(Lead.job_id.in_(job_ids), Quote.status == "accepted")
+    )
+
+    # Map job_id -> (quote, tradie_profile, tradie_user)
+    quote_map: dict = {}
+    for row in quotes_res.all():
+        quote, tradie_profile, tradie_user = row
+        lead_res = await db.execute(select(Lead).where(Lead.id == quote.lead_id))
+        lead = lead_res.scalar_one_or_none()
+        if lead and lead.job_id not in quote_map:
+            quote_map[lead.job_id] = (quote, tradie_profile, tradie_user)
+
+    items = []
+    for j in jobs:
+        hw  = j.homeowner
+        cat = j.category
+        rev = j.review
+        q_data = quote_map.get(j.id)
+        tradie_info = None
+        if q_data:
+            _q, _tp, _tu = q_data
+            tradie_info = {
+                "tradie_profile_id":   _tp.id,
+                "business_name":       _tp.business_name,
+                "full_name":           _tu.full_name,
+                "email":               _tu.email,
+                "phone":               _tu.phone,
+                "verification_status": _tp.verification_status,
+                "quote_amount":        _q.amount,
+                "quote_message":       _q.message,
+            }
+
+        items.append({
+            "id":          j.id,
+            "title":       j.title,
+            "description": j.description,
+            "category":    cat.name if cat else None,
+            "status":      j.status,
+            "suburb":      j.suburb,
+            "state":       j.state,
+            "postcode":    j.postcode,
+            "urgency":     j.urgency,
+            "created_at":           j.created_at,
+            "completed_at":         j.completed_at,
+            "confirmed_by_user_at": j.confirmed_by_user_at,
+            "updated_at":           j.updated_at,
+            "homeowner": {
+                "id":    hw.id        if hw else None,
+                "name":  hw.full_name if hw else None,
+                "email": hw.email     if hw else None,
+                "phone": hw.phone     if hw else None,
+            },
+            "tradie": tradie_info,
+            "photo_before_url": j.photo_before_url,
+            "completion_note":  j.completion_note,
+            "after_photos": [{"id": p.id, "url": p.url} for p in (j.photos or [])],
+            "review": {
+                "id":         rev.id,
+                "rating":     rev.rating,
+                "comment":    rev.comment,
+                "status":     rev.status,
+                "created_at": rev.created_at,
+            } if rev else None,
+        })
+
+    return {"total": total, "page": page, "limit": limit, "items": items}

@@ -29,10 +29,9 @@ function processRefreshQueue(newToken: string) {
 
 function redirectToLogin() {
     Cookies.remove("access_token", { path: "/" });
+    Cookies.remove("refresh_token", { path: "/" });
     const isTradie = window.location.pathname.startsWith("/tradie");
-    const loginPath = isTradie ? "/tradie/login" : "/login";
-    const returnTo = encodeURIComponent(window.location.pathname);
-    window.location.href = `${loginPath}?session=expired&returnTo=${returnTo}`;
+    window.location.href = isTradie ? "/tradie/login" : "/login";
 }
 
 // ── Response interceptor — silent refresh on 401, logout on refresh failure ───

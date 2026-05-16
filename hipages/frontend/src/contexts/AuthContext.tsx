@@ -155,13 +155,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [login])
 
   const logout = useCallback(() => {
-    const nextPath = user?.role === 'tradie' ? '/tradie/login' : '/login'
-    // Admin gets sent to /login — no separate admin login page exposed
     setUser(null)
     setTradieProfile(null)
     removeToken()
-    router.push(nextPath)
-  }, [router, user?.role])
+    router.push('/')
+  }, [router])
 
   const updateUser = useCallback((data: Partial<User>) => {
     setUser(prev => {
