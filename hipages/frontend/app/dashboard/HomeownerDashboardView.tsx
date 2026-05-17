@@ -537,13 +537,20 @@ function QuoteModal({ quote, onClose, onAction }: {
   onAction: (id: string, status: 'accepted' | 'rejected') => Promise<void>;
 }) {
   const [loading, setLoading] = useState<'accept' | 'reject' | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const isPending = quote.status === 'pending';
 
   const handle = async (action: 'accepted' | 'rejected') => {
     setLoading(action === 'accepted' ? 'accept' : 'reject');
-    await onAction(quote.id, action);
-    setLoading(null);
-    onClose();
+    setActionError(null);
+    try {
+      await onAction(quote.id, action);
+      onClose(); // success — close modal (loadData already called inside onAction)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Something went wrong. Please try again.';
+      setActionError(detail);
+      setLoading(null);
+    }
   };
 
   return (
@@ -596,6 +603,11 @@ function QuoteModal({ quote, onClose, onAction }: {
             {quote.status === 'accepted' ? '✓ Accepted' : quote.status === 'rejected' ? '✕ Declined' : '⏳ Awaiting decision'}
           </span>
         </div>
+        {actionError && (
+          <div style={{ margin: '0 22px 12px', padding: '10px 14px', borderRadius: 10, background: ROSE_LIGHT, border: `1px solid ${ROSE}33` }}>
+            <p style={{ fontSize: 12, color: ROSE, fontWeight: 600, margin: 0 }}>⚠ {actionError}</p>
+          </div>
+        )}
         {isPending && (
           <div style={{ padding: '0 22px 22px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button onClick={() => handle('accepted')} disabled={!!loading}
@@ -714,6 +726,7 @@ export default function HomeownerDashboardView() {
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [allQuotes, setAllQuotes] = useState<Quote[]>([]);
+  const [quoteLoadFailedJobIds, setQuoteLoadFailedJobIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -760,16 +773,18 @@ export default function HomeownerDashboardView() {
       const { data } = await api.get('/jobs/my-jobs');
       const fetchedJobs: Job[] = data?.jobs || data || [];
       setJobs(fetchedJobs);
+      const failedIds = new Set<string>();
       const quoteArrays = await Promise.all(
         fetchedJobs
           .filter(j => ['quoted', 'hired', 'in_progress', 'open', 'awaiting_scope_approval', 'partial_stop', 'disputed'].includes(j.status))
           .map(j =>
             api.get(`/quotes/job/${j.id}`)
               .then(r => (r.data?.quotes || r.data || []).map((q: Quote) => ({ ...q, job_id: q.job_id || j.id, job_title: q.job_title || j.title })))
-              .catch(() => [])
+              .catch(err => { console.error(`[quotes] failed to load for job ${j.id}:`, err?.response?.status, err?.response?.data?.detail || err?.message); failedIds.add(j.id); return []; })
           )
       );
       setAllQuotes(quoteArrays.flat());
+      setQuoteLoadFailedJobIds(failedIds);
       const firstActive = fetchedJobs.find(j => !['completed', 'cancelled', 'closed'].includes(j.status));
       if (firstActive && !selectedJobIdRef.current) setSelectedJobId(firstActive.id);
     } catch {
@@ -790,8 +805,15 @@ export default function HomeownerDashboardView() {
   useEffect(() => { if (view === 'history') loadHistory(); }, [view, loadHistory]);
 
   const handleQuoteAction = async (quoteId: string, status: 'accepted' | 'rejected') => {
-    await api.patch(`/quotes/${quoteId}/status?new_status=${status}`);
-    await loadData();
+    try {
+      await api.patch(`/quotes/${quoteId}/status?new_status=${status}`);
+      await loadData();
+    } catch (err: any) {
+      // Always refresh even on failure — the backend may have committed the
+      // change before the response errored, so the UI must stay in sync with DB.
+      await loadData().catch(() => {});
+      throw err; // re-throw so QuoteModal can display the error message
+    }
   };
 
   const handleCancelJob = async (jobId: string) => {
@@ -1365,6 +1387,19 @@ export default function HomeownerDashboardView() {
                   ))}
                 </div>
               </div>
+
+              {/* ⑩ Quotes failed to load — show retry banner */}
+              {jobQuotes.length === 0 && quoteLoadFailedJobIds.has(selectedJob.id) && (
+                <div style={{ background: '#fff', border: `1px solid ${ROSE}44`, borderRadius: 16, padding: '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <p style={{ fontWeight: 700, fontSize: 14, color: ROSE, margin: 0 }}>Could not load quotes</p>
+                    <p style={{ fontSize: 12, color: INK4, marginTop: 4 }}>There was a problem fetching quotes for this job.</p>
+                  </div>
+                  <button onClick={loadData} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, background: ROSE_LIGHT, border: `1px solid ${ROSE}44`, color: ROSE, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                    <RefreshCw size={13} /> Retry
+                  </button>
+                </div>
+              )}
 
               {/* ⑩ Quotes list */}
               {jobQuotes.length > 0 && (

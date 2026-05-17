@@ -67,11 +67,11 @@ function StatusPill({ status }: { status: string }) {
     active:     { bg: C.greenL, color: C.green,  label: "Active" },
     disputed:   { bg: C.redL,   color: C.red,    label: "Disputed" },
     completed:  { bg: C.greenL, color: C.green,  label: "Completed" },
-    confirmed:  { bg: C.greenL, color: C.green,  label: "Confirmed" },
+    confirmed:  { bg: C.greenL, color: C.green,  label: "Completed" },
     in_progress:{ bg: C.blueL,  color: C.blue,   label: "In Progress" },
     hired:      { bg: C.blueL,  color: C.blue,   label: "Hired" },
     open:       { bg: C.amberL, color: C.amber,  label: "Open" },
-    closed:     { bg: C.panel,  color: C.ink4,   label: "Closed" },
+    closed:     { bg: C.greenL, color: C.green,  label: "Completed" },
     cancelled:  { bg: C.panel,  color: C.ink4,   label: "Cancelled" },
     suspended:  { bg: C.redL,   color: C.red,    label: "Suspended" },
   };
@@ -699,7 +699,17 @@ export default function AdminPanel() {
         <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}
           style={{ padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.line}`, fontSize: 13, color: C.ink, fontFamily: UI, background: C.card, minWidth: 150 }}>
           <option value="">All statuses</option>
-          {["open","quoted","hired","in_progress","completed","confirmed","disputed","closed","cancelled"].map(s => <option key={s} value={s}>{s}</option>)}
+          {[
+            { v: "open",        l: "Open" },
+            { v: "quoted",      l: "Quoted" },
+            { v: "hired",       l: "Hired" },
+            { v: "in_progress", l: "In Progress" },
+            { v: "completed",   l: "Completed" },
+            { v: "confirmed",   l: "Confirmed (done)" },
+            { v: "closed",      l: "Closed (done)" },
+            { v: "disputed",    l: "Disputed" },
+            { v: "cancelled",   l: "Cancelled" },
+          ].map(({ v, l }) => <option key={v} value={v}>{l}</option>)}
         </select>
         <button onClick={() => load("jobs")} style={btnS(C.primary, "#fff")}><Search size={13} /> Search</button>
       </div>
@@ -881,7 +891,7 @@ export default function AdminPanel() {
           >
             {/* Status dot */}
             <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
-              background: j.status === "confirmed" ? C.green : j.status === "closed" ? C.ink4 : C.amber }} />
+              background: (j.status === "confirmed" || j.status === "closed" || j.status === "completed") ? C.green : C.amber }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {j.title || "Untitled job"}

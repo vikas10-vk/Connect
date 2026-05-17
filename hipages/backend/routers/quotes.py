@@ -157,7 +157,7 @@ async def get_quotes_for_job(
     for quote, profile, tradie_user in rows:
         display_name = profile.business_name or tradie_user.full_name or "Tradie"
         # Only reveal phone number after quote is accepted
-        phone = profile.phone if quote.status == "accepted" else None
+        phone = tradie_user.phone if quote.status == "accepted" else None
         responses.append(QuoteResponse(
             id=quote.id,
             lead_id=quote.lead_id,
@@ -232,7 +232,7 @@ async def update_quote_status(
     tradie_business = profile.business_name
     tradie_avatar   = profile.avatar_url
     tradie_suburb   = profile.suburb
-    tradie_phone    = profile.phone  # filtered below: only revealed on accept
+    tradie_phone    = tradie_user.phone  # filtered below: only revealed on accept
 
     q_id         = quote.id
     q_lead_id    = quote.lead_id
@@ -363,17 +363,5 @@ async def _notify_homeowner_new_quote(job, tradie_user: User, profile: TradiePro
             Log in to your dashboard to review the quote, compare tradies and accept.
           </p>
           {_btn("View Quote", "http://localhost:3000/dashboard", "#2E7D5A")}"""
-        text_body = (
-            f"G'day {name},\n\n"
-            f"{tradie_display} has quoted ${amount:,.2f} for '{job.title}'.\n\n"
-            f"View and accept quotes: http://localhost:3000/dashboard\n\n"
-            f"\u2014 The {APP_NAME} team"
-        )
-        await _send_raw_email(
-            homeowner.email,
-            f"New quote received for {job.title}",
-            _base_html(body, "#2E7D5A"),
-            text_body,
-        )
     except Exception as e:
         print(f"[quotes] Homeowner notification failed (non-fatal): {e}")
