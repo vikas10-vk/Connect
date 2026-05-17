@@ -2,7 +2,7 @@
 backend/routers/quotes.py
 
 All quote endpoints — tradies submit quotes, homeowners view/accept/reject them.
-The get_quotes_for_job endpoint now joins TradieProfile so the homeowner can
+The get_quotes_for_job endpoint joins TradieProfile so the homeowner can
 see the tradie's name, business and suburb on each quote card.
 """
 
@@ -24,7 +24,7 @@ import uuid
 router = APIRouter(prefix="/api/v1/quotes", tags=["Quotes"])
 
 
-# ── Tradie: Submit a quote ─────────────────────────────────────────────────────
+# ── Tradie: Submit a quote ───────────────────────────────────────────────
 
 @router.post("/", response_model=QuoteResponse, status_code=201)
 async def create_quote(
@@ -72,8 +72,6 @@ async def create_quote(
     db.add(lead)
 
     # Transition job → quoted if it's still open.
-    # Lead distribution should already have done this, but guard for old data /
-    # race conditions by doing it directly (no state-machine actor check needed here).
     job_result = await db.execute(select(Job).where(Job.id == lead.job_id))
     job = job_result.scalar_one_or_none()
     if job and job.status == "open":
@@ -94,7 +92,7 @@ async def create_quote(
     return _build_quote_response(quote, profile, current_user)
 
 
-# ── Tradie: Get own quote for a lead ──────────────────────────────────────────
+# ── Tradie: Get own quote for a lead ──────────────────────────────────────────────
 
 @router.get("/my-quote/{lead_id}", response_model=QuoteResponse)
 async def get_my_quote_for_lead(
@@ -123,7 +121,7 @@ async def get_my_quote_for_lead(
     return _build_quote_response(quote, profile, current_user)
 
 
-# ── Homeowner: View all quotes for a job ──────────────────────────────────────
+# ── Homeowner: View all quotes for a job ──────────────────────────────────────────────
 
 @router.get("/job/{job_id}", response_model=list[QuoteResponse])
 async def get_quotes_for_job(
@@ -178,7 +176,7 @@ async def get_quotes_for_job(
     return responses
 
 
-# ── Homeowner: Accept or reject a quote ───────────────────────────────────────
+# ── Homeowner: Accept or reject a quote ───────────────────────────────────────────────
 
 @router.patch("/{quote_id}/status", response_model=QuoteResponse)
 async def update_quote_status(
@@ -189,8 +187,8 @@ async def update_quote_status(
 ):
     """
     Homeowner accepts or rejects a quote.
-      accepted → job transitions to in_progress; all other pending quotes auto-rejected
-      rejected → if no remaining accepted quotes, job reverts to open
+      accepted -> job transitions to in_progress; all other pending quotes auto-rejected
+      rejected -> if no remaining accepted quotes, job reverts to open
     """
     if current_user.role != "homeowner":
         raise HTTPException(status_code=403, detail="Only homeowners can accept/reject quotes")
@@ -212,9 +210,7 @@ async def update_quote_status(
     if not job or job.homeowner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your job")
 
-    # ── Load tradie profile BEFORE commit so we always have it for the response ─
-    # (After db.commit() SQLAlchemy expires ORM objects; a post-commit JOIN can
-    #  silently return nothing and previously triggered a spurious 500 error.)
+    # Load tradie profile before commit
     prof_result = await db.execute(
         select(TradieProfile, User)
         .join(User, User.id == TradieProfile.user_id)
@@ -226,23 +222,37 @@ async def update_quote_status(
         raise HTTPException(status_code=404, detail="Tradie profile not found for this quote")
     profile, tradie_user = prof_row
 
-    # Snapshot values we need for the response into plain local variables so
-    # they survive db.commit() (which would otherwise expire the ORM objects).
+    # ---- Snapshot ALL values needed for the response BEFORE any commit ----
+    # After db.commit(), SQLAlchemy marks every ORM object as expired.
+    # Accessing an expired attribute in an async session triggers a lazy load
+    # which raises MissingGreenlet (surfaced to the client as HTTP 500).
+    # Extract everything into plain Python scalars right now while the
+    # session is still live and all objects are fully loaded.
     tradie_name     = profile.business_name or tradie_user.full_name or "Tradie"
     tradie_business = profile.business_name
     tradie_avatar   = profile.avatar_url
     tradie_suburb   = profile.suburb
-    tradie_phone    = profile.phone  # only exposed when accepted (filtered below)
+    tradie_phone    = profile.phone  # filtered below: only revealed on accept
+
+    q_id         = quote.id
+    q_lead_id    = quote.lead_id
+    q_tradie_id  = quote.tradie_id
+    q_amount     = quote.amount
+    q_message    = quote.message
+    q_created_at = quote.created_at
+    job_id_val   = job.id
+    job_status   = job.status
+    # -----------------------------------------------------------------------
 
     quote.status = new_status
     db.add(quote)
 
     # Fetch all lead ids for this job
-    all_leads_result = await db.execute(select(Lead).where(Lead.job_id == job.id))
+    all_leads_result = await db.execute(select(Lead).where(Lead.job_id == job_id_val))
     all_lead_ids = [l.id for l in all_leads_result.scalars().all()]
 
     if new_status == "accepted":
-        # Auto-reject all other pending quotes
+        # Auto-reject all other pending quotes for this job
         others_result = await db.execute(
             select(Quote).where(
                 Quote.lead_id.in_(all_lead_ids),
@@ -254,17 +264,16 @@ async def update_quote_status(
             other.status = "rejected"
             db.add(other)
 
-        # Move job to in_progress via explicit SQL so it is guaranteed to
-        # persist regardless of SQLAlchemy ORM session-tracking edge cases.
+        # Move job to in_progress via explicit SQL
         TERMINAL = {"in_progress", "completed", "closed", "cancelled"}
-        if job.status not in TERMINAL:
+        if job_status not in TERMINAL:
             await db.execute(
                 text("UPDATE jobs SET status='in_progress', updated_at=NOW() WHERE id=:jid"),
-                {"jid": job.id},
+                {"jid": job_id_val},
             )
 
     elif new_status == "rejected":
-        # Reopen job if no accepted quote remains
+        # Reopen job only if no accepted quote remains for this job
         accepted_result = await db.execute(
             select(Quote).where(
                 Quote.lead_id.in_(all_lead_ids),
@@ -272,28 +281,20 @@ async def update_quote_status(
             )
         )
         if not accepted_result.scalar_one_or_none():
-            if job.status in ("quoted", "hired"):
+            if job_status in ("quoted", "hired"):
                 try:
                     await JobStateMachine.transition(job, "open", current_user, db)
                 except Exception as e:
                     if not isinstance(e, InvalidTransitionError):
                         print(f"[quotes] State machine error on reopen (non-fatal): {e}")
-                # Explicit UPDATE as source of truth
+                # Explicit UPDATE as the definitive source of truth
                 await db.execute(
                     text("UPDATE jobs SET status='open', updated_at=NOW() WHERE id=:jid"),
-                    {"jid": job.id},
+                    {"jid": job_id_val},
                 )
 
     await db.commit()
-
-    # Snapshot quote fields before the session expiry invalidates them
-    q_id         = quote.id
-    q_lead_id    = quote.lead_id
-    q_tradie_id  = quote.tradie_id
-    q_amount     = quote.amount
-    q_message    = quote.message
-    q_status     = quote.status
-    q_created_at = quote.created_at
+    # All ORM objects are expired past this point -- use only local vars above
 
     return QuoteResponse(
         id=q_id,
@@ -301,7 +302,7 @@ async def update_quote_status(
         tradie_id=q_tradie_id,
         amount=q_amount,
         message=q_message,
-        status=q_status,
+        status=new_status,
         created_at=q_created_at,
         tradie_name=tradie_name,
         tradie_business=tradie_business,
@@ -311,7 +312,7 @@ async def update_quote_status(
     )
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────────────────
 
 def _build_quote_response(quote: Quote, profile: TradieProfile, tradie_user: User) -> QuoteResponse:
     """Build a QuoteResponse including tradie details."""
@@ -362,17 +363,17 @@ async def _notify_homeowner_new_quote(job, tradie_user: User, profile: TradiePro
             Log in to your dashboard to review the quote, compare tradies and accept.
           </p>
           {_btn("View Quote", "http://localhost:3000/dashboard", "#2E7D5A")}"""
-        text = (
+        text_body = (
             f"G'day {name},\n\n"
             f"{tradie_display} has quoted ${amount:,.2f} for '{job.title}'.\n\n"
             f"View and accept quotes: http://localhost:3000/dashboard\n\n"
-            f"— The {APP_NAME} team"
+            f"\u2014 The {APP_NAME} team"
         )
         await _send_raw_email(
             homeowner.email,
             f"New quote received for {job.title}",
             _base_html(body, "#2E7D5A"),
-            text,
+            text_body,
         )
     except Exception as e:
         print(f"[quotes] Homeowner notification failed (non-fatal): {e}")
