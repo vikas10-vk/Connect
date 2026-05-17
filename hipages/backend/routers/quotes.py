@@ -189,7 +189,7 @@ async def update_quote_status(
 ):
     """
     Homeowner accepts or rejects a quote.
-      accepted → job transitions to hired; all other pending quotes auto-rejected
+      accepted → job transitions to in_progress; all other pending quotes auto-rejected
       rejected → if no remaining accepted quotes, job reverts to open
     """
     if current_user.role != "homeowner":
@@ -212,6 +212,28 @@ async def update_quote_status(
     if not job or job.homeowner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your job")
 
+    # ── Load tradie profile BEFORE commit so we always have it for the response ─
+    # (After db.commit() SQLAlchemy expires ORM objects; a post-commit JOIN can
+    #  silently return nothing and previously triggered a spurious 500 error.)
+    prof_result = await db.execute(
+        select(TradieProfile, User)
+        .join(User, User.id == TradieProfile.user_id)
+        .where(TradieProfile.id == quote.tradie_id)
+    )
+    prof_row = prof_result.first()
+    if not prof_row:
+        print(f"[quotes] WARNING: tradie profile not found for quote {quote_id}, tradie_id={quote.tradie_id}")
+        raise HTTPException(status_code=404, detail="Tradie profile not found for this quote")
+    profile, tradie_user = prof_row
+
+    # Snapshot values we need for the response into plain local variables so
+    # they survive db.commit() (which would otherwise expire the ORM objects).
+    tradie_name     = profile.business_name or tradie_user.full_name or "Tradie"
+    tradie_business = profile.business_name
+    tradie_avatar   = profile.avatar_url
+    tradie_suburb   = profile.suburb
+    tradie_phone    = profile.phone  # only exposed when accepted (filtered below)
+
     quote.status = new_status
     db.add(quote)
 
@@ -231,16 +253,11 @@ async def update_quote_status(
         for other in others_result.scalars().all():
             other.status = "rejected"
             db.add(other)
-        # Use an explicit SQL UPDATE for the job status so it is guaranteed to
+
+        # Move job to in_progress via explicit SQL so it is guaranteed to
         # persist regardless of SQLAlchemy ORM session-tracking edge cases.
-        # The state machine is attempted first (writes the audit event); if it
-        # fails for any reason we fall back to the raw UPDATE so the accept
-        # NEVER silently leaves the job in the wrong state.
         TERMINAL = {"in_progress", "completed", "closed", "cancelled"}
         if job.status not in TERMINAL:
-            # Skip the state machine (it requires intermediate "hired" state);
-            # jump straight to in_progress — the homeowner's acceptance means
-            # the job starts immediately, no separate "Start job" step needed.
             await db.execute(
                 text("UPDATE jobs SET status='in_progress', updated_at=NOW() WHERE id=:jid"),
                 {"jid": job.id},
@@ -268,37 +285,30 @@ async def update_quote_status(
                 )
 
     await db.commit()
-    await db.refresh(quote)
 
-    # Load tradie profile for response
-    prof_result = await db.execute(
-        select(TradieProfile, User)
-        .join(User, User.id == TradieProfile.user_id)
-        .where(TradieProfile.id == quote.tradie_id)
+    # Snapshot quote fields before the session expiry invalidates them
+    q_id         = quote.id
+    q_lead_id    = quote.lead_id
+    q_tradie_id  = quote.tradie_id
+    q_amount     = quote.amount
+    q_message    = quote.message
+    q_status     = quote.status
+    q_created_at = quote.created_at
+
+    return QuoteResponse(
+        id=q_id,
+        lead_id=q_lead_id,
+        tradie_id=q_tradie_id,
+        amount=q_amount,
+        message=q_message,
+        status=q_status,
+        created_at=q_created_at,
+        tradie_name=tradie_name,
+        tradie_business=tradie_business,
+        tradie_avatar_url=tradie_avatar,
+        tradie_phone=tradie_phone if new_status == "accepted" else None,
+        tradie_suburb=tradie_suburb,
     )
-    row = prof_result.first()
-    if row:
-        profile, tradie_user = row
-        phone = profile.phone if new_status == "accepted" else None
-        return QuoteResponse(
-            id=quote.id,
-            lead_id=quote.lead_id,
-            tradie_id=quote.tradie_id,
-            amount=quote.amount,
-            message=quote.message,
-            status=quote.status,
-            created_at=quote.created_at,
-            tradie_name=profile.business_name or tradie_user.full_name or "Tradie",
-            tradie_business=profile.business_name,
-            tradie_avatar_url=profile.avatar_url,
-            tradie_phone=phone,
-            tradie_suburb=profile.suburb,
-        )
-
-    # Tradie profile not found — this should never happen in normal operation
-    # since every quote is created by a tradie who has a profile. Return a safe
-    # minimal response rather than crashing with a Pydantic serialisation error.
-    raise HTTPException(status_code=500, detail="Could not load tradie profile for this quote. Please retry.")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
