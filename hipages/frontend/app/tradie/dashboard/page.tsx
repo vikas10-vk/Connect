@@ -667,6 +667,13 @@ function TradieDashboardContent() {
   const [catLoaded, setCatLoaded] = useState(false);
   const [previewCatId, setPreviewCatId] = useState<string | null>(null);
   const [confirmAddCat, setConfirmAddCat] = useState<CategoryItem | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   // ── Auth guard ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1112,10 +1119,10 @@ function TradieDashboardContent() {
 
                 {/* ── 1. Service areas & states — TOP, always visible ── */}
                 <div style={panelStyle}>
-                  <div style={{ padding: '14px 24px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div className="pref-area-header" style={{ padding: '14px 24px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', gap: 10 }}>
                     <MapPin size={14} color={C.brass} />
                     <p style={sectionTitle}>Service areas & states</p>
-                    <span style={{ fontSize: 11, color: C.ink3 }}>— determines which state licences you need</span>
+                    <span className="pref-area-sub" style={{ fontSize: 11, color: C.ink3 }}>— determines which state licences you need</span>
                   </div>
                   <div style={{ padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -1188,149 +1195,79 @@ function TradieDashboardContent() {
                   </div>
                 </div>
 
-                {/* ── 2. Services picker — two column ── */}
+                {/* ── 2. Services picker ── */}
                 <div style={panelStyle}>
-                  <div style={{ padding: '14px 24px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <p style={sectionTitle}>Services you offer</p>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: C.ink3 }}>{selectedCatIds.length} selected · changes sync to Licences & Docs automatically</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: C.ink3, flexShrink: 0 }}>{selectedCatIds.length} selected</span>
                   </div>
 
-                  <div className="services-picker-grid">
-                    {/* ── LEFT: Requirements / Preview / Confirmation panel ── */}
-                    <div style={{ padding: '20px 22px', borderRight: `1px solid ${C.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 14, minHeight: 460 }}>
+                  {isMobile ? (
+                    /* ── MOBILE: single-column stacked layout ── */
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
 
-                      {/* CONFIRMATION: strict service waiting to be added */}
+                      {/* Inline confirmation for strict services */}
                       {confirmAddCat && (() => {
                         const rule = getServiceRule(confirmAddCat);
                         return (
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: C.amberL, color: C.amber, border: `1px solid ${C.amber}40`, alignSelf: 'flex-start', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                              {getLevelLabel(rule.level)}
-                            </span>
-                            <div>
-                              <p style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 500, color: C.ink, margin: '0 0 6px', letterSpacing: '-0.01em' }}>{confirmAddCat.name}</p>
-                              <p style={{ fontSize: 13, color: C.ink3, margin: 0, lineHeight: 1.6 }}>{rule.reason}</p>
+                          <div style={{ padding: '16px', background: C.amberL, borderBottom: `1px solid ${C.amber}30` }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: C.amber, color: '#fff', textTransform: 'uppercase' }}>{getLevelLabel(rule.level)}</span>
+                              <p style={{ fontWeight: 600, fontSize: 14, color: C.ink, margin: 0 }}>{confirmAddCat.name}</p>
                             </div>
-                            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: '12px 16px' }}>
-                              <p style={{ fontSize: 10.5, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' }}>Documents required</p>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                                {rule.documents.map(d => (
-                                  <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.amber, flexShrink: 0 }} />
-                                    <span style={{ fontSize: 13, color: C.ink }}>{getDocumentLabel(d)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                            <div style={{ padding: '10px 14px', background: C.sageL, borderRadius: 10, border: `1px solid ${C.sage}30`, display: 'flex', gap: 8 }}>
-                              <Info size={13} color={C.sage} style={{ flexShrink: 0, marginTop: 1 }} />
-                              <p style={{ fontSize: 12, color: C.ink2, margin: 0, lineHeight: 1.55 }}>Your existing verified services and leads <strong>will not be affected</strong> by adding this service.</p>
-                            </div>
-                            <div style={{ marginTop: 'auto' }}>
-                              <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: '0 0 10px' }}>Add <em style={{ fontStyle: 'italic' }}>{confirmAddCat.name}</em> to your services?</p>
-                              <div style={{ display: 'flex', gap: 8 }}>
-                                <button onClick={() => setConfirmAddCat(null)}
-                                  style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${C.line}`, background: C.paper, color: C.ink2, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-                                <button onClick={() => { setSelectedCatIds(prev => [...prev, confirmAddCat.id]); setPreviewCatId(confirmAddCat.id); setConfirmAddCat(null); }}
-                                  style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: C.ink, color: C.card, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-                                  Yes, add service
-                                </button>
-                              </div>
+                            <p style={{ fontSize: 12.5, color: C.ink3, margin: '0 0 12px', lineHeight: 1.55 }}>{rule.reason}</p>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button onClick={() => setConfirmAddCat(null)}
+                                style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${C.line}`, background: C.paper, color: C.ink2, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                              <button onClick={() => { setSelectedCatIds(prev => [...prev, confirmAddCat.id]); setConfirmAddCat(null); }}
+                                style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: C.ink, color: C.card, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Yes, add</button>
                             </div>
                           </div>
                         );
                       })()}
 
-                      {/* PREVIEW: hovering a service from the right list */}
-                      {!confirmAddCat && previewCatId && (() => {
-                        const cat = allCategories.find(c => c.id === previewCatId);
-                        if (!cat) return null;
-                        const rule = getServiceRule(cat);
-                        const isSelected = selectedCatIds.includes(previewCatId);
-                        return (
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: rule.level === 'strict' ? C.amberL : rule.level === 'standard' ? C.brassL : C.panel, color: rule.level === 'strict' ? C.amber : rule.level === 'standard' ? C.brass : C.ink3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{getLevelLabel(rule.level)}</span>
-                              {isSelected && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: C.sageL, color: C.sage }}>✓ Selected</span>}
-                            </div>
-                            <div>
-                              <p style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 500, color: C.ink, margin: '0 0 6px', letterSpacing: '-0.01em' }}>{cat.name}</p>
-                              <p style={{ fontSize: 13, color: C.ink3, margin: 0, lineHeight: 1.6 }}>{rule.reason}</p>
-                            </div>
-                            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: '12px 16px' }}>
-                              <p style={{ fontSize: 10.5, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' }}>Documents required</p>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                                {rule.documents.map(d => (
-                                  <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.brass, flexShrink: 0 }} />
-                                    <span style={{ fontSize: 13, color: C.ink2 }}>{getDocumentLabel(d)}</span>
+                      {/* Selected services chips */}
+                      {selectedCatIds.length > 0 && (
+                        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}` }}>
+                          <p style={{ fontSize: 10.5, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Your services</p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {selectedCategories.map(cat => {
+                              const rule = getServiceRule(cat);
+                              const hasVerified = onboardingStatus?.certifications.some(c => c.category_id === cat.id && c.status === 'verified') ?? false;
+                              return (
+                                <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: C.paper, border: `1px solid ${C.line}` }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: '0 0 1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</p>
+                                    <p style={{ fontSize: 11, color: rule.level === 'strict' ? C.amber : C.ink3, margin: 0, fontWeight: 600 }}>{getLevelLabel(rule.level)}</p>
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                            <p style={{ fontSize: 12, color: C.ink4, margin: 0 }}>Click to {isSelected ? 'remove from' : 'add to'} your services</p>
+                                  {hasVerified && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: C.sageL, color: C.sage, flexShrink: 0 }}>Verified</span>}
+                                  <button onClick={() => { if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: '⚠️' }); setSelectedCatIds(prev => prev.filter(id => id !== cat.id)); }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.ink4, padding: 4, display: 'flex', flexShrink: 0 }}>
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })()}
-
-                      {/* DEFAULT: no hover, no confirm — show selected services list */}
-                      {!confirmAddCat && !previewCatId && (
-                        selectedCatIds.length === 0 ? (
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, textAlign: 'center', color: C.ink4, padding: '20px 0' }}>
-                            <Search size={22} />
-                            <p style={{ fontSize: 13, margin: 0, lineHeight: 1.65, maxWidth: 200 }}>Hover a service on the right to see what documents it needs</p>
-                          </div>
-                        ) : (
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            <p style={{ fontSize: 10.5, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Selected services ({selectedCatIds.length})</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto', maxHeight: 360 }}>
-                              {selectedCategories.map(cat => {
-                                const rule = getServiceRule(cat);
-                                const hasVerified = onboardingStatus?.certifications.some(c => c.category_id === cat.id && c.status === 'verified') ?? false;
-                                return (
-                                  <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 8, background: C.paper, border: `1px solid ${C.line}` }}>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <p style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</p>
-                                      <p style={{ fontSize: 11, color: rule.level === 'strict' ? C.amber : C.ink3, margin: 0, fontWeight: 600 }}>{getLevelLabel(rule.level)}</p>
-                                    </div>
-                                    {hasVerified && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: C.sageL, color: C.sage, flexShrink: 0 }}>Verified</span>}
-                                    <button
-                                      onClick={() => {
-                                        if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: '⚠️' });
-                                        setSelectedCatIds(prev => prev.filter(id => id !== cat.id));
-                                      }}
-                                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.ink4, padding: 2, display: 'flex', flexShrink: 0 }}
-                                      onMouseEnter={e => e.currentTarget.style.color = C.rose}
-                                      onMouseLeave={e => e.currentTarget.style.color = C.ink4}>
-                                      <X size={13} />
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )
+                        </div>
                       )}
-                    </div>
 
-                    {/* ── RIGHT: Searchable grouped services list ── */}
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      {/* Search + filter pills */}
-                      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                      {/* Search + filter */}
+                      <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 9 }}>
                         <div style={{ position: 'relative' }}>
                           <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
                           <input value={catSearchQuery} onChange={e => setCatSearchQuery(e.target.value)} placeholder="Search services…"
-                            style={{ ...inputStyle, paddingLeft: 32, padding: '9px 10px 9px 32px', fontSize: 13 }}
+                            style={{ ...inputStyle, paddingLeft: 32, padding: '10px 10px 10px 32px', fontSize: 13 }}
                             onFocus={e => { e.target.style.borderColor = C.brass; e.target.style.background = C.card; }}
                             onBlur={e => { e.target.style.borderColor = C.line; e.target.style.background = C.paper; }} />
                           {catSearchQuery && <button onClick={() => setCatSearchQuery('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.ink3, padding: 2, display: 'flex' }}><X size={12} /></button>}
                         </div>
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {[['all', 'All'], ['strict', 'Strict'], ['standard', 'Standard'], ['basic', 'Basic']].map(([value, label]) => {
                             const active = serviceLevelFilter === value;
                             return (
                               <button key={value} onClick={() => setServiceLevelFilter(value as any)}
-                                style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${active ? C.brass : C.line}`, background: active ? C.brassL : C.card, color: active ? C.brass : C.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                                style={{ padding: '6px 12px', borderRadius: 7, border: `1px solid ${active ? C.brass : C.line}`, background: active ? C.brassL : C.card, color: active ? C.brass : C.ink3, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                                 {label}
                               </button>
                             );
@@ -1338,14 +1275,14 @@ function TradieDashboardContent() {
                         </div>
                       </div>
 
-                      {/* Grouped services scroll list */}
+                      {/* Service list */}
                       {!catLoaded ? (
                         <div style={{ padding: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: C.ink3 }}>
                           <Loader2 size={16} className="animate-spin" />
                           <span style={{ fontSize: 13 }}>Loading services…</span>
                         </div>
                       ) : (
-                        <div className="services-scroll" style={{ overflowY: 'auto', maxHeight: 380 }}>
+                        <div>
                           {Object.keys(groupedAllCategories).length === 0 ? (
                             <div style={{ padding: '32px 16px', textAlign: 'center', color: C.ink4, fontSize: 13 }}>No services match your search.</div>
                           ) : Object.entries(groupedAllCategories).map(([group, items]) => (
@@ -1356,12 +1293,9 @@ function TradieDashboardContent() {
                               {items.map(cat => {
                                 const selected = selectedCatIds.includes(cat.id);
                                 const rule = getServiceRule(cat);
-                                const isPreviewing = previewCatId === cat.id;
                                 const isConfirming = confirmAddCat?.id === cat.id;
                                 return (
                                   <button key={cat.id}
-                                    onMouseEnter={() => { if (!confirmAddCat) setPreviewCatId(cat.id); }}
-                                    onMouseLeave={() => { if (!confirmAddCat) setPreviewCatId(null); }}
                                     onClick={() => {
                                       if (selected) {
                                         const hasVerified = onboardingStatus?.certifications.some(c => c.category_id === cat.id && c.status === 'verified') ?? false;
@@ -1370,22 +1304,21 @@ function TradieDashboardContent() {
                                         setConfirmAddCat(null);
                                       } else if (rule.level === 'strict') {
                                         setConfirmAddCat(cat);
-                                        setPreviewCatId(null);
                                       } else {
                                         setSelectedCatIds(prev => [...prev, cat.id]);
                                       }
                                     }}
-                                    style={{ width: '100%', padding: '11px 16px', border: 'none', borderBottom: `1px solid ${C.lineSoft}`, background: isConfirming ? C.amberL : selected ? C.brassL : isPreviewing ? C.panel : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', transition: 'background 0.1s' }}>
+                                    style={{ width: '100%', padding: '13px 16px', border: 'none', borderBottom: `1px solid ${C.lineSoft}`, background: isConfirming ? C.amberL : selected ? C.brassL : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                      <p style={{ fontSize: 13, fontWeight: selected ? 700 : 500, color: C.ink, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</p>
-                                      <p style={{ fontSize: 10.5, color: rule.level === 'strict' ? C.amber : C.ink3, margin: 0, fontWeight: 600 }}>{getLevelLabel(rule.level)}</p>
+                                      <p style={{ fontSize: 14, fontWeight: selected ? 700 : 500, color: C.ink, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</p>
+                                      <p style={{ fontSize: 11, color: rule.level === 'strict' ? C.amber : C.ink3, margin: 0, fontWeight: 600 }}>{getLevelLabel(rule.level)}</p>
                                     </div>
                                     {selected
-                                      ? <CheckCircle size={14} color={C.brass} style={{ flexShrink: 0 }} />
+                                      ? <CheckCircle size={15} color={C.brass} style={{ flexShrink: 0 }} />
                                       : isConfirming
-                                        ? <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: C.amberL, color: C.amber, flexShrink: 0 }}>Confirm?</span>
+                                        ? <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 4, background: C.amberL, color: C.amber, flexShrink: 0 }}>Confirm?</span>
                                         : rule.level === 'strict'
-                                          ? <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: C.panel, color: C.ink3, flexShrink: 0 }}>Licence</span>
+                                          ? <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 4, background: C.panel, color: C.ink3, flexShrink: 0 }}>Licence</span>
                                           : null}
                                   </button>
                                 );
@@ -1395,7 +1328,204 @@ function TradieDashboardContent() {
                         </div>
                       )}
                     </div>
-                  </div>
+                  ) : (
+                    /* ── DESKTOP: two-column layout ── */
+                    <div className="services-picker-grid">
+                      {/* LEFT: Requirements / Preview / Confirmation panel */}
+                      <div style={{ padding: '20px 22px', borderRight: `1px solid ${C.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 14, minHeight: 460 }}>
+
+                        {confirmAddCat && (() => {
+                          const rule = getServiceRule(confirmAddCat);
+                          return (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: C.amberL, color: C.amber, border: `1px solid ${C.amber}40`, alignSelf: 'flex-start', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                {getLevelLabel(rule.level)}
+                              </span>
+                              <div>
+                                <p style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 500, color: C.ink, margin: '0 0 6px', letterSpacing: '-0.01em' }}>{confirmAddCat.name}</p>
+                                <p style={{ fontSize: 13, color: C.ink3, margin: 0, lineHeight: 1.6 }}>{rule.reason}</p>
+                              </div>
+                              <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: '12px 16px' }}>
+                                <p style={{ fontSize: 10.5, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' }}>Documents required</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                                  {rule.documents.map(d => (
+                                    <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.amber, flexShrink: 0 }} />
+                                      <span style={{ fontSize: 13, color: C.ink }}>{getDocumentLabel(d)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <div style={{ padding: '10px 14px', background: C.sageL, borderRadius: 10, border: `1px solid ${C.sage}30`, display: 'flex', gap: 8 }}>
+                                <Info size={13} color={C.sage} style={{ flexShrink: 0, marginTop: 1 }} />
+                                <p style={{ fontSize: 12, color: C.ink2, margin: 0, lineHeight: 1.55 }}>Your existing verified services and leads <strong>will not be affected</strong> by adding this service.</p>
+                              </div>
+                              <div style={{ marginTop: 'auto' }}>
+                                <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: '0 0 10px' }}>Add <em style={{ fontStyle: 'italic' }}>{confirmAddCat.name}</em> to your services?</p>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  <button onClick={() => setConfirmAddCat(null)}
+                                    style={{ flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${C.line}`, background: C.paper, color: C.ink2, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                                  <button onClick={() => { setSelectedCatIds(prev => [...prev, confirmAddCat.id]); setPreviewCatId(confirmAddCat.id); setConfirmAddCat(null); }}
+                                    style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: C.ink, color: C.card, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                                    Yes, add service
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {!confirmAddCat && previewCatId && (() => {
+                          const cat = allCategories.find(c => c.id === previewCatId);
+                          if (!cat) return null;
+                          const rule = getServiceRule(cat);
+                          const isSelected = selectedCatIds.includes(previewCatId);
+                          return (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: rule.level === 'strict' ? C.amberL : rule.level === 'standard' ? C.brassL : C.panel, color: rule.level === 'strict' ? C.amber : rule.level === 'standard' ? C.brass : C.ink3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{getLevelLabel(rule.level)}</span>
+                                {isSelected && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: C.sageL, color: C.sage }}>✓ Selected</span>}
+                              </div>
+                              <div>
+                                <p style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 500, color: C.ink, margin: '0 0 6px', letterSpacing: '-0.01em' }}>{cat.name}</p>
+                                <p style={{ fontSize: 13, color: C.ink3, margin: 0, lineHeight: 1.6 }}>{rule.reason}</p>
+                              </div>
+                              <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: '12px 16px' }}>
+                                <p style={{ fontSize: 10.5, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' }}>Documents required</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                                  {rule.documents.map(d => (
+                                    <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.brass, flexShrink: 0 }} />
+                                      <span style={{ fontSize: 13, color: C.ink2 }}>{getDocumentLabel(d)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <p style={{ fontSize: 12, color: C.ink4, margin: 0 }}>Click to {isSelected ? 'remove from' : 'add to'} your services</p>
+                            </div>
+                          );
+                        })()}
+
+                        {!confirmAddCat && !previewCatId && (
+                          selectedCatIds.length === 0 ? (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, textAlign: 'center', color: C.ink4, padding: '20px 0' }}>
+                              <Search size={22} />
+                              <p style={{ fontSize: 13, margin: 0, lineHeight: 1.65, maxWidth: 200 }}>Hover a service on the right to see what documents it needs</p>
+                            </div>
+                          ) : (
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              <p style={{ fontSize: 10.5, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Selected services ({selectedCatIds.length})</p>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto', maxHeight: 360 }}>
+                                {selectedCategories.map(cat => {
+                                  const rule = getServiceRule(cat);
+                                  const hasVerified = onboardingStatus?.certifications.some(c => c.category_id === cat.id && c.status === 'verified') ?? false;
+                                  return (
+                                    <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 8, background: C.paper, border: `1px solid ${C.line}` }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <p style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</p>
+                                        <p style={{ fontSize: 11, color: rule.level === 'strict' ? C.amber : C.ink3, margin: 0, fontWeight: 600 }}>{getLevelLabel(rule.level)}</p>
+                                      </div>
+                                      {hasVerified && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: C.sageL, color: C.sage, flexShrink: 0 }}>Verified</span>}
+                                      <button
+                                        onClick={() => {
+                                          if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: '⚠️' });
+                                          setSelectedCatIds(prev => prev.filter(id => id !== cat.id));
+                                        }}
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.ink4, padding: 2, display: 'flex', flexShrink: 0 }}
+                                        onMouseEnter={e => e.currentTarget.style.color = C.rose}
+                                        onMouseLeave={e => e.currentTarget.style.color = C.ink4}>
+                                        <X size={13} />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+
+                      {/* RIGHT: Searchable grouped services list */}
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                          <div style={{ position: 'relative' }}>
+                            <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
+                            <input value={catSearchQuery} onChange={e => setCatSearchQuery(e.target.value)} placeholder="Search services…"
+                              style={{ ...inputStyle, paddingLeft: 32, padding: '9px 10px 9px 32px', fontSize: 13 }}
+                              onFocus={e => { e.target.style.borderColor = C.brass; e.target.style.background = C.card; }}
+                              onBlur={e => { e.target.style.borderColor = C.line; e.target.style.background = C.paper; }} />
+                            {catSearchQuery && <button onClick={() => setCatSearchQuery('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.ink3, padding: 2, display: 'flex' }}><X size={12} /></button>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                            {[['all', 'All'], ['strict', 'Strict'], ['standard', 'Standard'], ['basic', 'Basic']].map(([value, label]) => {
+                              const active = serviceLevelFilter === value;
+                              return (
+                                <button key={value} onClick={() => setServiceLevelFilter(value as any)}
+                                  style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${active ? C.brass : C.line}`, background: active ? C.brassL : C.card, color: active ? C.brass : C.ink3, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {!catLoaded ? (
+                          <div style={{ padding: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: C.ink3 }}>
+                            <Loader2 size={16} className="animate-spin" />
+                            <span style={{ fontSize: 13 }}>Loading services…</span>
+                          </div>
+                        ) : (
+                          <div className="services-scroll" style={{ overflowY: 'auto', maxHeight: 380 }}>
+                            {Object.keys(groupedAllCategories).length === 0 ? (
+                              <div style={{ padding: '32px 16px', textAlign: 'center', color: C.ink4, fontSize: 13 }}>No services match your search.</div>
+                            ) : Object.entries(groupedAllCategories).map(([group, items]) => (
+                              <div key={group}>
+                                <div style={{ padding: '7px 16px', background: C.lineSoft, borderBottom: `1px solid ${C.line}` }}>
+                                  <p style={{ fontSize: 9.5, fontWeight: 800, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.16em', margin: 0 }}>{group}</p>
+                                </div>
+                                {items.map(cat => {
+                                  const selected = selectedCatIds.includes(cat.id);
+                                  const rule = getServiceRule(cat);
+                                  const isPreviewing = previewCatId === cat.id;
+                                  const isConfirming = confirmAddCat?.id === cat.id;
+                                  return (
+                                    <button key={cat.id}
+                                      onMouseEnter={() => { if (!confirmAddCat) setPreviewCatId(cat.id); }}
+                                      onMouseLeave={() => { if (!confirmAddCat) setPreviewCatId(null); }}
+                                      onClick={() => {
+                                        if (selected) {
+                                          const hasVerified = onboardingStatus?.certifications.some(c => c.category_id === cat.id && c.status === 'verified') ?? false;
+                                          if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: '⚠️' });
+                                          setSelectedCatIds(prev => prev.filter(id => id !== cat.id));
+                                          setConfirmAddCat(null);
+                                        } else if (rule.level === 'strict') {
+                                          setConfirmAddCat(cat);
+                                          setPreviewCatId(null);
+                                        } else {
+                                          setSelectedCatIds(prev => [...prev, cat.id]);
+                                        }
+                                      }}
+                                      style={{ width: '100%', padding: '11px 16px', border: 'none', borderBottom: `1px solid ${C.lineSoft}`, background: isConfirming ? C.amberL : selected ? C.brassL : isPreviewing ? C.panel : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', transition: 'background 0.1s' }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <p style={{ fontSize: 13, fontWeight: selected ? 700 : 500, color: C.ink, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</p>
+                                        <p style={{ fontSize: 10.5, color: rule.level === 'strict' ? C.amber : C.ink3, margin: 0, fontWeight: 600 }}>{getLevelLabel(rule.level)}</p>
+                                      </div>
+                                      {selected
+                                        ? <CheckCircle size={14} color={C.brass} style={{ flexShrink: 0 }} />
+                                        : isConfirming
+                                          ? <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: C.amberL, color: C.amber, flexShrink: 0 }}>Confirm?</span>
+                                          : rule.level === 'strict'
+                                            ? <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: C.panel, color: C.ink3, flexShrink: 0 }}>Licence</span>
+                                            : null}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* ── 3. Job types ── */}
@@ -1566,6 +1696,9 @@ function TradieDashboardContent() {
           .lead-row-action { margin-left: auto; }
           .profile-header { flex-direction: column; align-items: flex-start; gap: 16px; }
           .profile-biz-grid { grid-template-columns: 1fr; gap: 12px; }
+          /* ── Preferences: mobile fixes ── */
+          .pref-area-header { flex-wrap: wrap; }
+          .pref-area-sub { display: none; }
         }
       `}</style>
         </>

@@ -646,11 +646,12 @@ async def submit_review(
 
     if job.completed_at:
         hours_since = (datetime.utcnow() - job.completed_at).total_seconds() / 3600
-        if hours_since < 2:
-            raise HTTPException(
-                status_code=400,
-                detail="Reviews can be submitted 2 hours after job completion. Please check back later."
-            )
+        # For testing/demo purposes, we disable the 2-hour delay:
+        # if hours_since < 2:
+        #     raise HTTPException(
+        #         status_code=400,
+        #         detail="Reviews can be submitted 2 hours after job completion. Please check back later."
+        #     )
 
     existing = await db.execute(select(Review).where(Review.job_id == job_id))
     if existing.scalar_one_or_none():

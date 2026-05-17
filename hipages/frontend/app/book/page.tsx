@@ -442,6 +442,7 @@ function BookingContent() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [pwdFocused, setPwdFocused] = useState(false);
   const [authError, setAuthError] = useState('');
   // OTP verification (register flow only)
   const [otpSent, setOtpSent] = useState(false);
@@ -780,7 +781,12 @@ function BookingContent() {
       if (!email.trim()) errors.email = 'Email address is required.';
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Enter a valid email address.';
       if (!password) errors.password = 'Password is required.';
-      else if (authMode === 'register' && password.length < 8) errors.password = 'Password must be at least 8 characters.';
+      else if (authMode === 'register') {
+        if (password.length < 8) errors.password = 'Password must be at least 8 characters.';
+        else if (!/[A-Z]/.test(password)) errors.password = 'Password must contain at least one uppercase letter.';
+        else if (!/[a-z]/.test(password)) errors.password = 'Password must contain at least one lowercase letter.';
+        else if (!/\d/.test(password)) errors.password = 'Password must contain at least one number.';
+      }
     }
     return errors;
   };
@@ -886,9 +892,15 @@ function BookingContent() {
       // Create the account — backend sends OTP email automatically on register
       await register({ email, password, name: fullName || email.split('@')[0], role: 'homeowner' });
       // Now send OTP explicitly (account is created & logged in at this point)
-      await api.post('/auth/send-email-otp');
+      try {
+        await api.post('/auth/send-email-otp');
+        toast.success('A 6-digit code was sent to your email.');
+      } catch (otpErr: any) {
+        // 429 = OTP already sent recently — still show the OTP input
+        if (otpErr?.response?.status !== 429) throw otpErr;
+        toast.success('Check your email for the verification code.');
+      }
       setOtpSent(true);
-      toast.success('A 6-digit code was sent to your email.');
     } catch (err: any) {
       let msg = parseApiError(err);
       if (err?.response?.status === 401)
@@ -974,8 +986,10 @@ function BookingContent() {
           onSave={saveDraft} onDiscard={discardDraft} onResume={() => setShowCancel(false)} />
       )}
 
-      {/* ── Header ── */}
-      <header className="sticky top-0 z-50 backdrop-blur-md shadow-md" style={{ background: '#071D36', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      {/* ── Sticky top wrapper: header + progress bar ── */}
+      <div className="sticky top-0 z-50">
+      {/* Header */}
+      <header className="backdrop-blur-md shadow-md" style={{ background: '#071D36', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap justify-between items-center gap-3">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#D4AA3A', boxShadow: '0 3px 10px rgba(212,170,58,0.3)' }}>
@@ -1019,9 +1033,10 @@ function BookingContent() {
         </div>
       </header>
 
-      {/* ── Progress ── */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-2 pb-8">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+      {/* Progress bar — stays visible with header */}
+      <div className="border-b border-gray-100 shadow-sm" style={{ background: '#FFF8E7' }}>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-2 pb-3">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
           {visibleSteps.map((s, i) => (
             <React.Fragment key={s.id}>
               <div className="flex flex-col items-center gap-1">
@@ -1048,9 +1063,11 @@ function BookingContent() {
           ))}
         </div>
       </div>
+      </div>
+      </div>{/* end sticky top wrapper */}
 
       {/* ── Steps ── */}
-      <main className={cn("max-w-2xl mx-auto px-4 sm:px-6 pb-32", shakeStep && "animate-shake")}>
+      <main className={cn("max-w-2xl mx-auto px-4 sm:px-6 pt-6 pb-32", shakeStep && "animate-shake")}>
         <AnimatePresence mode="wait">
 
           {/* Step 1: Category */}
@@ -1589,9 +1606,27 @@ function BookingContent() {
                         </button>
                         <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password}
                           onChange={e => { setPassword(e.target.value); setFieldErrors(er => ({ ...er, password: '' })); }}
+                          onFocus={() => setPwdFocused(true)}
+                          onBlur={() => setPwdFocused(false)}
                           className={cn("w-full bg-brand-ivory/50 border rounded-xl pl-11 pr-12 py-3.5 text-sm font-medium focus:outline-none focus:ring-2 transition-all",
                             fieldErrors.password ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-brand-gold/50 focus:ring-brand-gold/10"
                           )} />
+                        {/* Live password rules — register mode only */}
+                        {authMode === 'register' && pwdFocused && password.length > 0 && (
+                          <div className="mt-2 px-1 grid grid-cols-2 gap-1">
+                            {([
+                              [password.length >= 8,    '8+ characters'],
+                              [/[A-Z]/.test(password),  'Uppercase letter'],
+                              [/[a-z]/.test(password),  'Lowercase letter'],
+                              [/\d/.test(password),     'Number (0–9)'],
+                            ] as [boolean, string][]).map(([ok, label]) => (
+                              <div key={label} className="flex items-center gap-1.5 text-xs" style={{ color: ok ? '#16A34A' : '#9CA3AF' }}>
+                                <CheckCircle2 className="w-3 h-3 shrink-0" style={{ opacity: ok ? 1 : 0.35 }} />
+                                {label}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         {fieldErrors.password && <p className="text-xs text-red-500 font-medium mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {fieldErrors.password}</p>}
                       </div>
                     </div>

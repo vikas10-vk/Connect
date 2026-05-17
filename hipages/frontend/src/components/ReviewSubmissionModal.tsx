@@ -54,7 +54,7 @@ export default function ReviewSubmissionModal({
                 onClose();
             }, 1400);
         } catch (err: any) {
-            const msg = err?.response?.data?.detail;
+            const msg = err?.response?.data?.error?.message || err?.response?.data?.detail;
             setError(typeof msg === 'string' ? msg : 'Could not submit review. Please try again.');
         } finally {
             setSubmitting(false);

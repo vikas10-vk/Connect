@@ -102,7 +102,7 @@ const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   disputed: { label: 'Disputed', color: ROSE, bg: ROSE_LIGHT },
   // ── TERMINAL ────────────────────────────────────────────────────────────────
   completed: { label: 'Awaiting Confirmation', color: GREEN, bg: GREEN_LIGHT },
-  confirmed: { label: 'Confirmed', color: GREEN, bg: GREEN_LIGHT },
+  confirmed: { label: 'Completed', color: GREEN, bg: GREEN_LIGHT },
   closed: { label: 'Closed', color: INK3, bg: CREAM2 },
   cancelled: { label: 'Cancelled', color: ROSE, bg: ROSE_LIGHT },
   deleted: { label: 'Deleted', color: INK3, bg: CREAM2 },
@@ -639,11 +639,12 @@ function JobCard({ job, selected, onClick, quoteCount }: {
   const s = STATUS[job.status] || STATUS.open;
   const u = URGENCY[job.urgency];
   const isNewState = ['awaiting_scope_approval', 'partial_stop', 'disputed'].includes(job.status);
+  const needsReview = job.status === 'confirmed' && !job.has_review;
   return (
     <button onClick={onClick} style={{
       width: '100%', textAlign: 'left', borderRadius: 14, padding: '12px 14px',
       cursor: 'pointer',
-      border: selected ? `1.5px solid ${TERRA}` : isNewState ? `1.5px solid ${s.color}40` : '1.5px solid transparent',
+      border: selected ? `1.5px solid ${TERRA}` : needsReview ? `1.5px solid ${TERRA}60` : isNewState ? `1.5px solid ${s.color}40` : '1.5px solid transparent',
       background: selected ? '#fff' : CREAM, transition: 'all .15s',
       boxShadow: selected ? `0 4px 12px rgba(212,170,58,.08)` : 'none',
     }}
@@ -659,7 +660,12 @@ function JobCard({ job, selected, onClick, quoteCount }: {
             {quoteCount} quote{quoteCount > 1 ? 's' : ''}
           </span>
         )}
-        {isNewState && (
+        {needsReview && (
+          <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, background: TERRA_LIGHT, color: TERRA, padding: '3px 8px', borderRadius: 20, border: `1px solid ${TERRA}40` }}>
+            ⭐ Review needed
+          </span>
+        )}
+        {isNewState && !needsReview && (
           <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, background: s.color, color: '#fff', padding: '3px 8px', borderRadius: 20 }}>
             Action needed
           </span>
@@ -893,7 +899,8 @@ export default function HomeownerDashboardView() {
   };
 
   const ACTIVE_STATUSES = ['open', 'quoted', 'hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'disputed'];
-  const activeJobs = [...jobs.filter(j => ACTIVE_STATUSES.includes(j.status))].sort((a, b) => {
+  // confirmed jobs with no review stay in the active list — user must review before they move to completed
+  const activeJobs = [...jobs.filter(j => ACTIVE_STATUSES.includes(j.status) || (j.status === 'confirmed' && !j.has_review))].sort((a, b) => {
     // Surface action-needed states first
     const aUrgent = ['awaiting_scope_approval', 'partial_stop', 'disputed'].includes(a.status) ? 1 : 0;
     const bUrgent = ['awaiting_scope_approval', 'partial_stop', 'disputed'].includes(b.status) ? 1 : 0;
@@ -903,7 +910,8 @@ export default function HomeownerDashboardView() {
     if (bPending !== aPending) return bPending - aPending;
     return 0;
   });
-  const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'confirmed');
+  // Only jobs that are confirmed AND have a review appear in the completed section
+  const completedJobs = jobs.filter(j => j.status === 'confirmed' && j.has_review);
 
   const pendingQuotes = allQuotes.filter(q => q.status === 'pending');
   const actionNeededJobs = activeJobs.filter(j => ['awaiting_scope_approval', 'partial_stop', 'disputed'].includes(j.status));
@@ -958,7 +966,12 @@ export default function HomeownerDashboardView() {
   // ── Completed view ────────────────────────────────────────────────────────
   if (view === 'completed') {
     const TWENTY_FOUR_HRS = 24 * 60 * 60 * 1000;
-    const trueCompleted = completedJobs.filter(j => j.completed_at && (Date.now() - new Date(j.completed_at).getTime() > TWENTY_FOUR_HRS));
+    // Only move to completed view after review submitted + 24hrs since job completion
+    const trueCompleted = completedJobs.filter(j =>
+      j.has_review &&
+      j.completed_at &&
+      (Date.now() - new Date(j.completed_at).getTime() > TWENTY_FOUR_HRS)
+    );
     return (
       <div style={{ background: CREAM, minHeight: '100vh', padding: isMobile ? '20px 14px' : '32px 28px' }}>
         <div style={{ maxWidth: 800, margin: '0 auto' }}>
@@ -1205,9 +1218,9 @@ export default function HomeownerDashboardView() {
                     <CheckCircle2 size={22} color={GREEN} />
                   </div>
                   <div style={{ flex: 1, minWidth: 200 }}>
-                    <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Job confirmed — thank you!</p>
+                    <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Job completed — thank you!</p>
                     <p style={{ fontSize: 12, color: INK4, lineHeight: 1.5 }}>
-                      Payment is being released to your tradie. Leave a review to help other homeowners.
+                      Great work is done! Leave a review to help other homeowners find great tradies.
                     </p>
                   </div>
                 </div>
@@ -1247,10 +1260,10 @@ export default function HomeownerDashboardView() {
                   ) : (
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <p style={{ fontWeight: 700, fontSize: 14, color: INK }}>
-                        {selectedJob.review_status === 'approved' ? 'Review published ✓' : selectedJob.review_status === 'rejected' ? 'Review not published' : 'Review submitted — under review'}
+                        {selectedJob.review_status === 'approved' ? 'Review published ✓' : 'Review submitted ✓'}
                       </p>
                       <p style={{ fontSize: 12, color: INK4, marginTop: 3, lineHeight: 1.5 }}>
-                        {selectedJob.review_status === 'approved' ? "Your review is now visible on the tradie's profile." : selectedJob.review_status === 'rejected' ? 'Our team did not publish this review. Contact support if you have questions.' : 'Thank you! Our team will review it shortly.'}
+                        {selectedJob.review_status === 'approved' ? "Your review is live on the tradie's profile. Thank you for your support!" : 'Thank you for your support! Your review helps the community find great tradies.'}
                       </p>
                     </div>
                   )}
@@ -1381,7 +1394,7 @@ export default function HomeownerDashboardView() {
                       sub: 'Resolution within 2 business days',
                       color: ROSE,
                     }] : []),
-                    { done: selectedJob.status === 'completed', label: 'Job complete', sub: 'Rate your tradie', color: GREEN },
+                    { done: selectedJob.status === 'completed' || selectedJob.status === 'confirmed', label: 'Job complete', sub: 'Rate your tradie', color: GREEN },
                   ].map((step, i, arr) => (
                     <ProgressStep key={i} {...step} isLast={i === arr.length - 1} />
                   ))}

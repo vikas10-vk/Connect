@@ -175,7 +175,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                 onClose();
             }, 1600);
         } catch (err: any) {
-            const msg = err?.response?.data?.detail;
+            const msg = err?.response?.data?.error?.message || err?.response?.data?.detail;
             setSubmitError(typeof msg === 'string' ? msg : 'Could not send quote. Please try again.');
         } finally {
             setSubmitting(false);
