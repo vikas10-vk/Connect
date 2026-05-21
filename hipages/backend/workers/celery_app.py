@@ -20,12 +20,18 @@ load_dotenv(
 
 import models
 
+# Broker / result backend.
+# Prefer the dedicated CELERY_* variables (separate Redis logical DBs) so the
+# task queues do NOT share Redis DB 0 with the app cache, sessions and
+# rate-limit keys. Fall back to REDIS_URL only for local/dev convenience.
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 
 celery_app = Celery(
     "hipages",
-    broker=REDIS_URL,
-    backend=REDIS_URL,
+    broker=CELERY_BROKER_URL,
+    backend=CELERY_RESULT_BACKEND,
     include=[
         "tasks.lead_tasks",
         "tasks.billing_tasks",
@@ -58,6 +64,8 @@ celery_app.conf.update(
         "tasks.lead_tasks.distribute_leads":                        {"queue": "critical"},
         "tasks.lead_tasks.auto_reject_scope_change":                {"queue": "critical"},
         # ^ scope change timeout is critical — homeowner is blocked waiting
+        "tasks.lead_tasks.redistribute_open_jobs_for_tradie":       {"queue": "critical"},
+        # ^ fired on tradie verification — retroactively delivers 0-lead jobs
 
         # ── normal — time-sensitive operations ─────────────────────────────
         "tasks.verification_tasks.notify_verification_decisions":   {"queue": "normal"},

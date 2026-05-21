@@ -169,26 +169,65 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production(self) -> "Settings":
-        if self.IS_PRODUCTION:
+        """
+        Hard production safety gate.
 
-            key = self.SECRET_KEY.get_secret_value()
-            if len(key) < 32:
-                raise ValueError(
-                    f"SECRET_KEY must be at least 32 characters in production. "
-                    f"Current length: {len(key)}. "
-                    f"Generate: openssl rand -base64 48"
-                )
+        Runs only when ENVIRONMENT == "production". Collects EVERY problem and
+        raises once, so a misconfigured deploy fails fast at boot with a single
+        clear message instead of silently behaving like development or crashing
+        later in a confusing place.
 
-            if not self.SENTRY_BACKEND_DSN:
-                raise ValueError(
-                    "SENTRY_BACKEND_DSN is required in production."
-                )
+        These checks are deliberately universal — they apply to every backend
+        process (API and Celery workers). Service-specific requirements (e.g.
+        Stripe keys, which only the payments API needs) are validated at the
+        API layer instead, so a notification worker is not forced to carry
+        payment secrets it never uses.
+        """
+        if not self.IS_PRODUCTION:
+            return self
 
-            if "localhost" in self.ALLOWED_ORIGINS:
-                raise ValueError(
-                    "ALLOWED_ORIGINS contains 'localhost' in production. "
-                    "Set it to: https://app.yourdomain.com"
-                )
+        errors: list[str] = []
+
+        # ── JWT signing key ──────────────────────────────────────────────
+        key = self.SECRET_KEY.get_secret_value()
+        if len(key) < 32:
+            errors.append(
+                f"SECRET_KEY must be at least 32 characters (current length: {len(key)}). "
+                f"Generate one with: openssl rand -base64 48"
+            )
+
+        # ── Error monitoring — mandatory in production ───────────────────
+        if not self.SENTRY_BACKEND_DSN:
+            errors.append(
+                "SENTRY_BACKEND_DSN is required in production "
+                "(without it, production errors are invisible)."
+            )
+
+        # ── CORS allow-list ──────────────────────────────────────────────
+        if "localhost" in self.ALLOWED_ORIGINS or "127.0.0.1" in self.ALLOWED_ORIGINS:
+            errors.append(
+                "ALLOWED_ORIGINS must not contain localhost/127.0.0.1 in production. "
+                "Set it to your real frontend origin, e.g. https://app.yourdomain.com"
+            )
+
+        # ── Debug output must be off ─────────────────────────────────────
+        if self.DEBUG:
+            errors.append(
+                "DEBUG must be false in production — it exposes internal error detail."
+            )
+
+        # ── Database must be a real, non-local DSN ───────────────────────
+        if "localhost" in self.DATABASE_URL or "127.0.0.1" in self.DATABASE_URL:
+            errors.append(
+                "DATABASE_URL points at localhost/127.0.0.1 — not valid for a "
+                "production deployment."
+            )
+
+        if errors:
+            raise ValueError(
+                "Production configuration is invalid — refusing to start:\n  - "
+                + "\n  - ".join(errors)
+            )
 
         return self
 

@@ -199,10 +199,15 @@ services:
 
     environment:
       # Application
-      APP_ENV: production
+      # NOTE: backend config.py reads ENVIRONMENT (not APP_ENV). This value is
+      # what activates IS_PRODUCTION and the production startup safety checks.
+      ENVIRONMENT: production
       APP_VERSION: ${IMAGE_TAG}
       DEBUG: "false"
       ALLOWED_HOSTS: "api.${DOMAIN}"
+      # CORS allow-list. Must NOT contain 'localhost' in production —
+      # config.validate_production() hard-fails on boot if it does.
+      ALLOWED_ORIGINS: "https://app.${DOMAIN}"
 
       # Database
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
@@ -215,8 +220,10 @@ services:
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
 
       # Security
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      JWT_ALGORITHM: HS256
+      # NOTE: backend config.py reads SECRET_KEY / ALGORITHM (not the JWT_ prefix).
+      # The ${JWT_SECRET_KEY} on the right is the CI/secrets variable name.
+      SECRET_KEY: ${JWT_SECRET_KEY}
+      ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
       REFRESH_TOKEN_EXPIRE_DAYS: 30
 
@@ -244,7 +251,8 @@ services:
       FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON}
 
       # Monitoring
-      SENTRY_DSN: ${SENTRY_DSN}
+      # NOTE: backend config.py reads SENTRY_BACKEND_DSN (not SENTRY_DSN).
+      SENTRY_BACKEND_DSN: ${SENTRY_DSN}
       SENTRY_ENVIRONMENT: production
       SENTRY_TRACES_SAMPLE_RATE: "0.1"
 
@@ -294,18 +302,19 @@ services:
     restart: unless-stopped
 
     environment:
-      APP_ENV: production
+      ENVIRONMENT: production
       APP_VERSION: ${IMAGE_TAG}
       DEBUG: "false"
       ALLOWED_HOSTS: "api.${DOMAIN}"
+      ALLOWED_ORIGINS: "https://app.${DOMAIN}"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       DATABASE_POOL_SIZE: 10
       DATABASE_MAX_OVERFLOW: 20
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      JWT_ALGORITHM: HS256
+      SECRET_KEY: ${JWT_SECRET_KEY}
+      ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
       REFRESH_TOKEN_EXPIRE_DAYS: 30
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
@@ -321,7 +330,7 @@ services:
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       TWILIO_PROXY_SERVICE: ${TWILIO_PROXY_SERVICE}
       FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON}
-      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_BACKEND_DSN: ${SENTRY_DSN}
       SENTRY_ENVIRONMENT: production
       SENTRY_TRACES_SAMPLE_RATE: "0.1"
       RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY}
@@ -473,7 +482,7 @@ services:
     restart: unless-stopped
 
     command: >
-      celery -A app.celery_app worker --queues=critical --concurrency=4 --prefetch-multiplier=1 --loglevel=info --logfile=/dev/stdout --hostname=critical@%h --max-tasks-per-child=100
+      celery -A workers.celery_app:celery_app worker --queues=critical --concurrency=4 --prefetch-multiplier=1 --loglevel=info --logfile=/dev/stdout --hostname=critical@%h --max-tasks-per-child=100
 
     # --prefetch-multiplier=1: worker only takes one task at a time from the
     # queue. Critical for fair processing — a slow task does not block others.
@@ -481,12 +490,14 @@ services:
     # Prevents memory leaks from accumulating over time.
 
     environment:
-      APP_ENV: production
+      # Canonical names — must match backend config.py (see fastapi_1 notes).
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: "https://app.${DOMAIN}"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      SECRET_KEY: ${JWT_SECRET_KEY}
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
@@ -497,7 +508,7 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON}
-      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_BACKEND_DSN: ${SENTRY_DSN}
 
     depends_on:
       postgres:
@@ -533,19 +544,24 @@ services:
     restart: unless-stopped
 
     command: >
-      celery -A app.celery_app worker --queues=normal --concurrency=8 --prefetch-multiplier=2 --loglevel=info --logfile=/dev/stdout --hostname=normal@%h --max-tasks-per-child=500
+      celery -A workers.celery_app:celery_app worker --queues=normal --concurrency=8 --prefetch-multiplier=2 --loglevel=info --logfile=/dev/stdout --hostname=normal@%h --max-tasks-per-child=500
 
     environment:
-      APP_ENV: production
+      # Canonical names — must match backend config.py (see fastapi_1 notes).
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: "https://app.${DOMAIN}"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
+      # SECRET_KEY is a required setting in config.py — the worker process
+      # imports the app config on boot and will not start without it.
+      SECRET_KEY: ${JWT_SECRET_KEY}
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON}
-      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_BACKEND_DSN: ${SENTRY_DSN}
 
     depends_on:
       postgres:
@@ -583,18 +599,23 @@ services:
     restart: unless-stopped
 
     command: >
-      celery -A app.celery_app worker --queues=bulk --concurrency=2 --prefetch-multiplier=1 --loglevel=info --logfile=/dev/stdout --hostname=bulk@%h --max-tasks-per-child=50
+      celery -A workers.celery_app:celery_app worker --queues=bulk --concurrency=2 --prefetch-multiplier=1 --loglevel=info --logfile=/dev/stdout --hostname=bulk@%h --max-tasks-per-child=50
 
     environment:
-      APP_ENV: production
+      # Canonical names — must match backend config.py (see fastapi_1 notes).
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: "https://app.${DOMAIN}"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
+      # SECRET_KEY is a required setting in config.py — worker boots fail without it.
+      SECRET_KEY: ${JWT_SECRET_KEY}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET}
-      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_BACKEND_DSN: ${SENTRY_DSN}
 
     depends_on:
       postgres:
@@ -632,19 +653,25 @@ services:
     restart: unless-stopped
 
     command: >
-      celery -A app.celery_app beat --loglevel=info --logfile=/dev/stdout --scheduler redbeat.RedBeatScheduler
+      celery -A workers.celery_app:celery_app beat --loglevel=info --logfile=/dev/stdout --scheduler redbeat.RedBeatScheduler
 
     # RedBeat scheduler stores schedule in Redis instead of a local file.
     # This means if the beat container restarts, it picks up where it left off.
     # It also prevents the duplicate-task problem if you accidentally run two beats.
 
     environment:
-      APP_ENV: production
+      # Canonical names — must match backend config.py (see fastapi_1 notes).
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: "https://app.${DOMAIN}"
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
       REDBEAT_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/3
+      # SECRET_KEY is a required setting in config.py — beat boot fails without it.
+      SECRET_KEY: ${JWT_SECRET_KEY}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY}
+      SENTRY_BACKEND_DSN: ${SENTRY_DSN}
 
     depends_on:
       redis:
@@ -678,11 +705,17 @@ services:
     restart: unless-stopped
 
     command: >
-      celery -A app.celery_app flower --port=5555 --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD} --url_prefix=flower --persistent=True --db=/tmp/flower.db
+      celery -A workers.celery_app:celery_app flower --port=5555 --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD} --url_prefix=flower --persistent=True --db=/tmp/flower.db
 
     environment:
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/2
+      # Loading the Celery app (-A workers.celery_app) imports backend config,
+      # which requires DATABASE_URL and SECRET_KEY to instantiate.
+      # ENVIRONMENT is intentionally left unset (defaults to development) so the
+      # production CORS/Sentry validation does not apply to this monitoring-only service.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SECRET_KEY: ${JWT_SECRET_KEY}
 
     depends_on:
       - redis

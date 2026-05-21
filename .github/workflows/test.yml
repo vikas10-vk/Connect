@@ -80,6 +80,38 @@ jobs:
           ALGORITHM:    HS256
         run: alembic upgrade head
 
+      # Smoke test: verifies the Celery app path that docker-compose.prod.yml
+      # uses (`celery -A workers.celery_app:celery_app`) actually imports and
+      # boots. A misnamed module path (the old `app.celery_app`) fails here.
+      - name: Celery boot smoke test
+        working-directory: hipages/backend
+        env:
+          DATABASE_URL:          postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
+          REDIS_URL:             redis://localhost:6379/0
+          CELERY_BROKER_URL:     redis://localhost:6379/1
+          CELERY_RESULT_BACKEND: redis://localhost:6379/2
+          ENVIRONMENT:           test
+          SECRET_KEY:            ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
+          ALGORITHM:             HS256
+        run: |
+          set -e
+          # 1. The Celery app module must import at the exact path prod uses.
+          PYTHONPATH=. python -c "from workers.celery_app import celery_app; print('Celery app:', celery_app.main); assert celery_app.tasks, 'no tasks registered'"
+          # 2. Boot a real worker against Redis, confirm it answers a ping, stop it.
+          PYTHONPATH=. celery -A workers.celery_app:celery_app worker --pool=solo --concurrency=1 --loglevel=info &
+          WORKER_PID=$!
+          for i in $(seq 1 20); do
+            if PYTHONPATH=. celery -A workers.celery_app:celery_app inspect ping --timeout 5 >/dev/null 2>&1; then
+              echo "Celery worker booted and responded to ping"
+              kill "$WORKER_PID" 2>/dev/null || true
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Celery worker did not respond within timeout"
+          kill "$WORKER_PID" 2>/dev/null || true
+          exit 1
+
       - name: Run tests
         working-directory: hipages/backend
         env:
@@ -127,7 +159,9 @@ jobs:
     name: Frontend build check
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
+    # NOTE: continue-on-error was removed. A failing frontend build (including
+    # TypeScript and ESLint errors, now that next.config.mjs no longer ignores
+    # them) is a release blocker and must fail CI.
 
     steps:
       - name: Checkout code

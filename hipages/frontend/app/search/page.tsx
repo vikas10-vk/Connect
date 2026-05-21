@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { cn } from '@/src/lib/utils';
-import { TRADIE_CATEGORIES } from '@/src/constants/categories';
+import { CATEGORY_NAMES } from '@/src/constants/categories';
 import api from '@/src/lib/api';
 
 interface Tradie {
@@ -73,7 +73,7 @@ function SearchPageContent() {
   useEffect(() => {
     if (!searchQuery) { setSuggestions([]); return; }
     setSuggestions(
-      TRADIE_CATEGORIES.filter(c =>
+      CATEGORY_NAMES.filter(c =>
         c.toLowerCase().includes(searchQuery.toLowerCase())
       ).slice(0, 6)
     );
@@ -227,7 +227,7 @@ function SearchPageContent() {
               >
                 All Trades
               </button>
-              {TRADIE_CATEGORIES.map(cat => (
+              {CATEGORY_NAMES.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
@@ -301,7 +301,7 @@ function SearchPageContent() {
                 >
                   All Trades
                 </button>
-                {TRADIE_CATEGORIES.map(cat => (
+                {CATEGORY_NAMES.map(cat => (
                   <button
                     key={cat}
                     onClick={() => { setSelectedCategory(cat); setShowFilters(false); }}

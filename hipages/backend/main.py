@@ -104,6 +104,25 @@ async def lifespan(app: FastAPI):
         logger.critical(f"✗ Redis unreachable — refusing to start: {e}")
         sys.exit(1)
 
+    # ── Payments configuration ───────────────────────────────────────────────
+    # The API serves Stripe checkout and the webhook endpoint. Without these,
+    # checkout fails and — worse — webhook signatures cannot be verified.
+    # This check lives at the API layer (not config.validate_production) so that
+    # Celery workers which never touch Stripe are not forced to carry the keys.
+    if IS_PRODUCTION:
+        missing_payment_cfg = [
+            name
+            for name in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET")
+            if not os.getenv(name)
+        ]
+        if missing_payment_cfg:
+            logger.critical(
+                "✗ Missing required payment configuration in production: "
+                f"{', '.join(missing_payment_cfg)} — refusing to start"
+            )
+            sys.exit(1)
+        logger.info("✓ Payment configuration present")
+
     logger.info("✓ All startup checks passed — accepting traffic")
 
     yield
