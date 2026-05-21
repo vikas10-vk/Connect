@@ -133,7 +133,39 @@ async def confirm_upload(
 # ── Photos for a job ─────────────────────────────────────────────────────────
 
 @router.get("/job/{job_id}/photos")
-async def get_job_photos(job_id: str, db: AsyncSession = Depends(get_db)):
+async def get_job_photos(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Authorisation: job photos can reveal property/site detail. Only the
+    # homeowner who owns the job, an admin, or a tradie with a lead for it
+    # may view them. This endpoint was previously fully public — anyone with
+    # a job ID could enumerate its photos.
+    job_res = await db.execute(select(Job).where(Job.id == job_id))
+    job = job_res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    allowed = current_user.id == job.homeowner_id or current_user.role == "admin"
+    if not allowed and current_user.role == "tradie":
+        from models.tradie_profile import TradieProfile
+        from models.lead import Lead
+        prof_res = await db.execute(
+            select(TradieProfile.id).where(TradieProfile.user_id == current_user.id)
+        )
+        tradie_profile_id = prof_res.scalar_one_or_none()
+        if tradie_profile_id:
+            lead_res = await db.execute(
+                select(Lead.id)
+                .where(Lead.job_id == job_id, Lead.tradie_id == tradie_profile_id)
+                .limit(1)
+            )
+            allowed = lead_res.scalar_one_or_none() is not None
+
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Not authorised to view these photos")
+
     result = await db.execute(
         select(JobPhoto).where(JobPhoto.job_id == job_id)
         .order_by(JobPhoto.created_at.asc())

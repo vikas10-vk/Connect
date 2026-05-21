@@ -44,6 +44,35 @@ import uuid
 router = APIRouter(prefix="/api/v1/jobs", tags=["Jobs"])
 
 
+# ── Dispute window helper ────────────────────────────────────────────────────
+
+def _dispute_window(job, is_redispute: bool, dispute_count: int = 0) -> dict:
+    """
+    Return dispute_window_hours and dispute_window_expires_at for a job.
+
+    Rules:
+      • Jobs not in 'completed' or 'confirmed' → no window (both None).
+      • dispute_count >= 2 → no window (both None). Homeowner has used both chances.
+      • First dispute (count == 0): 48 h from completed_at.
+      • Re-dispute (count == 1, a prior disputed→completed exists): 10 h from completed_at.
+    """
+    _NONE = {"dispute_window_hours": None, "dispute_window_expires_at": None}
+
+    if job.status not in ("completed", "confirmed") or not job.completed_at:
+        return _NONE
+
+    if dispute_count >= 2:
+        return _NONE
+
+    window_hours = 10 if is_redispute else 48
+    from datetime import timedelta
+    expires_at = job.completed_at + timedelta(hours=window_hours)
+    return {
+        "dispute_window_hours":      window_hours,
+        "dispute_window_expires_at": expires_at,
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # EXISTING ENDPOINTS — PRESERVED EXACTLY
 # ═══════════════════════════════════════════════════════════════════════════
@@ -106,13 +135,39 @@ async def create_job(
         )
 
     if not category:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Unknown service '{body.category_slug}'. "
-                "Please select a valid service from the list."
-            )
+        # Soft fallback: instead of telling the homeowner "Unknown service",
+        # route them into the uncategorised pathway so a human can triage.
+        # The platform never silently rejects demand -- every request becomes
+        # visible to admin.
+        from services.uncategorised_service import (
+            create_uncategorised_job, notify_homeowner_received,
+            SentinelCategoryMissingError,
         )
+        try:
+            description_for_human = " ".join(
+                part for part in [body.title, body.description or ""] if part
+            ).strip() or body.category_slug
+            job = await create_uncategorised_job(
+                homeowner=current_user,
+                db=db,
+                description=description_for_human,
+                suburb=body.suburb, state=body.state, postcode=body.postcode,
+                contact_name=body.contact_name,
+                contact_phone=body.contact_phone,
+                contact_email=body.contact_email,
+                original_slug=body.category_slug,
+            )
+            await db.commit()
+            await db.refresh(job)
+            # Best-effort homeowner email; never blocks the response.
+            try:
+                await notify_homeowner_received(current_user, description_for_human)
+            except Exception:
+                pass
+            return job
+        except SentinelCategoryMissingError as exc:
+            # Operator misconfiguration -- surface clearly so they re-run the seed.
+            raise HTTPException(status_code=500, detail=str(exc))
 
     data = body.model_dump(exclude={"category_slug", "intent_level"})
     data["category_id"] = category.id
@@ -149,6 +204,67 @@ async def create_job(
         # Celery not running — distribute leads immediately in a FastAPI background task
         background_tasks.add_task(_distribute_leads_background, job.id)
         print(f"[leads] Background fallback scheduled for job {job.id}")
+
+    return job
+
+
+
+
+# ── Homeowner: explicit "Service not listed" submission ─────────────────────
+
+class UncategorisedJobCreate(BaseModel):
+    """
+    Free-text submission used when the homeowner cannot find their need in
+    the 24-trade picker. The body intentionally omits category_slug -- the
+    pathway always uses the sentinel 'other-services' category.
+    """
+    description:   str = Field(min_length=10, max_length=2000)
+    suburb:        Optional[str] = None
+    state:         Optional[str] = None
+    postcode:      Optional[str] = None
+    contact_name:  Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+
+
+@router.post("/uncategorised", response_model=JobResponse, status_code=201)
+async def create_uncategorised(
+    body: UncategorisedJobCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Capture a service request that doesn't fit any of the 24 trades.
+    Creates the job tagged with the sentinel category, never triggers lead
+    distribution, writes an admin audit event, and emails the homeowner.
+    Admin then triages via /admin/uncategorised.
+    """
+    if current_user.role != "homeowner":
+        raise HTTPException(status_code=403, detail="Only homeowners can post jobs")
+
+    from services.uncategorised_service import (
+        create_uncategorised_job, notify_homeowner_received,
+        SentinelCategoryMissingError,
+    )
+    try:
+        job = await create_uncategorised_job(
+            homeowner=current_user,
+            db=db,
+            description=body.description,
+            suburb=body.suburb, state=body.state, postcode=body.postcode,
+            contact_name=body.contact_name,
+            contact_phone=body.contact_phone,
+            contact_email=body.contact_email,
+        )
+        await db.commit()
+        await db.refresh(job)
+    except SentinelCategoryMissingError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    try:
+        await notify_homeowner_received(current_user, body.description)
+    except Exception:
+        pass
 
     return job
 
@@ -227,6 +343,54 @@ async def my_jobs(
     result = await db.execute(query)
     jobs = result.scalars().all()
 
+    # ── Bulk-fetch redo flags + re-dispute flags ──────────────────────────────
+    from models.job_event import JobEvent
+    import sqlalchemy as sa
+
+    job_ids = [j.id for j in jobs]
+    redo_job_ids:     set[str] = set()
+    redispute_job_ids: set[str] = set()  # jobs that had a prior dispute resolved
+
+    if job_ids:
+        # Redo flag — admin resolved with redo_work
+        redo_events_result = await db.execute(
+            select(JobEvent.job_id)
+            .where(
+                JobEvent.job_id.in_(job_ids),
+                JobEvent.action == "dispute_resolved",
+            )
+        )
+        for (jid,) in redo_events_result.all():
+            redo_job_ids.add(jid)
+
+        # Re-dispute flag — peer-to-peer resolution: disputed → completed
+        redispute_events_result = await db.execute(
+            select(JobEvent.job_id)
+            .where(
+                JobEvent.job_id.in_(job_ids),
+                JobEvent.action == "status_change",
+                sa.cast(JobEvent.old_value, sa.Text).contains('"disputed"'),
+                sa.cast(JobEvent.new_value, sa.Text).contains('"completed"'),
+            )
+        )
+        for (jid,) in redispute_events_result.all():
+            redispute_job_ids.add(jid)
+
+        # Dispute count per job — how many times has this job gone to "disputed"?
+        # Used to enforce the 2-dispute cap.
+        dispute_count_result = await db.execute(
+            select(JobEvent.job_id, sa.func.count(JobEvent.id).label("cnt"))
+            .where(
+                JobEvent.job_id.in_(job_ids),
+                JobEvent.action == "status_change",
+                sa.cast(JobEvent.new_value, sa.Text).contains('"disputed"'),
+            )
+            .group_by(JobEvent.job_id)
+        )
+        dispute_counts: dict[str, int] = {
+            jid: cnt for jid, cnt in dispute_count_result.all()
+        }
+
     response = []
     for job in jobs:
         lead_ids = [l.id for l in job.leads]
@@ -270,6 +434,8 @@ async def my_jobs(
             match_intelligence=job.match_intelligence,
             has_review=job.review is not None,
             review_status=job.review.status if job.review else None,
+            is_redo_job=job.id in redo_job_ids,
+            **_dispute_window(job, job.id in redispute_job_ids, dispute_counts.get(job.id, 0)),
         ))
 
     return response
@@ -367,16 +533,46 @@ async def list_jobs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # This endpoint returns EVERY job in the system — it is admin-only.
+    # Homeowners use GET /jobs/my-jobs; tradies see their matched jobs via
+    # the leads router. Returning all jobs to any authenticated user leaked
+    # private homeowner data (addresses, contact details) across the marketplace.
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     result = await db.execute(select(Job).order_by(Job.created_at.desc()))
     return result.scalars().all()
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str, db: AsyncSession = Depends(get_db)):
+async def get_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    # Authorisation: only the homeowner who posted it, an admin, or a tradie
+    # who has been sent a lead for this job may view its details.
+    allowed = current_user.id == job.homeowner_id or current_user.role == "admin"
+    if not allowed and current_user.role == "tradie":
+        prof_res = await db.execute(
+            select(TradieProfile.id).where(TradieProfile.user_id == current_user.id)
+        )
+        tradie_profile_id = prof_res.scalar_one_or_none()
+        if tradie_profile_id:
+            lead_res = await db.execute(
+                select(Lead.id)
+                .where(Lead.job_id == job_id, Lead.tradie_id == tradie_profile_id)
+                .limit(1)
+            )
+            allowed = lead_res.scalar_one_or_none() is not None
+
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Not authorised to view this job")
+
     return job
 
 
@@ -1117,56 +1313,11 @@ async def confirm_complete(
     }
 
 
-# ── Tradie: Partial stop ───────────────────────────────────────────────────
+# ── Homeowner: Raise a dispute ────────────────────────────────────────────────
 
-@router.post("/{job_id}/partial-stop")
-async def partial_stop(
-    job_id:       str,
-    body:         PartialStopRequest,
-    current_user: User         = Depends(get_current_user),
-    db:           AsyncSession = Depends(get_db),
-):
-    """
-    Tradie stops work mid-job.
-    Triggers the partial_stop flow: tradie submits a reason + photo of current work state.
-    Payment is held uncaptured. Admin reviews within 24h and decides the partial charge amount.
-    The homeowner is notified immediately.
-    Job CANNOT be abandoned silently — if a tradie disappears without using this endpoint,
-    the no-show detection watchdog (GPS + check-in) fires at T+30min.
-    """
-    if current_user.role != "tradie":
-        raise HTTPException(status_code=403, detail="Only tradies can trigger a partial stop.")
+class DisputeRequest(BaseModel):
+    reason: str
 
-    job = await _load_job_or_404(job_id, db)
-    await _require_tradie_with_lead(job_id, current_user, db)
-
-    try:
-        JobStateMachine.assert_status(job, "in_progress")
-        await JobStateMachine.transition(
-            job=job,
-            new_status="partial_stop",
-            current_user=current_user,
-            db=db,
-            note=f"Tradie stopped work mid-job. Reason: {body.reason}",
-            extra_job_fields={
-                "completion_note": body.reason,
-                "photo_after_url": body.photo_after_url,
-            },
-        )
-    except InvalidTransitionError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    await db.commit()
-    return {
-        "status": job.status,
-        "message": (
-            "Work stopped. An admin will review and determine the partial charge within 24 hours. "
-            "The homeowner has been notified."
-        ),
-    }
-
-
-# ── Homeowner: Raise dispute ───────────────────────────────────────────────
 
 @router.post("/{job_id}/dispute")
 async def raise_dispute(
@@ -1176,9 +1327,18 @@ async def raise_dispute(
     db:           AsyncSession = Depends(get_db),
 ):
     """
-    Homeowner raises a dispute. Only allowed within 48h of job completion,
-    or immediately on a partial_stop.
-    Status → disputed. Admin is notified. Both parties can submit evidence.
+    Homeowner raises a dispute.
+
+    Window rules
+    ─────────────
+    • First-ever dispute on this job: 48 h after the tradie marked it complete.
+    • Re-dispute after a resolved dispute (job returned to 'completed' from
+      'disputed'): 10 h from that re-completion timestamp.
+    • After the window expires the button is hidden in the UI and this endpoint
+      returns 400 so there is no race condition.
+
+    Allowed on: completed, confirmed (still within window), partial_stop.
+    Status → disputed.
     """
     if current_user.role != "homeowner":
         raise HTTPException(status_code=403, detail="Only homeowners can raise a dispute.")
@@ -1188,20 +1348,61 @@ async def raise_dispute(
     if job.homeowner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your job.")
 
-    if job.status == "completed":
-        # Enforce 48-hour window from when the tradie marked complete
-        if job.completed_at:
-            hours_since = (datetime.utcnow() - job.completed_at).total_seconds() / 3600
-            if hours_since > 48:
-                raise HTTPException(
-                    status_code=400,
-                    detail="The 48-hour dispute window has closed for this job.",
-                )
-    elif job.status != "partial_stop":
+    if job.status not in ("completed", "confirmed", "partial_stop"):
         raise HTTPException(
             status_code=400,
-            detail=f"Disputes can only be raised on completed or partial_stop jobs. Current status: '{job.status}'.",
+            detail=f"Disputes can only be raised on completed, confirmed, or partial_stop jobs. "
+                   f"Current status: '{job.status}'.",
         )
+
+    # ── Check dispute cap + determine which window applies ───────────────────
+    from models.job_event import JobEvent as JE
+    import sqlalchemy as sa
+
+    # Count how many times this job has already gone to "disputed"
+    dispute_count_res = await db.execute(
+        select(sa.func.count(JE.id))
+        .where(
+            JE.job_id  == job_id,
+            JE.action  == "status_change",
+            sa.cast(JE.new_value, sa.Text).contains('"disputed"'),
+        )
+    )
+    dispute_count = dispute_count_res.scalar() or 0
+
+    if dispute_count >= 2:
+        raise HTTPException(
+            status_code=400,
+            detail="You have already raised 2 disputes on this job. No further disputes are allowed.",
+        )
+
+    # A re-dispute is detected by the presence of a prior 'disputed→completed'
+    # transition event, meaning the dispute was resolved peer-to-peer at least once.
+    prior_resolution = await db.execute(
+        select(JE).where(
+            JE.job_id  == job_id,
+            JE.action  == "status_change",
+            sa.cast(JE.old_value, sa.Text).contains('"disputed"'),
+            sa.cast(JE.new_value, sa.Text).contains('"completed"'),
+        ).limit(1)
+    )
+    is_redispute = prior_resolution.scalar_one_or_none() is not None
+
+    window_hours = 10 if is_redispute else 48
+
+    if job.status in ("completed", "confirmed"):
+        if not job.completed_at:
+            raise HTTPException(status_code=400, detail="Job has no completion timestamp.")
+        hours_since = (datetime.utcnow() - job.completed_at).total_seconds() / 3600
+        if hours_since > window_hours:
+            label = "10-hour" if is_redispute else "48-hour"
+            raise HTTPException(
+                status_code=400,
+                detail=f"The {label} dispute window has closed for this job.",
+            )
+
+    if not body.reason or len(body.reason.strip()) < 10:
+        raise HTTPException(status_code=422, detail="Please describe the issue (at least 10 characters).")
 
     try:
         await JobStateMachine.transition(
@@ -1209,7 +1410,8 @@ async def raise_dispute(
             new_status="disputed",
             current_user=current_user,
             db=db,
-            note=f"Homeowner raised dispute: {body.reason}",
+            note=f"Homeowner raised dispute: {body.reason.strip()}",
+            extra_job_fields={"dispute_reason": body.reason.strip()},
         )
     except InvalidTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1217,8 +1419,420 @@ async def raise_dispute(
     await db.commit()
     return {
         "status": job.status,
-        "message": (
-            "Dispute raised. Our team will review within 2 business days. "
-            "Please upload any supporting photos or documents via the app."
-        ),
+        "message": "Dispute raised. The tradie has been notified and can respond directly.",
+    }
+
+
+# ── Dispute info (any party can read) ───────────────────────────────────────
+
+@router.get("/{job_id}/dispute-info")
+async def dispute_info(
+    job_id:       str,
+    current_user: User         = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Return the homeowner's dispute reason and timestamp so the homeowner's
+    own dashboard, the tradie's dashboard, and admin can all show the same
+    context. Authorisation: homeowner of the job, any tradie with a lead on
+    the job, or admin.
+    """
+    from models.job_event import JobEvent
+
+    job = await _load_job_or_404(job_id, db)
+
+    is_homeowner = current_user.id == job.homeowner_id
+    is_admin     = current_user.role == "admin"
+    is_tradie    = False
+    if not (is_homeowner or is_admin) and current_user.role == "tradie":
+        # Tradie must have a lead on this job.
+        from models.tradie_profile import TradieProfile as TP
+        profile_res = await db.execute(select(TP).where(TP.user_id == current_user.id))
+        tp = profile_res.scalar_one_or_none()
+        if tp:
+            lead_res = await db.execute(
+                select(Lead).where(Lead.job_id == job_id, Lead.tradie_id == tp.id).limit(1)
+            )
+            is_tradie = lead_res.scalar_one_or_none() is not None
+    if not (is_homeowner or is_admin or is_tradie):
+        raise HTTPException(status_code=403, detail="Not your job.")
+
+    # Walk the events newest -> oldest, find the most recent flip to 'disputed'.
+    events_res = await db.execute(
+        select(JobEvent)
+        .where(JobEvent.job_id == job_id, JobEvent.action == "status_change")
+        .order_by(JobEvent.created_at.desc())
+    )
+    reason = None
+    raised_at = None
+    raised_by_role = None
+    for ev in events_res.scalars().all():
+        nv = ev.new_value or {}
+        if nv.get("status") == "disputed":
+            note = ev.note or ""
+            for prefix in ("Homeowner raised dispute: ", "Homeowner raised dispute:"):
+                if note.startswith(prefix):
+                    note = note[len(prefix):].strip()
+                    break
+            reason = note or None
+            raised_at = ev.created_at
+            raised_by_role = ev.actor_role
+            break
+
+    # All dispute responses, oldest first, so the dashboard renders them as a
+    # conversation. Both homeowner and tradie posts show up here.
+    resp_res = await db.execute(
+        select(JobEvent)
+        .where(JobEvent.job_id == job_id, JobEvent.action == "dispute_response")
+        .order_by(JobEvent.created_at.asc())
+    )
+    responses = [
+        {
+            "id":           ev.id,
+            "actor_role":   ev.actor_role,
+            "response":     ev.note,
+            "evidence_url": (ev.new_value or {}).get("evidence_url"),
+            "created_at":   ev.created_at,
+        }
+        for ev in resp_res.scalars().all()
+    ]
+
+    # Check if tradie has claimed resolution (most recent claim event).
+    claim_res = await db.execute(
+        select(JobEvent)
+        .where(JobEvent.job_id == job_id, JobEvent.action == "dispute_resolution_claimed")
+        .order_by(JobEvent.created_at.desc())
+        .limit(1)
+    )
+    claim_event = claim_res.scalar_one_or_none()
+
+    # Count how many times homeowner has rejected the tradie's resolution claim.
+    rejection_count_res = await db.execute(
+        select(JobEvent)
+        .where(JobEvent.job_id == job_id, JobEvent.action == "dispute_resolution_rejected")
+    )
+    rejection_count = len(rejection_count_res.scalars().all())
+
+    return {
+        "job_id":                   job.id,
+        "status":                   job.status,
+        "dispute_reason":           reason,
+        "dispute_raised_at":        raised_at,
+        "dispute_raised_by_role":   raised_by_role,
+        "completion_note":          job.completion_note,
+        "photo_before_url":         job.photo_before_url,
+        "photo_after_url":          job.photo_after_url,
+        "responses":                responses,
+        # Peer-to-peer resolution state
+        "resolution_claimed":       claim_event is not None,
+        "resolution_claimed_at":    claim_event.created_at if claim_event else None,
+        "resolution_rejection_count": rejection_count,
+    }
+
+
+# ── Tradie: claim dispute is resolved ────────────────────────────────────────
+
+class DisputeClaimRequest(BaseModel):
+    message: Optional[str] = Field(default=None, max_length=1000)
+
+
+@router.post("/{job_id}/dispute-claim-resolved")
+async def dispute_claim_resolved(
+    job_id:       str,
+    body:         DisputeClaimRequest,
+    current_user: User         = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Tradie claims they have resolved the dispute.
+
+    No status change — stores a dispute_resolution_claimed JobEvent and
+    notifies the homeowner to log in and accept or reject.
+    The homeowner's response is the gate that moves the job forward.
+    """
+    if current_user.role != "tradie":
+        raise HTTPException(status_code=403, detail="Only tradies can claim a resolution.")
+
+    job = await _load_job_or_404(job_id, db)
+    if job.status != "disputed":
+        raise HTTPException(status_code=400, detail=f"Job is not disputed (status={job.status}).")
+
+    # Verify the tradie is the assigned one via a lead on this job.
+    from models.tradie_profile import TradieProfile as TP
+    profile_res = await db.execute(select(TP).where(TP.user_id == current_user.id))
+    profile = profile_res.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=403, detail="Tradie profile not found.")
+    lead_res = await db.execute(
+        select(Lead).where(Lead.job_id == job_id, Lead.tradie_id == profile.id).limit(1)
+    )
+    if not lead_res.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="You are not assigned to this job.")
+
+    from models.job_event import JobEvent
+    ev = JobEvent(
+        job_id=job_id,
+        actor_id=current_user.id,
+        actor_role="tradie",
+        action="dispute_resolution_claimed",
+        old_value=None,
+        new_value={"message": body.message or ""},
+        note=body.message or "Tradie claims the dispute has been resolved.",
+    )
+    db.add(ev)
+    await db.commit()
+
+    # Notify homeowner — best-effort.
+    try:
+        hw_res = await db.execute(select(User).where(User.id == job.homeowner_id))
+        homeowner = hw_res.scalar_one_or_none()
+        if homeowner and homeowner.email:
+            from services.resend_service import send_dispute_resolution_claimed_email
+            await send_dispute_resolution_claimed_email(
+                to_email=homeowner.email,
+                full_name=homeowner.full_name or "",
+                job_title=job.title,
+                tradie_business_name=profile.business_name,
+            )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "dispute-claim notify failed for job %s: %s", job.id, exc
+        )
+
+    # WebSocket push so homeowner dashboard refreshes without reload.
+    try:
+        from routers.websocket import broadcast_job_status
+        await broadcast_job_status(
+            job_id=job.id, old_status="disputed", new_status="disputed",
+            homeowner_id=job.homeowner_id, tradie_user_ids=[current_user.id],
+        )
+    except Exception:
+        pass
+
+    return {"message": "Resolution claimed. The homeowner has been notified to confirm."}
+
+
+# ── Homeowner: accept or reject the tradie's resolution claim ─────────────────
+
+class DisputeResolutionResponseRequest(BaseModel):
+    accept: bool
+    message: Optional[str] = Field(default=None, max_length=1000)
+
+
+@router.post("/{job_id}/dispute-accept-resolution")
+async def dispute_accept_resolution(
+    job_id:       str,
+    body:         DisputeResolutionResponseRequest,
+    current_user: User         = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Homeowner accepts or rejects the tradie's resolution claim.
+
+    accept=True  → disputed → completed  (re-enters normal confirm flow)
+    accept=False → stays disputed; rejection count incremented.
+                   On 2nd+ rejection, admin is auto-alerted via email.
+    """
+    if current_user.role != "homeowner":
+        raise HTTPException(status_code=403, detail="Only homeowners can respond to a resolution claim.")
+
+    job = await _load_job_or_404(job_id, db)
+    if job.homeowner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your job.")
+    if job.status != "disputed":
+        raise HTTPException(status_code=400, detail=f"Job is not disputed (status={job.status}).")
+
+    from models.job_event import JobEvent
+
+    # Require that the tradie actually submitted a claim first.
+    claim_res = await db.execute(
+        select(JobEvent)
+        .where(JobEvent.job_id == job_id, JobEvent.action == "dispute_resolution_claimed")
+        .limit(1)
+    )
+    if not claim_res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="The tradie hasn't claimed a resolution yet. Wait for them to mark it resolved first.",
+        )
+
+    if body.accept:
+        # ── Homeowner accepts: transition disputed → completed ─────────────────
+        try:
+            await JobStateMachine.transition(
+                job=job,
+                new_status="completed",
+                current_user=current_user,
+                db=db,
+                note=f"Homeowner accepted tradie's resolution. {body.message or ''}".strip(),
+            )
+        except InvalidTransitionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Mark completed_at if not set (this is a re-completion after dispute).
+        if not job.completed_at:
+            job.completed_at = datetime.utcnow()
+            db.add(job)
+
+        await db.commit()
+
+        # Notify tradie — best-effort.
+        try:
+            from models.tradie_profile import TradieProfile as TP
+            accepted_res = await db.execute(
+                select(Quote, TP, User)
+                .join(TP,   TP.id == Quote.tradie_id)
+                .join(User, User.id == TP.user_id)
+                .join(Lead, Lead.id == Quote.lead_id)
+                .where(Lead.job_id == job.id, Quote.status == "accepted").limit(1)
+            )
+            row = accepted_res.first()
+            if row:
+                _q, tp, tu = row
+                from services.resend_service import send_dispute_resolved_to_tradie_email
+                await send_dispute_resolved_to_tradie_email(
+                    to_email=tu.email,
+                    full_name=tu.full_name or "",
+                    business_name=tp.business_name,
+                    job_title=job.title,
+                    resolution="side_tradie",
+                    admin_note="Homeowner accepted your resolution — great work resolving this directly.",
+                )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "dispute-accept tradie notify failed for job %s: %s", job.id, exc
+            )
+
+        return {
+            "accepted": True,
+            "status": "completed",
+            "message": "Dispute resolved. The job is back to completed — please confirm when ready.",
+        }
+
+    else:
+        # ── Homeowner rejects: stay disputed, count rejections ─────────────────
+        db.add(JobEvent(
+            job_id=job_id,
+            actor_id=current_user.id,
+            actor_role="homeowner",
+            action="dispute_resolution_rejected",
+            old_value=None,
+            new_value={"message": (body.message or "").strip()},
+            note=f"Homeowner rejected tradie resolution claim.",
+        ))
+
+        # Count total rejections
+        rejection_res = await db.execute(
+            select(JobEvent).where(
+                JobEvent.job_id == job_id,
+                JobEvent.action == "dispute_resolution_rejected",
+            )
+        )
+        rejection_count = len(rejection_res.scalars().all())
+
+        await db.commit()
+
+        # Notify tradie of rejection (best-effort)
+        try:
+            lead_res = await db.execute(
+                select(Lead)
+                .join(TradieProfile, TradieProfile.id == Lead.tradie_id)
+                .join(User, User.id == TradieProfile.user_id)
+                .where(Lead.job_id == job_id, Lead.status == "accepted")
+                .limit(1)
+            )
+            lead = lead_res.scalar_one_or_none()
+            if lead:
+                from sqlalchemy.orm import joinedload
+                lead_full = await db.execute(
+                    select(Lead)
+                    .options(
+                        joinedload(Lead.tradie_profile).joinedload(TradieProfile.user)
+                    )
+                    .where(Lead.id == lead.id)
+                )
+                lead_full = lead_full.scalar_one_or_none()
+                if lead_full and lead_full.tradie_profile and lead_full.tradie_profile.user:
+                    tradie_user = lead_full.tradie_profile.user
+                    # If admin escalation threshold reached, alert admin
+                    if rejection_count >= 2:
+                        try:
+                            from services.resend_service import send_dispute_escalated_to_admin_email
+                            import os
+                            admin_email = os.getenv("ADMIN_ALERT_EMAIL", "admin@proconnect.com.au")
+                            await send_dispute_escalated_to_admin_email(
+                                to_email=admin_email,
+                                admin_name="Admin",
+                                job_id=job_id,
+                                job_title=job.title,
+                                homeowner_name=current_user.full_name or current_user.email,
+                                tradie_business_name=lead_full.tradie_profile.business_name or tradie_user.full_name or "Tradie",
+                                rejection_count=rejection_count,
+                            )
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        return {
+            "accepted": False,
+            "status": "disputed",
+            "rejection_count": rejection_count,
+            "message": "Your response has been recorded. The tradie has been notified." + (
+                " Our admin team has been alerted and will step in to help." if rejection_count >= 2 else ""
+            ),
+        }
+
+
+# ── Respond to a dispute (both parties + admin mediator) ────────────────────
+
+class DisputeResponseRequest(BaseModel):
+    response: str
+
+
+@router.post("/{job_id}/dispute-response")
+async def dispute_response(
+    job_id:       str,
+    body:         DisputeResponseRequest,
+    current_user: User         = Depends(get_current_user),
+    db:           AsyncSession = Depends(get_db),
+):
+    """
+    Either party (homeowner or tradie) adds a message to the dispute thread.
+    Stores a JobEvent with action='dispute_message'. No status change.
+    """
+    job = await _load_job_or_404(job_id, db)
+
+    if current_user.role == "homeowner":
+        if job.homeowner_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not your job.")
+    elif current_user.role == "tradie":
+        await _require_tradie_with_lead(job_id, current_user, db)
+    else:
+        raise HTTPException(status_code=403, detail="Not permitted.")
+
+    if job.status != "disputed":
+        raise HTTPException(status_code=400, detail="This job is not currently in dispute.")
+
+    if not body.response or not body.response.strip():
+        raise HTTPException(status_code=422, detail="Response message cannot be empty.")
+
+    from models.job_event import JobEvent
+    event = JobEvent(
+        job_id     = job_id,
+        actor_id   = current_user.id,
+        actor_role = current_user.role,
+        action     = "dispute_message",
+        old_value  = {},
+        new_value  = {"message": body.response.strip()},
+        note       = f"Dispute message from {current_user.role}: {body.response.strip()[:120]}",
+    )
+    db.add(event)
+    await db.commit()
+
+    return {
+        "status": "disputed",
+        "message": "Your response has been recorded.",
     }

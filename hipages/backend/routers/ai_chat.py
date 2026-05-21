@@ -16,10 +16,10 @@ from sqlalchemy import select
 from db.session import get_db
 from models.user import User
 from models.chat_conversation import ChatConversation
-from services.auth_service import get_current_user
+from services.auth_service import get_current_user, get_optional_user
 from services.ai_agent_service import run_agent
 from services.memory_service import extract_insights
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import uuid
 import json
@@ -44,9 +44,13 @@ class ChatResponse(BaseModel):
     error:        bool           = False
 
 class AnalyseJobRequest(BaseModel):
-    description: str
-    category:    str
-    photo_urls:  Optional[list[str]] = []
+    # Inputs are bounded to cap the cost of each Groq call. The /analyse-job
+    # endpoint is reachable during the pre-signup booking wizard, so it cannot
+    # require a full login — these limits plus optional-user attribution are
+    # the abuse mitigation. A per-IP quota / CAPTCHA is the follow-up hardening.
+    description: str = Field(..., min_length=1, max_length=2000)
+    category:    str = Field(..., min_length=1, max_length=100)
+    photo_urls:  Optional[list[str]] = Field(default=[], max_length=10)
 
 class AnalyseJobResponse(BaseModel):
     title:        str
@@ -222,7 +226,14 @@ async def get_sessions(
     return [{"session_id": r.session_id, "started": r.created_at.isoformat()} for r in rows]
 
 @router.post("/analyse-job", response_model=AnalyseJobResponse)
-async def analyse_job(body: AnalyseJobRequest):
+async def analyse_job(
+    body: AnalyseJobRequest,
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    # NOTE: get_optional_user (not get_current_user) — the booking wizard calls
+    # this before the user creates an account. When a token IS present the call
+    # is attributable to a user; combined with the bounded input size this
+    # limits Groq cost-abuse without breaking the pre-signup flow.
     import os, json
     from groq import AsyncGroq
 

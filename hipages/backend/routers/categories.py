@@ -18,8 +18,8 @@ import uuid
 router = APIRouter(prefix="/api/v1/categories", tags=["Categories"])
 
 # ---------------------------------------------------------------------------
-# CANONICAL_SLUGS — the 24 official trade categories.
-# The category picker shown to tradies ONLY displays these slugs.
+# CANONICAL_SLUGS -- the 24 official trade categories.
+# The category picker shown to tradies ONLY displays these slugs at level 1.
 # Any other level-1 rows in the DB are orphan synonyms from the old seed
 # (e.g. "Plumber", "Electrician") and must not appear in the UI.
 # ---------------------------------------------------------------------------
@@ -35,8 +35,15 @@ CANONICAL_SLUGS = frozenset([
 @router.post("", response_model=CategoryResponse, status_code=201)
 async def create_category(
     body: CategoryCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # Category creation is an admin-only operation. Previously this endpoint
+    # had NO authentication at all — any anonymous caller could inject
+    # categories, which corrupts the tradie/job matching taxonomy.
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
     result = await db.execute(select(Category).where(Category.slug == body.slug))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Category slug already exists")
@@ -70,12 +77,57 @@ async def list_categories(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
+@router.get("/{trade_id}/subcategories", response_model=list[CategoryResponse])
+async def list_subcategories(trade_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    List the level-2 subcategories under a level-1 trade.
+
+    Used by the tradie preferences page: once a tradie picks "Cleaning" they
+    are shown checkboxes for its subcategories ("Pool Cleaning", "End of Lease
+    Cleaning", "Carpet Steam Cleaning", etc.) so they can register at the
+    specificity that matches what they actually do. This is what stops the
+    "pool-only tradie gets office-cleaning leads" mismatch at its source.
+    """
+    parent_res = await db.execute(select(Category).where(Category.id == trade_id))
+    parent = parent_res.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Trade category not found")
+    if parent.level != CategoryLevel.TRADE:
+        raise HTTPException(status_code=400, detail="Subcategories are only listed under level-1 trades")
+
+    result = await db.execute(
+        select(Category)
+        .where(
+            Category.parent_id == trade_id,
+            Category.level == CategoryLevel.SUBCATEGORY,
+            Category.is_active == True,
+        )
+        .order_by(Category.name)
+    )
+    return result.scalars().all()
+
+
 @router.post("/my-categories/{category_id}", status_code=201)
 async def add_my_category(
     category_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Add a category to the tradie's service profile.
+
+    A tradie can register at either:
+      * a Level-1 trade row (e.g. "Cleaning") -- they cover the whole trade, OR
+      * a Level-2 subcategory row (e.g. "Pool Cleaning") -- they specialise.
+
+    Specialist registration is preferred because it lets the matcher's
+    specificity scoring route exact-fit jobs to specialists ahead of
+    generalists. Either is acceptable; the matcher handles both correctly.
+
+    Orphan synonym Level-1 rows ("Plumber", "Electrician", etc.) are still
+    normalised to their canonical Level-1 trade via resolve_to_canonical_trade
+    -- otherwise the registration is stored at a UUID that no job will match.
+    """
     if current_user.role != "tradie":
         raise HTTPException(status_code=403, detail="Only tradies can select categories")
 
@@ -91,14 +143,27 @@ async def add_my_category(
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    # Use resolve_to_canonical_trade (not just canonical_trade_category) so that
-    # orphan synonym rows like "Plumber" are normalised to "Plumbing" before saving.
-    # Without this, TradieCategory.category_id would store the "Plumber" UUID,
-    # which never matches any job's category_id (which is always "Plumbing").
-    trade_category = await resolve_to_canonical_trade(db, category)
-    if not trade_category:
-        raise HTTPException(status_code=400, detail="Please select a valid trade service.")
-    category_id = trade_category.id
+    # Resolve to the row we will actually save.
+    #   Level-2 (subcategory) and Level-3 (task) selections are kept as-is so
+    #   that specialist tradies can be matched at their true specificity.
+    #   Level-1 selections still pass through resolve_to_canonical_trade so
+    #   orphan synonyms ("Plumber") collapse to the canonical row ("Plumbing").
+    if category.level == CategoryLevel.TRADE:
+        canonical = await resolve_to_canonical_trade(db, category)
+        if not canonical:
+            raise HTTPException(status_code=400, detail="Please select a valid trade service.")
+        save_category = canonical
+    else:
+        # Subcategory or task -- keep as-is. Walk up the tree to make sure
+        # the row actually belongs to a canonical trade (safety check against
+        # orphan subcategory rows from old seeds).
+        from services.category_resolver import canonical_trade_category
+        trade_root = await canonical_trade_category(db, category)
+        if not trade_root or trade_root.slug not in CANONICAL_SLUGS:
+            raise HTTPException(status_code=400, detail="Please select a valid trade service.")
+        save_category = category
+
+    category_id = save_category.id
 
     result = await db.execute(
         select(TradieCategory).where(
@@ -117,8 +182,9 @@ async def add_my_category(
             request_type=TradieChangeRequestType.SERVICE_ADD,
             payload={
                 "category_id": category_id,
-                "category_name": trade_category.name,
-                "category_slug": trade_category.slug,
+                "category_name": save_category.name,
+                "category_slug": save_category.slug,
+                "category_level": save_category.level,
             },
             note="Verified tradie requested a new service.",
         )
