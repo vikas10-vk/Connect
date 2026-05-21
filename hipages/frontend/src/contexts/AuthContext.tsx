@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import api from "../lib/api"
-import { saveToken, removeToken, getToken } from "../lib/auth"
+import { hasSession } from "../lib/auth"
 
 export type UserRole = 'homeowner' | 'tradie' | 'admin'
 
@@ -87,7 +87,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = useCallback(async () => {
     try {
-      if (!getToken()) {
+      // Tokens are HttpOnly — JS cannot read them. hasSession() checks the
+      // readable csrf_token cookie purely as a "skip the probe if clearly
+      // logged out" hint. The /auth/me call is always the real check.
+      if (!hasSession()) {
         setIsLoading(false)
         return
       }
@@ -110,7 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return mappedUser
     } catch {
-      removeToken()
+      // Session invalid/expired — the proxy + interceptor handle token refresh;
+      // if we still land here the session is gone, so just clear local state.
       setUser(null)
     } finally {
       setIsLoading(false)
@@ -124,9 +128,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string, expectedRole?: UserRole) => {
     setIsLoading(true)
     try {
-      const loginRes = await api.post("/auth/login", { email, password, expected_role: expectedRole })
-      const token = loginRes.data.access_token
-      saveToken(token)
+      // The proxy captures the tokens from this response into HttpOnly cookies.
+      // Nothing token-related is stored in JS.
+      await api.post("/auth/login", { email, password, expected_role: expectedRole })
       const user = await fetchUser()
       return user
     } catch (error: any) {
@@ -154,10 +158,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [login])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      // Revokes the refresh-token family server-side; the proxy clears the
+      // HttpOnly auth cookies from the response.
+      await api.post('/auth/logout')
+    } catch {
+      // Even if the server call fails, still clear local state and redirect.
+    }
     setUser(null)
     setTradieProfile(null)
-    removeToken()
     router.push('/')
   }, [router])
 

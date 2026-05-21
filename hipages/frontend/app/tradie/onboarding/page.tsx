@@ -12,7 +12,6 @@ import {
     Award, Shield, ChevronDown, SkipForward, Info,
 } from 'lucide-react';
 import api from '@/src/lib/api';
-import { saveToken } from '@/src/lib/auth';
 import { useAuth } from '@/src/contexts/AuthContext';
 import { getServiceRule } from '@/src/lib/tradie-verification';
 
@@ -385,8 +384,8 @@ export default function TradieOnboardingPage() {
             });
 
             // Log in to get a JWT (works for both new + existing-unverified users)
-            const loginRes = await api.post('/auth/login', { email: email.trim().toLowerCase(), password });
-            saveToken(loginRes.data.access_token);
+            // The proxy captures the session into HttpOnly cookies; nothing to store here.
+            await api.post('/auth/login', { email: email.trim().toLowerCase(), password });
 
             // Note: /auth/register automatically sends the first OTP, so we don't send it again here to avoid 429s.
             setResendCooldown(60);

@@ -6,112 +6,193 @@ const FASTAPI_BASE =
     (process.env.NODE_ENV === "development" ? "http://fastapi:8000" : process.env.NEXT_PUBLIC_API_URL) ||
     "http://localhost:8000";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
-    const { path } = await params;
-    return proxyRequest(request, path, "GET");
+const IS_PROD = process.env.NODE_ENV === "production";
+
+// All three cookies share the refresh-token lifetime. The access-token JWT
+// still enforces its own short expiry via the `exp` claim; the cookie only
+// needs to outlive it so the proxy can present it and trigger a refresh.
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+
+const ACCESS_COOKIE = "access_token";
+const REFRESH_COOKIE = "refresh_token";
+const CSRF_COOKIE = "csrf_token";
+
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+type Ctx = { params: Promise<{ path: string[] }> };
+
+export async function GET(request: NextRequest, ctx: Ctx) {
+    return proxyRequest(request, (await ctx.params).path, "GET");
 }
-export async function POST(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
-    const { path } = await params;
-    return proxyRequest(request, path, "POST");
+export async function POST(request: NextRequest, ctx: Ctx) {
+    return proxyRequest(request, (await ctx.params).path, "POST");
 }
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
-    const { path } = await params;
-    return proxyRequest(request, path, "PUT");
+export async function PUT(request: NextRequest, ctx: Ctx) {
+    return proxyRequest(request, (await ctx.params).path, "PUT");
 }
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
-    const { path } = await params;
-    return proxyRequest(request, path, "PATCH");
+export async function PATCH(request: NextRequest, ctx: Ctx) {
+    return proxyRequest(request, (await ctx.params).path, "PATCH");
 }
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
-    const { path } = await params;
-    return proxyRequest(request, path, "DELETE");
+export async function DELETE(request: NextRequest, ctx: Ctx) {
+    return proxyRequest(request, (await ctx.params).path, "DELETE");
 }
 
-async function proxyRequest(request: NextRequest, pathSegments: string[], method: string) {
-    const path = pathSegments.join("/");
+function randomToken(): string {
+    return crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+}
+
+async function proxyRequest(request: NextRequest, pathSegments: string[], method: Method) {
+    const path = (pathSegments || []).join("/");
     const search = request.nextUrl.search || "";
     const targetUrl = `${FASTAPI_BASE}/api/v1/${path}${search}`;
 
-    // Auth token — cookie first, then Authorization header
     const cookieStore = await cookies();
-    const token = cookieStore.get("access_token")?.value;
-    const incomingAuth = request.headers.get("Authorization");
+    const accessToken = cookieStore.get(ACCESS_COOKIE)?.value;
+    const refreshToken = cookieStore.get(REFRESH_COOKIE)?.value;
+    const csrfCookie = cookieStore.get(CSRF_COOKIE)?.value;
 
-    // ── Headers ────────────────────────────────────────────────────────────────
-    // CRITICAL: Do NOT set Content-Type for multipart/form-data requests.
-    // When Content-Type is hardcoded to application/json, the multipart boundary
-    // is lost and FastAPI cannot parse the uploaded file — it returns 422.
-    // Instead, detect the incoming content type and forward it as-is.
-    // For JSON requests (no content type set), default to application/json.
+    const isLogin = path === "auth/login";
+    const isRegister = path === "auth/register";
+    const isRefresh = path === "auth/refresh";
+    const isLogout = path === "auth/logout" || path === "auth/logout-all";
+    const capturesTokens = isLogin || isRefresh;
+
+    const isUnsafe =
+        method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
+
+    // -- CSRF double-submit check -----------------------------------------------
+    // Enforced for unsafe methods only when a session cookie is present (an
+    // unauthenticated request cannot abuse the victim's session). Login and
+    // register have no session yet and are exempt.
+    if (isUnsafe && accessToken && !isLogin && !isRegister) {
+        const headerToken = request.headers.get("x-csrf-token");
+        if (!csrfCookie || !headerToken || headerToken !== csrfCookie) {
+            return NextResponse.json({ detail: "CSRF validation failed" }, { status: 403 });
+        }
+    }
+
+    // -- Headers ---------------------------------------------------------------
     const headers: Record<string, string> = {};
-
     const incomingContentType = request.headers.get("content-type");
-
     if (incomingContentType) {
-        // Forward the exact content-type including multipart boundary.
-        // e.g. "multipart/form-data; boundary=----WebKitFormBoundaryXYZ"
         headers["Content-Type"] = incomingContentType;
-    } else if (["POST", "PUT", "PATCH"].includes(method)) {
-        // Default to JSON for mutation requests that don't specify content type
+    } else if (method === "POST" || method === "PUT" || method === "PATCH") {
         headers["Content-Type"] = "application/json";
     }
-
-    // Attach auth token
-    if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-    } else if (incomingAuth) {
-        headers["Authorization"] = incomingAuth;
+    if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+    } else {
+        const incomingAuth = request.headers.get("authorization");
+        if (incomingAuth) headers["Authorization"] = incomingAuth;
     }
 
-    // ── Body ───────────────────────────────────────────────────────────────────
-    // For file uploads (multipart/form-data): forward raw bytes via arrayBuffer.
-    // For JSON requests: forward as text.
-    // GET/DELETE: no body.
+    // -- Body ------------------------------------------------------------------
     let body: BodyInit | undefined;
-
-    if (["POST", "PUT", "PATCH"].includes(method)) {
+    if (method === "POST" || method === "PUT" || method === "PATCH") {
         if (incomingContentType?.includes("multipart/form-data")) {
-            // Forward raw binary — required for file uploads.
-            // Using text() here would corrupt binary file data.
             try {
                 body = await request.arrayBuffer();
-            } catch { /* no body */ }
+            } catch {
+                /* no body */
+            }
         } else {
+            let text = "";
             try {
-                const text = await request.text();
-                if (text) body = text;
-            } catch { /* no body */ }
+                text = await request.text();
+            } catch {
+                /* no body */
+            }
+            // The refresh token lives only in an HttpOnly cookie - inject it
+            // into the JSON body for the endpoints that need it.
+            if (isRefresh || isLogout) {
+                let parsed: Record<string, unknown> = {};
+                if (text) {
+                    try {
+                        parsed = JSON.parse(text);
+                    } catch {
+                        parsed = {};
+                    }
+                }
+                if (refreshToken) parsed.refresh_token = refreshToken;
+                text = JSON.stringify(parsed);
+                headers["Content-Type"] = "application/json";
+            }
+            if (text) body = text;
         }
     }
 
-    // ── Proxy the request ──────────────────────────────────────────────────────
+    // -- Proxy to FastAPI ------------------------------------------------------
+    let upstream: Response;
     try {
-        const response = await fetch(targetUrl, {
-            method,
-            headers,
-            body,
-            redirect: "follow",
-        });
-
-        // 204 No Content — return immediately, no body to read
-        if (response.status === 204) {
-            return new NextResponse(null, { status: 204 });
-        }
-
-        const responseText = await response.text();
-
-        return new NextResponse(responseText, {
-            status: response.status,
-            headers: {
-                "Content-Type": response.headers.get("Content-Type") || "application/json",
-            },
-        });
-
+        upstream = await fetch(targetUrl, { method, headers, body, redirect: "follow" });
     } catch (error) {
         console.error(`[PROXY] ${method} ${targetUrl} failed:`, error);
-        return NextResponse.json(
-            { detail: "Upstream service unavailable" },
-            { status: 503 }
-        );
+        return NextResponse.json({ detail: "Upstream service unavailable" }, { status: 503 });
     }
+
+    const status = upstream.status;
+    const contentType = upstream.headers.get("Content-Type") || "application/json";
+    let responseBody = status === 204 ? "" : await upstream.text();
+    const ok = status >= 200 && status < 300;
+
+    // -- Cookie handling -------------------------------------------------------
+    let tokensToSet: { access: string; refresh: string; csrf: string } | null = null;
+    let clearCookies = false;
+
+    if (isLogout) {
+        clearCookies = true;
+    } else if (capturesTokens && ok) {
+        try {
+            const data = JSON.parse(responseBody);
+            if (data && data.access_token && data.refresh_token) {
+                // Preserve the CSRF token across refreshes; mint a new one on login.
+                const csrfValue = !isLogin && csrfCookie ? csrfCookie : randomToken();
+                tokensToSet = {
+                    access: data.access_token,
+                    refresh: data.refresh_token,
+                    csrf: csrfValue,
+                };
+                // Never hand the raw tokens back to browser JavaScript.
+                delete data.access_token;
+                delete data.refresh_token;
+                responseBody = JSON.stringify(data);
+            }
+        } catch {
+            /* non-JSON success body - nothing to capture */
+        }
+    }
+
+    const res = new NextResponse(status === 204 ? null : responseBody, {
+        status,
+        headers: { "Content-Type": contentType },
+    });
+
+    if (clearCookies) {
+        for (const name of [ACCESS_COOKIE, REFRESH_COOKIE, CSRF_COOKIE]) {
+            res.cookies.set(name, "", { path: "/", maxAge: 0 });
+        }
+    } else if (tokensToSet) {
+        res.cookies.set(ACCESS_COOKIE, tokensToSet.access, {
+            httpOnly: true,
+            secure: IS_PROD,
+            sameSite: "lax",
+            path: "/",
+            maxAge: COOKIE_MAX_AGE,
+        });
+        res.cookies.set(REFRESH_COOKIE, tokensToSet.refresh, {
+            httpOnly: true,
+            secure: IS_PROD,
+            sameSite: "lax",
+            path: "/",
+            maxAge: COOKIE_MAX_AGE,
+        });
+        res.cookies.set(CSRF_COOKIE, tokensToSet.csrf, {
+            httpOnly: false,
+            secure: IS_PROD,
+            sameSite: "lax",
+            path: "/",
+            maxAge: COOKIE_MAX_AGE,
+        });
+    }
+
+    return res;
 }

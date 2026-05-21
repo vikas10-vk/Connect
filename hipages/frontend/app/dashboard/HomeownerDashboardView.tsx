@@ -48,6 +48,11 @@ interface Job {
   photo_before_url?: string;
   photo_after_url?: string;
   completion_note?: string;
+  // Redo flag — set when job returned to in_progress after a dispute redo_work resolution
+  is_redo_job?: boolean;
+  // Dispute window — null when no window is active
+  dispute_window_hours?: number | null;
+  dispute_window_expires_at?: string | null;
 }
 
 interface Quote {
@@ -420,27 +425,229 @@ function PartialStopBanner({ job, onDispute, onConfirmComplete }: {
   );
 }
 
-// ═══ DISPUTE BANNER ═══════════════════════════════════════════════════════════
-// Shown when job.status === 'disputed'
-function DisputeBanner() {
+// ═══ REDO JOB BANNER ══════════════════════════════════════════════════════════
+// Shown when job.is_redo_job === true AND job.status === 'in_progress' | 'completed'
+// Gives the homeowner context: their dispute was resolved and the tradie is
+// returning to redo the work. Disappears once the job is confirmed or closed.
+function RedoJobBanner() {
   return (
     <div style={{
-      background: '#fff', border: `2px solid ${ROSE}40`,
-      borderRadius: 20, padding: '20px 22px',
-      display: 'flex', gap: 14, alignItems: 'flex-start',
+      background: '#FFF8EE',
+      border: `1.5px solid ${AMBER}40`,
+      borderRadius: 16,
+      padding: '16px 20px',
+      display: 'flex',
+      gap: 14,
+      alignItems: 'flex-start',
     }}>
-      <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: ROSE_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <ShieldAlert size={22} color={ROSE} />
+      <div style={{
+        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+        background: AMBER_LIGHT,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {/* Wrench icon inline — no extra import needed */}
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={AMBER} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        </svg>
       </div>
-      <div>
-        <p style={{ fontWeight: 800, fontSize: 15, color: INK, margin: '0 0 6px' }}>Dispute under review</p>
-        <p style={{ fontSize: 13, color: INK2, lineHeight: 1.65, margin: 0, maxWidth: 480 }}>
-          Our team is reviewing your dispute and will reach out within 2 business days. Please have any supporting photos or documentation ready. Payment is held until this is resolved.
+      <div style={{ flex: 1 }}>
+        <p style={{ fontWeight: 800, fontSize: 14, color: AMBER, margin: '0 0 4px' }}>
+          Tradie returning to redo the work
         </p>
-        <a href="mailto:support@proconnect.com.au"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 12, fontSize: 12.5, fontWeight: 700, color: TERRA, textDecoration: 'none' }}>
-          <MessageSquare size={13} /> Contact support <ChevronRight size={12} />
-        </a>
+        <p style={{ fontSize: 13, color: INK, lineHeight: 1.6, margin: 0 }}>
+          Your dispute was reviewed and the tradie has been instructed to return and fix the work.
+          The job is active again. Once they mark it complete, you&apos;ll be asked to confirm —
+          and you can raise another dispute if you&apos;re still not satisfied.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ═══ DISPUTE BANNER ═══════════════════════════════════════════════════════════
+// Shown when job.status === 'disputed'
+function DisputeBanner({ jobId, onResolved }: { jobId: string; onResolved: () => void }) {
+  const [info, setInfo] = React.useState<{
+    dispute_reason: string | null;
+    responses: Array<{ id: number; actor_role: string; response: string; evidence_url: string | null; created_at: string }>;
+    resolution_claimed: boolean;
+    resolution_claimed_at: string | null;
+    resolution_rejection_count: number;
+  } | null>(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [reply, setReply]       = React.useState('');
+  const [posting, setPosting]   = React.useState(false);
+  const [posted, setPosted]     = React.useState(false);
+  const [acting, setActing]     = React.useState(false);
+  const [actErr, setActErr]     = React.useState('');
+  const [rejected, setRejected] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get(`/jobs/${jobId}/dispute-info`);
+      setInfo({
+        dispute_reason: data?.dispute_reason || null,
+        responses: data?.responses || [],
+        resolution_claimed: data?.resolution_claimed || false,
+        resolution_claimed_at: data?.resolution_claimed_at || null,
+        resolution_rejection_count: data?.resolution_rejection_count || 0,
+      });
+    } catch { /* show static banner even on error */ }
+    finally { setLoading(false); }
+  }, [jobId]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const submitReply = async () => {
+    if (reply.trim().length < 5) return;
+    setPosting(true);
+    try {
+      await api.post(`/jobs/${jobId}/dispute-response`, { response: reply.trim() });
+      setReply(''); setPosted(true); await load();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || 'Could not send the message.');
+    } finally { setPosting(false); }
+  };
+
+  const handleResolutionResponse = async (accept: boolean) => {
+    setActing(true); setActErr('');
+    try {
+      await api.post(`/jobs/${jobId}/dispute-accept-resolution`, { accept });
+      if (accept) {
+        onResolved(); // triggers parent reload — job is now "completed"
+      } else {
+        setRejected(true);
+        await load(); // refresh rejection count
+      }
+    } catch (e: any) {
+      setActErr(e?.response?.data?.detail || 'Something went wrong. Please try again.');
+    } finally { setActing(false); }
+  };
+
+  // ── When tradie has claimed resolution: show the accept/reject prompt ──────
+  if (info?.resolution_claimed) {
+    return (
+      <div style={{ background: '#fff', border: `2px solid ${GREEN}50`, borderRadius: 20, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: GREEN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <CheckCircle2 size={22} color={GREEN} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: 800, fontSize: 15, color: INK, margin: '0 0 5px' }}>Tradie says they&apos;ve fixed it</p>
+            <p style={{ fontSize: 13, color: INK2, lineHeight: 1.65, margin: 0 }}>
+              The tradie has marked this dispute as resolved from their side.
+              {info.resolution_claimed_at ? ` They submitted this ${timeAgo(info.resolution_claimed_at)}.` : ''}
+              {' '}Is the issue actually fixed?
+            </p>
+          </div>
+        </div>
+
+        {rejected && (
+          <div style={{ background: AMBER_LIGHT, border: `1px solid ${AMBER}40`, borderRadius: 10, padding: '10px 14px' }}>
+            <p style={{ fontSize: 13, color: AMBER, margin: 0, lineHeight: 1.55 }}>
+              Your rejection has been sent to the tradie.
+              {(info.resolution_rejection_count || 0) >= 2
+                ? ' Our admin team has been notified and will step in to help resolve this.'
+                : ' They can address your concerns and re-submit when they believe it is fixed.'}
+            </p>
+          </div>
+        )}
+
+        {actErr && <p style={{ fontSize: 12.5, color: ROSE, margin: 0 }}>{actErr}</p>}
+
+        {!rejected && (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => handleResolutionResponse(true)}
+              disabled={acting}
+              style={{ flex: 1, minWidth: 140, padding: '12px 16px', borderRadius: 12, background: GREEN, color: '#fff', border: 'none', fontSize: 13.5, fontWeight: 700, cursor: acting ? 'wait' : 'pointer', opacity: acting ? 0.6 : 1 }}>
+              {acting ? 'Processing...' : '✅  Yes, it\'s resolved'}
+            </button>
+            <button
+              onClick={() => handleResolutionResponse(false)}
+              disabled={acting}
+              style={{ flex: 1, minWidth: 140, padding: '12px 16px', borderRadius: 12, background: '#fff', color: ROSE, border: `1.5px solid ${ROSE}`, fontSize: 13.5, fontWeight: 700, cursor: acting ? 'wait' : 'pointer', opacity: acting ? 0.6 : 1 }}>
+              {acting ? 'Processing...' : '❌  Still not right'}
+            </button>
+          </div>
+        )}
+
+        {/* Conversation history visible even on the resolution screen */}
+        {info.dispute_reason && (
+          <div style={{ background: ROSE_LIGHT, border: `1px solid ${ROSE}33`, borderRadius: 10, padding: '10px 14px' }}>
+            <p style={{ fontSize: 10.5, fontWeight: 700, color: ROSE, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Your original dispute reason</p>
+            <p style={{ fontSize: 13, color: INK, margin: 0, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{info.dispute_reason}</p>
+          </div>
+        )}
+        {info.responses.length > 0 && (
+          <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ fontSize: 10.5, fontWeight: 700, color: INK4, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Conversation ({info.responses.length})</p>
+            {info.responses.map(r => (
+              <div key={r.id} style={{ background: r.actor_role === 'tradie' ? BLUE_LIGHT : CREAM2, border: `1px solid ${r.actor_role === 'tradie' ? BLUE + '33' : BORDER}`, borderRadius: 10, padding: '10px 14px' }}>
+                <p style={{ fontSize: 10.5, fontWeight: 700, color: r.actor_role === 'tradie' ? BLUE : INK3, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>
+                  {r.actor_role === 'tradie' ? 'Tradie' : 'You'} - {timeAgo(r.created_at)}
+                </p>
+                <p style={{ fontSize: 13, color: INK, margin: 0, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{r.response}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Default: dispute is open, waiting for tradie to claim resolution ────────
+  return (
+    <div style={{ background: '#fff', border: `2px solid ${ROSE}40`, borderRadius: 20, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+        <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: ROSE_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <ShieldAlert size={22} color={ROSE} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontWeight: 800, fontSize: 15, color: INK, margin: '0 0 6px' }}>Dispute under review</p>
+          <p style={{ fontSize: 13, color: INK2, lineHeight: 1.65, margin: 0 }}>
+            The tradie has been notified and will respond shortly. Once they mark it resolved, you&apos;ll be asked to confirm. Payment is held until this is sorted.
+          </p>
+        </div>
+      </div>
+
+      {info?.dispute_reason && (
+        <div style={{ background: ROSE_LIGHT, border: `1px solid ${ROSE}33`, borderRadius: 10, padding: '10px 14px' }}>
+          <p style={{ fontSize: 10.5, fontWeight: 700, color: ROSE, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>Your dispute reason</p>
+          <p style={{ fontSize: 13.5, color: INK, margin: 0, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{info.dispute_reason}</p>
+        </div>
+      )}
+
+      {info && info.responses.length > 0 && (
+        <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <p style={{ fontSize: 10.5, fontWeight: 700, color: INK4, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Conversation ({info.responses.length})</p>
+          {info.responses.map(r => (
+            <div key={r.id} style={{ background: r.actor_role === 'tradie' ? BLUE_LIGHT : CREAM2, border: `1px solid ${r.actor_role === 'tradie' ? BLUE + '33' : BORDER}`, borderRadius: 10, padding: '10px 14px' }}>
+              <p style={{ fontSize: 10.5, fontWeight: 700, color: r.actor_role === 'tradie' ? BLUE : INK3, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>
+                {r.actor_role === 'tradie' ? 'Tradie' : 'You'} - {timeAgo(r.created_at)}
+              </p>
+              <p style={{ fontSize: 13, color: INK, margin: 0, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{r.response}</p>
+              {r.evidence_url && (
+                <a href={r.evidence_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 11.5, color: BLUE, textDecoration: 'underline' }}>View attached evidence</a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+        {posted && <p style={{ fontSize: 12, color: GREEN, margin: '0 0 6px' }}>Your message was sent. The tradie will see it.</p>}
+        <p style={{ fontSize: 10.5, fontWeight: 700, color: INK3, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>Add to the conversation</p>
+        <textarea value={reply} onChange={e => setReply(e.target.value)} rows={3}
+          placeholder="Add more context or anything you forgot to mention."
+          style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', background: '#fff' }} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+          <button onClick={submitReply} disabled={posting || reply.trim().length < 5}
+            style={{ padding: '8px 14px', borderRadius: 10, background: INK, color: '#fff', border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: (posting || reply.trim().length < 5) ? 0.5 : 1 }}>
+            {posting ? 'Sending...' : 'Send message'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -800,6 +1007,73 @@ export default function HomeownerDashboardView() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // ── Real-time status push ─────────────────────────────────────────────────
+  // The backend's JobStateMachine broadcasts a 'job:status_changed' event to
+  // every party on the job (homeowner + each tradie that has a lead) whenever
+  // a status transition is committed. Subscribe here so the dashboard refreshes
+  // the instant the tradie marks complete, a dispute is raised, the system
+  // auto-closes after 48h, etc. — no manual page reload needed.
+  //
+  // Falls back to silent no-op if WebSockets aren't reachable (e.g. behind a
+  // proxy that strips the upgrade header); the existing manual reload path
+  // still works.
+  useEffect(() => {
+    if (!user) return;
+    // Lazy-import to avoid pulling auth helpers into the SSR bundle.
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let closed = false;
+
+    const connect = async () => {
+      try {
+        const { default: apiClient } = await import('@/src/lib/api');
+        let ticket: string | undefined;
+        try {
+          ticket = (await apiClient.post('/auth/ws-ticket')).data?.ticket;
+        } catch { return; }
+        if (!ticket) return;
+        // The /api/proxy route handles HTTP, but WebSockets need to talk
+        // straight to the FastAPI host. NEXT_PUBLIC_API_URL is the public
+        // base URL; flip http(s):// -> ws(s)://.
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || window.location.origin;
+        const wsBase = apiBase.replace(/^http/, 'ws');
+        ws = new WebSocket(`${wsBase}/ws?ticket=${encodeURIComponent(ticket)}`);
+
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg?.type === 'job:status_changed') {
+              // Pull the latest snapshot; cheap and avoids drift bugs that come
+              // from trying to merge a delta into local state.
+              loadData().catch(() => {});
+            }
+          } catch { /* ignore non-JSON heartbeats */ }
+        };
+
+        ws.onclose = () => {
+          if (closed) return;
+          // Auto-reconnect with a small backoff so dropped sockets recover
+          // (e.g. laptop wakes from sleep, mobile network flap).
+          reconnectTimer = setTimeout(connect, 5000);
+        };
+
+        ws.onerror = () => {
+          try { ws?.close(); } catch { /* noop */ }
+        };
+      } catch {
+        // Non-fatal: dashboard still works without real-time updates.
+      }
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      try { ws?.close(); } catch { /* noop */ }
+    };
+  }, [user, loadData]);
+
   const loadHistory = useCallback(async () => {
     if (!user) return;
     setHistoryLoading(true);
@@ -898,20 +1172,32 @@ export default function HomeownerDashboardView() {
     catch { alert('Could not remove photo.'); }
   };
 
-  const ACTIVE_STATUSES = ['open', 'quoted', 'hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'disputed'];
-  // confirmed jobs with no review stay in the active list — user must review before they move to completed
+  // 'completed' MUST be in this list. When the tradie marks the job done, the
+  // homeowner has 48 hours to confirm or dispute. If we don't surface the job
+  // in "Your Jobs", the homeowner can never reach the Confirm / Dispute buttons
+  // and the dashboard looks empty even though there's pending action.
+  // 'confirmed' without a review stays here too so the review CTA is reachable.
+  const ACTIVE_STATUSES = ['open', 'quoted', 'hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'disputed', 'completed'];
   const activeJobs = [...jobs.filter(j => ACTIVE_STATUSES.includes(j.status) || (j.status === 'confirmed' && !j.has_review))].sort((a, b) => {
-    // Surface action-needed states first
-    const aUrgent = ['awaiting_scope_approval', 'partial_stop', 'disputed'].includes(a.status) ? 1 : 0;
-    const bUrgent = ['awaiting_scope_approval', 'partial_stop', 'disputed'].includes(b.status) ? 1 : 0;
+    // Surface action-needed states first: dispute > scope change > partial stop >
+    // tradie-marked-complete (homeowner action required) > everything else.
+    const URGENT_ORDER: Record<string, number> = {
+      disputed: 4, awaiting_scope_approval: 3, partial_stop: 2, completed: 1,
+    };
+    const aUrgent = URGENT_ORDER[a.status] || 0;
+    const bUrgent = URGENT_ORDER[b.status] || 0;
     if (bUrgent !== aUrgent) return bUrgent - aUrgent;
     const aPending = (quotesByJob[a.id] || []).filter(q => q.status === 'pending').length;
     const bPending = (quotesByJob[b.id] || []).filter(q => q.status === 'pending').length;
     if (bPending !== aPending) return bPending - aPending;
     return 0;
   });
-  // Only jobs that are confirmed AND have a review appear in the completed section
-  const completedJobs = jobs.filter(j => j.status === 'confirmed' && j.has_review);
+  // A job is "completed" for archive purposes once the homeowner has confirmed it
+  // OR the system auto-closed it after the 48-hour dispute window. Either way the
+  // work is done and the user is no longer being asked to act. We deliberately do
+  // NOT gate on has_review — leaving a review is optional and shouldn't determine
+  // whether the homeowner can see their own finished jobs in the archive.
+  const completedJobs = jobs.filter(j => j.status === 'confirmed' || j.status === 'closed');
 
   const pendingQuotes = allQuotes.filter(q => q.status === 'pending');
   const actionNeededJobs = activeJobs.filter(j => ['awaiting_scope_approval', 'partial_stop', 'disputed'].includes(j.status));
@@ -965,13 +1251,17 @@ export default function HomeownerDashboardView() {
 
   // ── Completed view ────────────────────────────────────────────────────────
   if (view === 'completed') {
-    const TWENTY_FOUR_HRS = 24 * 60 * 60 * 1000;
-    // Only move to completed view after review submitted + 24hrs since job completion
-    const trueCompleted = completedJobs.filter(j =>
-      j.has_review &&
-      j.completed_at &&
-      (Date.now() - new Date(j.completed_at).getTime() > TWENTY_FOUR_HRS)
-    );
+    // Show every confirmed/closed job in the archive. We used to gate on
+    // (has_review && >24h since completed_at) which made the archive empty for
+    // homeowners who confirmed a job but hadn't left a review yet — and they
+    // could never find their own completed jobs. Confirmation is what marks a
+    // job as truly done; reviews are an optional next step, surfaced via the
+    // review CTA on the main dashboard.
+    const trueCompleted = [...completedJobs].sort((a, b) => {
+      const at = a.confirmed_by_user_at || a.completed_at || a.created_at || a.created || '';
+      const bt = b.confirmed_by_user_at || b.completed_at || b.created_at || b.created || '';
+      return bt.localeCompare(at);
+    });
     return (
       <div style={{ background: CREAM, minHeight: '100vh', padding: isMobile ? '20px 14px' : '32px 28px' }}>
         <div style={{ maxWidth: 800, margin: '0 auto' }}>
@@ -1153,7 +1443,12 @@ export default function HomeownerDashboardView() {
               {/* ② Match intelligence */}
               <MatchIntelCard raw={selectedJob.match_intelligence} />
 
-              {/* ③ NEW: Scope change approval banner */}
+              {/* ③ Redo job banner — shown when tradie is returning after dispute */}
+              {selectedJob.is_redo_job && ['in_progress', 'completed', 'awaiting_scope_approval'].includes(selectedJob.status) && (
+                <RedoJobBanner />
+              )}
+
+              {/* ④ NEW: Scope change approval banner */}
               {selectedJob.status === 'awaiting_scope_approval' && (
                 <ScopeChangeBanner
                   job={selectedJob}
@@ -1161,7 +1456,7 @@ export default function HomeownerDashboardView() {
                 />
               )}
 
-              {/* ④ NEW: Partial stop banner */}
+              {/* ⑤ NEW: Partial stop banner */}
               {selectedJob.status === 'partial_stop' && (
                 <PartialStopBanner
                   job={selectedJob}
@@ -1170,11 +1465,16 @@ export default function HomeownerDashboardView() {
                 />
               )}
 
-              {/* ⑤ NEW: Dispute banner */}
-              {selectedJob.status === 'disputed' && <DisputeBanner />}
+              {/* ⑥ NEW: Dispute banner */}
+              {selectedJob.status === 'disputed' && <DisputeBanner jobId={selectedJob.id} onResolved={loadData} />}
 
-              {/* ⑥ NEW: Confirm complete (tradie marked done, homeowner hasn't confirmed) */}
-              {selectedJob.status === 'completed' && (
+              {/* ⑦ NEW: Confirm complete (tradie marked done, homeowner hasn't confirmed) */}
+              {selectedJob.status === 'completed' && (() => {
+                const expiresAt   = selectedJob.dispute_window_expires_at ? new Date(selectedJob.dispute_window_expires_at).getTime() : 0;
+                const windowHours = selectedJob.dispute_window_hours ?? 48;
+                const canStillDispute = expiresAt > 0 && Date.now() < expiresAt;
+                const hoursLeft   = canStillDispute ? Math.max(0, Math.ceil((expiresAt - Date.now()) / (60 * 60 * 1000))) : 0;
+                return (
                 <div style={{ background: '#fff', border: `1.5px solid ${GREEN}40`, borderRadius: 18, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                     <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: GREEN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1183,7 +1483,10 @@ export default function HomeownerDashboardView() {
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Tradie says the job is done</p>
                       <p style={{ fontSize: 12, color: INK4, lineHeight: 1.5 }}>
-                        Confirm to release payment. You have 48 hours to raise a dispute if anything isn't right.
+                        Confirm to release payment.{' '}
+                        {canStillDispute
+                          ? <>You have <strong>{hoursLeft}h left</strong> to raise an issue if anything isn't right ({windowHours}h window).</>
+                          : <>The dispute window has closed.</>}
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: 10, flexShrink: 0, flexWrap: 'wrap' }}>
@@ -1194,10 +1497,12 @@ export default function HomeownerDashboardView() {
                         {confirmingCompleteJobId === selectedJob.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                         {confirmingCompleteJobId === selectedJob.id ? 'Confirming…' : 'Confirm complete'}
                       </button>
-                      <button onClick={() => setDisputeModalJobId(selectedJob.id)}
-                        style={{ ...btn(ROSE_LIGHT, ROSE), padding: '11px 18px', borderRadius: 12, border: `1px solid ${ROSE}25` }}>
-                        <AlertTriangle size={14} /> Something's wrong
-                      </button>
+                      {canStillDispute && (
+                        <button onClick={() => setDisputeModalJobId(selectedJob.id)}
+                          style={{ ...btn(ROSE_LIGHT, ROSE), padding: '11px 18px', borderRadius: 12, border: `1px solid ${ROSE}25` }}>
+                          <AlertTriangle size={14} /> Something's wrong
+                        </button>
+                      )}
                     </div>
                   </div>
                   {/* Inline error — shows instead of a browser alert that can be blocked */}
@@ -1209,22 +1514,42 @@ export default function HomeownerDashboardView() {
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
 
-              {/* ⑥b: Job confirmed by homeowner — awaiting payment release */}
-              {selectedJob.status === 'confirmed' && (
-                <div style={{ background: '#fff', border: `1.5px solid ${GREEN}40`, borderRadius: 18, padding: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: GREEN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <CheckCircle2 size={22} color={GREEN} />
+              {/* ⑥b: Job confirmed by homeowner — awaiting payment release.
+                  Report Issue visible only within the dispute window:
+                  48h (first dispute) or 10h (re-dispute after resolution). */}
+              {selectedJob.status === 'confirmed' && (() => {
+                const expiresAt   = selectedJob.dispute_window_expires_at ? new Date(selectedJob.dispute_window_expires_at).getTime() : 0;
+                const windowHours = selectedJob.dispute_window_hours ?? 48;
+                const canStillDispute = expiresAt > 0 && Date.now() < expiresAt;
+                const hoursLeft   = canStillDispute ? Math.max(0, Math.ceil((expiresAt - Date.now()) / (60 * 60 * 1000))) : 0;
+                return (
+                  <div style={{ background: '#fff', border: `1.5px solid ${GREEN}40`, borderRadius: 18, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                      <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: GREEN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CheckCircle2 size={22} color={GREEN} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Job completed — thank you!</p>
+                        <p style={{ fontSize: 12, color: INK4, lineHeight: 1.5 }}>
+                          Great work is done! Leave a review to help other homeowners find great tradies.
+                          {canStillDispute && hoursLeft > 0 && (
+                            <> If something isn{'’'}t right, you have <strong>{hoursLeft}h left</strong> to report an issue ({windowHours}h window).</>
+                          )}
+                        </p>
+                      </div>
+                      {canStillDispute && (
+                        <button onClick={() => setDisputeModalJobId(selectedJob.id)}
+                          style={{ ...btn(ROSE_LIGHT, ROSE), padding: '10px 16px', borderRadius: 12, border: `1px solid ${ROSE}25`, flexShrink: 0 }}>
+                          <AlertTriangle size={14} /> Report an issue
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ flex: 1, minWidth: 200 }}>
-                    <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Job completed — thank you!</p>
-                    <p style={{ fontSize: 12, color: INK4, lineHeight: 1.5 }}>
-                      Great work is done! Leave a review to help other homeowners find great tradies.
-                    </p>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* ⑦ Waiting for tradie — job is in_progress, tradie must mark complete first */}
               {selectedJob.status === 'in_progress' && (
@@ -1364,9 +1689,9 @@ export default function HomeownerDashboardView() {
                       color: TERRA,
                     },
                     {
-                      done: jobPending.length > 0 || ['quoted', 'hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'disputed', 'completed'].includes(selectedJob.status),
+                      done: jobQuotes.length > 0 || ['hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'disputed', 'completed', 'confirmed'].includes(selectedJob.status),
                       label: 'Quotes received',
-                      sub: jobPending.length > 0 ? `${jobPending.length} quote${jobPending.length > 1 ? 's' : ''} ready` : 'Waiting for offers',
+                      sub: jobPending.length > 0 ? `${jobPending.length} quote${jobPending.length > 1 ? 's' : ''} ready` : jobQuotes.length > 0 ? 'All quotes reviewed' : 'Waiting for offers',
                       color: AMBER,
                     },
                     {
@@ -1404,6 +1729,10 @@ export default function HomeownerDashboardView() {
               {/* ⑩ Quotes failed to load — show retry banner */}
               {jobQuotes.length === 0 && quoteLoadFailedJobIds.has(selectedJob.id) && (
                 <div style={{ background: '#fff', border: `1px solid ${ROSE}44`, borderRadius: 16, padding: '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <p style={{ fontWeight: 700, fontSize: 14, color: ROSE, margin: 0 }}>Could not load quotes</p>
+                    <p style={{ fontSize: 12, color: INK4, marginTop: 4 }}>There was a problem fetching quotes for this job.</p>
+                  </div>
                   <div>
                     <p style={{ fontWeight: 700, fontSize: 14, color: ROSE, margin: 0 }}>Could not load quotes</p>
                     <p style={{ fontSize: 12, color: INK4, marginTop: 4 }}>There was a problem fetching quotes for this job.</p>

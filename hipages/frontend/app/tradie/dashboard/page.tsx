@@ -62,6 +62,8 @@ interface LeadCard {
   job_urgency?: string; job_type?: string; service_type?: string;
   job_stage?: string; is_urgent?: boolean; is_high_value?: boolean;
   job_status?: string;
+  /** True when this job returned to in_progress after a dispute redo_work resolution */
+  is_redo_job?: boolean;
 }
 interface DashboardStats {
   avg_rating: number; review_count: number; credits: number;
@@ -324,6 +326,23 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
   const [loadingDetails, setLoadingDetails] = useState(true);
   const [existingQuote, setExistingQuote] = useState<{ amount: number; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  // Dispute info loads only when the lead's job is in 'disputed' status, so the
+  // tradie sees exactly what the homeowner complained about and can take action.
+  const [disputeInfo, setDisputeInfo] = useState<{
+    dispute_reason: string | null;
+    dispute_raised_at: string | null;
+    completion_note: string | null;
+    responses: Array<{ id: number; actor_role: string; response: string; evidence_url: string | null; created_at: string; }>;
+    resolution_claimed: boolean;
+    resolution_claimed_at: string | null;
+    resolution_rejection_count: number;
+  } | null>(null);
+  const [disputeResponse, setDisputeResponse]           = useState("");
+  const [submittingResponse, setSubmittingResponse]     = useState(false);
+  const [responseSubmittedOK, setResponseSubmittedOK]   = useState(false);
+  const [claimingResolved, setClaimingResolved]         = useState(false);
+  const [claimResolvedOK, setClaimResolvedOK]           = useState(false);
+  const [claimResolvedMsg, setClaimResolvedMsg]         = useState("");
   const urg = URGENCY[lead.job_urgency || ''] || URGENCY.flexible;
   const budget = fmtBudget(lead.job_budget_min, lead.job_budget_max);
   const newLead = isNew(lead.status);
@@ -332,17 +351,36 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
     const go = async () => {
       setLoadingDetails(true);
       try {
-        const [photoRes, quoteRes] = await Promise.allSettled([
+        const calls: Promise<any>[] = [
           api.get(`/jobs/${lead.job_id}/photos`),
           api.get(`/quotes/my-quote/${lead.id}`),
-        ]);
-        if (photoRes.status === 'fulfilled') {
+        ];
+        if (lead.job_status === 'disputed') {
+          calls.push(api.get(`/jobs/${lead.job_id}/dispute-info`));
+        }
+        const settled = await Promise.allSettled(calls);
+        const photoRes = settled[0];
+        const quoteRes = settled[1];
+        const disputeRes = settled[2];
+        if (photoRes && photoRes.status === 'fulfilled') {
           const raw = photoRes.value.data || [];
           setPhotos(raw.map((p: any) => p.url || p.photo_url || p.public_url).filter(Boolean));
         }
-        if (quoteRes.status === 'fulfilled') {
+        if (quoteRes && quoteRes.status === 'fulfilled') {
           const q = quoteRes.value.data;
           if (q && q.amount !== undefined) setExistingQuote({ amount: q.amount, message: q.message });
+        }
+        if (disputeRes && disputeRes.status === 'fulfilled') {
+          const d = disputeRes.value.data;
+          setDisputeInfo({
+            dispute_reason:              d?.dispute_reason || null,
+            dispute_raised_at:           d?.dispute_raised_at || null,
+            completion_note:             d?.completion_note || null,
+            responses:                   d?.responses || [],
+            resolution_claimed:          d?.resolution_claimed || false,
+            resolution_claimed_at:       d?.resolution_claimed_at || null,
+            resolution_rejection_count:  d?.resolution_rejection_count || 0,
+          });
         }
       } finally { setLoadingDetails(false); }
     };
@@ -401,6 +439,154 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
+          {/* Redo job banner — shown when admin resolved a dispute with redo_work
+              and the job is back in_progress. Gives the tradie context. */}
+          {lead.is_redo_job && lead.job_status === 'in_progress' && (
+            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${C.brassB}`, background: C.brassL }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.brass} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 2 }}>
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                </svg>
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: C.brass, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 5px' }}>
+                    Return visit — post-dispute redo
+                  </p>
+                  <p style={{ fontSize: 13, color: C.ink, margin: 0, lineHeight: 1.55 }}>
+                    Admin reviewed the dispute and asked you to return and fix the work.
+                    Contact the homeowner to arrange a visit, then mark the job complete once you&apos;re done.
+                    The homeowner will be asked to confirm again.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {lead.job_status === 'disputed' && (
+            <div style={{ padding: '18px 28px', borderBottom: `1px solid ${C.lineSoft}`, background: C.roseL }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <AlertCircle size={18} color={C.rose} style={{ flexShrink: 0, marginTop: 2 }} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: C.rose, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>
+                    Homeowner has disputed this job
+                  </p>
+                  <p style={{ fontSize: 14, color: C.ink, margin: 0, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                    {disputeInfo?.dispute_reason
+                      ? disputeInfo.dispute_reason
+                      : loadingDetails
+                        ? 'Loading reason...'
+                        : '(no reason supplied -- contact our team for details)'}
+                  </p>
+                  <p style={{ fontSize: 11.5, color: C.ink3, margin: '8px 0 0' }}>
+                    Payment release is paused. Our team will contact you within 2 business days.
+                  </p>
+                  {/* Show every dispute response in order: their initial reason already
+                      lives above, and now any follow-ups from either side appear here as a
+                      conversation -- so the tradie can see what the homeowner has added
+                      since they raised the dispute. */}
+                  {disputeInfo && disputeInfo.responses.length > 0 && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.rose}22`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <p style={{ fontSize: 10.5, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
+                        Conversation ({disputeInfo.responses.length})
+                      </p>
+                      {disputeInfo.responses.map(r => (
+                        <div key={r.id} style={{
+                          background: r.actor_role === 'tradie' ? C.brassL : '#EFF7FF',
+                          border: `1px solid ${r.actor_role === 'tradie' ? C.brassB : '#5BB3FF33'}`,
+                          borderRadius: 8, padding: '8px 12px',
+                        }}>
+                          <p style={{ fontSize: 10.5, fontWeight: 700, color: r.actor_role === 'tradie' ? C.brass : '#1F7AA8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 4px' }}>
+                            {r.actor_role === 'tradie' ? 'You' : 'Homeowner'} - {timeAgo(r.created_at)}
+                          </p>
+                          <p style={{ fontSize: 13, color: C.ink, margin: 0, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{r.response}</p>
+                          {r.evidence_url && (
+                            <a href={r.evidence_url} target="_blank" rel="noreferrer"
+                              style={{ display: 'inline-block', marginTop: 6, fontSize: 11.5, color: '#1F7AA8', textDecoration: 'underline' }}>
+                              View evidence
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Response box — add more context to the conversation */}
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.rose}22` }}>
+                    {responseSubmittedOK && (
+                      <p style={{ fontSize: 12, color: C.sage, margin: '0 0 8px' }}>
+                        Your message was sent. The homeowner can see it.
+                      </p>
+                    )}
+                    <p style={{ fontSize: 11, fontWeight: 700, color: C.rose, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 6px' }}>
+                      Add to the conversation
+                    </p>
+                    <textarea value={disputeResponse}
+                      onChange={e => setDisputeResponse(e.target.value)}
+                      placeholder="Explain what you did to fix this, or provide more context."
+                      rows={3}
+                      style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.line}`, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                      <button onClick={async () => {
+                        if (disputeResponse.trim().length < 5) { return; }
+                        setSubmittingResponse(true);
+                        try {
+                          await api.post(`/jobs/${lead.job_id}/dispute-response`, { response: disputeResponse.trim() });
+                          setResponseSubmittedOK(true);
+                          setDisputeResponse("");
+                        } catch (e: any) {
+                          alert(e?.response?.data?.detail || "Could not submit response.");
+                        } finally { setSubmittingResponse(false); }
+                      }} disabled={submittingResponse || disputeResponse.trim().length < 5}
+                        style={{ padding: '8px 14px', borderRadius: 8, background: C.ink, color: '#fff', border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', opacity: (submittingResponse || disputeResponse.trim().length < 5) ? 0.5 : 1 }}>
+                        {submittingResponse ? 'Sending...' : 'Send message'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ── Mark as resolved (primary CTA) ──────────────────────── */}
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.rose}22` }}>
+                    {disputeInfo?.resolution_claimed || claimResolvedOK ? (
+                      <div style={{ background: C.brassL, border: `1px solid ${C.brassB}`, borderRadius: 10, padding: '12px 16px' }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: C.brass, margin: '0 0 3px' }}>
+                          ✓ Waiting for homeowner confirmation
+                        </p>
+                        <p style={{ fontSize: 12, color: C.ink3, margin: 0, lineHeight: 1.5 }}>
+                          You&apos;ve marked this as resolved.
+                          {(disputeInfo?.resolution_rejection_count || 0) > 0
+                            ? ` The homeowner has rejected ${disputeInfo?.resolution_rejection_count} time(s) — try adding more detail to the conversation above.`
+                            : ' The homeowner has been notified and will accept or reject your claim.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {claimResolvedMsg && <p style={{ fontSize: 12, color: C.rose, margin: '0 0 8px' }}>{claimResolvedMsg}</p>}
+                        <p style={{ fontSize: 11, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>
+                          Fixed the issue?
+                        </p>
+                        <button
+                          onClick={async () => {
+                            setClaimingResolved(true); setClaimResolvedMsg('');
+                            try {
+                              await api.post(`/jobs/${lead.job_id}/dispute-claim-resolved`, {
+                                message: disputeResponse.trim() || null,
+                              });
+                              setClaimResolvedOK(true);
+                            } catch (e: any) {
+                              setClaimResolvedMsg(e?.response?.data?.detail || 'Could not submit. Please try again.');
+                            } finally { setClaimingResolved(false); }
+                          }}
+                          disabled={claimingResolved}
+                          style={{ width: '100%', padding: '13px 16px', borderRadius: 10, background: C.sage, color: '#fff', border: 'none', fontSize: 14, fontWeight: 700, cursor: claimingResolved ? 'wait' : 'pointer', opacity: claimingResolved ? 0.6 : 1 }}>
+                          {claimingResolved ? 'Submitting...' : '✅  I\'ve fixed it — notify homeowner'}
+                        </button>
+                        <p style={{ fontSize: 11.5, color: C.ink3, margin: '8px 0 0', lineHeight: 1.5 }}>
+                          This sends the homeowner a notification asking them to confirm the issue is resolved. No admin needed.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {lead.job_description && (
             <div style={{ padding: '20px 28px', borderBottom: `1px solid ${C.lineSoft}` }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.12em', margin: '0 0 10px' }}>Job brief</p>
@@ -505,6 +691,11 @@ function LeadRow({ lead, onQuote, onView, onMarkComplete, selected, onClick }: {
               /* Tradie marked done — waiting for homeowner to confirm */
               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, background: C.amberL, color: C.amber, border: `1px solid ${C.amber}30`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <Hourglass size={11} /> Awaiting confirmation
+              </span>
+            ) : lead.job_status === 'disputed' ? (
+              /* Homeowner raised a dispute -- tradie needs to act + upload evidence */
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, background: C.roseL, color: C.rose, border: `1px solid ${C.rose}40`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <AlertCircle size={11} /> Disputed
               </span>
             ) : lead.job_status === 'partial_stop' ? (
               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, background: C.roseL, color: C.rose, border: `1px solid ${C.rose}30`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
@@ -699,6 +890,62 @@ function TradieDashboardContent() {
   }, [user]);
   useEffect(() => { load(); }, [load]);
 
+  // ── Real-time job status push ─────────────────────────────────────────────
+  // Mirror of the homeowner dashboard's subscription. The backend's
+  // JobStateMachine broadcasts job:status_changed to every party on the job
+  // (homeowner + every tradie that has a lead) on every successful transition.
+  // When a homeowner confirms or disputes, this triggers a fresh /tradies/dashboard
+  // pull so the tradie's lead list and stats reflect reality instantly.
+  // Best-effort: silently no-ops if WebSockets aren't reachable.
+  useEffect(() => {
+    if (!user) return;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let closed = false;
+
+    const connect = async () => {
+      try {
+        const { default: apiClient } = await import('@/src/lib/api');
+        let ticket: string | undefined;
+        try {
+          ticket = (await apiClient.post('/auth/ws-ticket')).data?.ticket;
+        } catch { return; }
+        if (!ticket) return;
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || window.location.origin;
+        const wsBase = apiBase.replace(/^http/, 'ws');
+        ws = new WebSocket(`${wsBase}/ws?ticket=${encodeURIComponent(ticket)}`);
+
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg?.type === 'job:status_changed') {
+              load().catch(() => {});
+            }
+          } catch { /* ignore pings */ }
+        };
+
+        ws.onclose = () => {
+          if (closed) return;
+          reconnectTimer = setTimeout(connect, 5000);
+        };
+
+        ws.onerror = () => {
+          try { ws?.close(); } catch { /* noop */ }
+        };
+      } catch {
+        // Non-fatal: dashboard still works without real-time updates.
+      }
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      try { ws?.close(); } catch { /* noop */ }
+    };
+  }, [user, load]);
+
   // isApproved, verificationStatus, isAvailable come from TradieStudioLayout ctx
 
   // ── Load profile ─────────────────────────────────────────────────────────────
@@ -744,7 +991,7 @@ function TradieDashboardContent() {
       api.get('/tradies/categories/tree'),
       api.get('/categories/my-categories'),
       api.get('/tradies/preferences/me').catch(() => ({ data: null })),
-    ]).then(([statusRes, passRes, profileRes, catsRes, myCatsRes, prefRes]) => {
+    ]).then(([statusRes, profileRes, catsRes, myCatsRes, prefRes]) => {
       if (statusRes.status === 'fulfilled') setOnboardingStatus(statusRes.value.data);
       else toast.error('Could not load verification status.');
       if (profileRes.status === 'fulfilled' && profileRes.value.data) {
@@ -812,7 +1059,7 @@ function TradieDashboardContent() {
   const newLeads = useMemo(() => leads.filter(l => isNew(l.status)), [leads]);
   // "Active" = any lead where the tradie is still engaged (working, awaiting something, or awaiting homeowner confirmation).
   // hired / in_progress / awaiting_scope_approval / partial_stop / completed all count — only confirmed/closed/cancelled/disputed are "done".
-  const ACTIVE_JOB_STATUSES = new Set(['hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'completed']);
+  const ACTIVE_JOB_STATUSES = new Set(['hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'completed', 'disputed']);
   const DONE_JOB_STATUSES = new Set(['confirmed', 'closed']);
   const activeLeads = useMemo(() => leads.filter(l =>
     l.job_status != null ? ACTIVE_JOB_STATUSES.has(l.job_status) : (l.status === 'quoted' || l.status === 'accepted')
