@@ -1,4 +1,5 @@
 import os
+import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -322,6 +323,32 @@ async def me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+# =============================================================================
+# POST /ws-ticket — short-lived, single-use WebSocket auth ticket
+# =============================================================================
+#
+# The browser cannot put a long-lived JWT in the WebSocket URL — URLs leak via
+# proxy logs, browser history and monitoring tools. Instead the client calls
+# this authenticated endpoint to mint a one-time ticket (60s TTL, single use)
+# and connects with /ws?ticket=<ticket>. Even if that URL is logged, the ticket
+# is already spent and expired.
+
+WS_TICKET_TTL_SECONDS = 60
+
+
+@router.post("/ws-ticket", status_code=200)
+async def ws_ticket(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    redis_client = request.app.state.redis_client
+    ticket = secrets.token_urlsafe(32)
+    await redis_client.setex(
+        f"ws:ticket:{ticket}", WS_TICKET_TTL_SECONDS, str(current_user.id)
+    )
+    return {"ticket": ticket, "expires_in": WS_TICKET_TTL_SECONDS}
+
+
 @router.post("/send-email-otp", status_code=200)
 async def send_email_otp(
     current_user: User = Depends(get_current_user),
@@ -371,4 +398,4 @@ async def resend_email_otp(
     success, err = await generate_and_send(db, current_user)
     if not success:
         raise HTTPException(status_code=500, detail=err or "Could not send code. Try again.")
-    return {"sent": True, "message": "New verification code sent."}
+    return {"sent": True, "message": "New verification code sent."} 
