@@ -18,6 +18,7 @@ Locks in the "Service not listed" pathway:
 
 import asyncio
 import inspect
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -61,8 +62,8 @@ def test_sentinel_slug_is_other_services():
 def test_seed_file_includes_sentinel():
     """The seed declares the row and the service references it by the SAME slug.
     A mismatch here breaks every uncategorised submission silently."""
-    seed_path = '/sessions/stoic-intelligent-gauss/mnt/Intership_main/hipages/backend/seeds/seed_categories.py'
-    src = open(seed_path).read()
+    seed_path = Path(__file__).resolve().parents[1] / "seeds" / "seed_categories.py"
+    src = seed_path.read_text()
     assert "SENTINEL_OTHER_SLUG = \"other-services\"" in src
     assert "(\"other-services\"," in src
     # Sentinel is_active=False guard exists

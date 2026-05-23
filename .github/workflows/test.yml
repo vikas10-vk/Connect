@@ -80,6 +80,12 @@ jobs:
           ALGORITHM:    HS256
         run: alembic upgrade head
 
+      - name: Seed categories
+        working-directory: hipages/backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
+        run: python -m seeds.seed_categories
+
       # Smoke test: verifies the Celery app path that docker-compose.prod.yml
       # uses (`celery -A workers.celery_app:celery_app`) actually imports and
       # boots. A misnamed module path (the old `app.celery_app`) fails here.
