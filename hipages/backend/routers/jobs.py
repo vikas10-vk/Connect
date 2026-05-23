@@ -1441,6 +1441,38 @@ async def raise_dispute(
         raise HTTPException(status_code=400, detail=str(e))
 
     await db.commit()
+
+    # Best-effort notification to the assigned tradie after the dispute is durable.
+    try:
+        from models.tradie_profile import TradieProfile as TP
+        from services.resend_service import send_job_disputed_to_tradie_email
+
+        lead_res = await db.execute(
+            select(Lead).where(Lead.job_id == job_id).limit(1)
+        )
+        lead = lead_res.scalar_one_or_none()
+        if lead:
+            tradie_profile_res = await db.execute(
+                select(TP).where(TP.id == lead.tradie_id)
+            )
+            tradie_profile = tradie_profile_res.scalar_one_or_none()
+            if tradie_profile:
+                tradie_user_res = await db.execute(
+                    select(User).where(User.id == tradie_profile.user_id)
+                )
+                tradie_user = tradie_user_res.scalar_one_or_none()
+                if tradie_user and tradie_user.email:
+                    await send_job_disputed_to_tradie_email(
+                        to_email=tradie_user.email,
+                        full_name=tradie_user.full_name or "",
+                        business_name=tradie_profile.business_name or tradie_user.full_name or "Tradie",
+                        job_title=job.title,
+                        suburb=job.suburb or "",
+                        dispute_reason=body.reason.strip(),
+                    )
+    except Exception:
+        pass
+
     return {
         "status": job.status,
         "message": "Dispute raised. The tradie has been notified and can respond directly.",
@@ -1817,7 +1849,7 @@ class DisputeResponseRequest(BaseModel):
 
 
 @router.post("/{job_id}/dispute-response")
-async def dispute_response(
+async def submit_dispute_response(
     job_id:       str,
     body:         DisputeResponseRequest,
     current_user: User         = Depends(get_current_user),
@@ -1825,17 +1857,29 @@ async def dispute_response(
 ):
     """
     Either party (homeowner or tradie) adds a message to the dispute thread.
-    Stores a JobEvent with action='dispute_message'. No status change.
+    Stores a JobEvent with action='dispute_response'. No status change.
     """
     job = await _load_job_or_404(job_id, db)
+
+    if current_user.role not in ("homeowner", "tradie"):
+        raise HTTPException(status_code=403, detail="Not permitted.")
 
     if current_user.role == "homeowner":
         if job.homeowner_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not your job.")
-    elif current_user.role == "tradie":
-        await _require_tradie_with_lead(job_id, current_user, db)
     else:
-        raise HTTPException(status_code=403, detail="Not permitted.")
+        from models.tradie_profile import TradieProfile as TP
+
+        profile_res = await db.execute(select(TP).where(TP.user_id == current_user.id))
+        profile = profile_res.scalar_one_or_none()
+        if not profile:
+            raise HTTPException(status_code=403, detail="Tradie profile not found.")
+
+        lead_res = await db.execute(
+            select(Lead).where(Lead.job_id == job_id, Lead.tradie_id == profile.id).limit(1)
+        )
+        if not lead_res.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="You do not have a lead on this job.")
 
     if job.status != "disputed":
         raise HTTPException(status_code=400, detail="This job is not currently in dispute.")
@@ -1844,17 +1888,59 @@ async def dispute_response(
         raise HTTPException(status_code=422, detail="Response message cannot be empty.")
 
     from models.job_event import JobEvent
+    actor_role = current_user.role
     event = JobEvent(
-        job_id     = job_id,
-        actor_id   = current_user.id,
-        actor_role = current_user.role,
-        action     = "dispute_message",
-        old_value  = {},
-        new_value  = {"message": body.response.strip()},
-        note       = f"Dispute message from {current_user.role}: {body.response.strip()[:120]}",
+        job_id=job_id,
+        actor_id=current_user.id,
+        actor_role=actor_role,
+        action="dispute_response",
+        old_value={},
+        new_value={"message": body.response.strip()},
+        note=f"Dispute message from {current_user.role}: {body.response.strip()[:120]}",
     )
     db.add(event)
     await db.commit()
+
+    try:
+        from models.tradie_profile import TradieProfile as TP
+        from services.resend_service import send_dispute_response_posted_email
+
+        if actor_role == "homeowner":
+            tradie_email = None
+            tradie_name = ""
+            tradie_profile_res = await db.execute(
+                select(TP, User)
+                .join(User, User.id == TP.user_id)
+                .join(Lead, Lead.tradie_id == TP.id)
+                .where(Lead.job_id == job_id)
+                .limit(1)
+            )
+            row = tradie_profile_res.first()
+            if row:
+                tradie_profile, tradie_user = row
+                tradie_email = tradie_user.email
+                tradie_name = tradie_profile.business_name or tradie_user.full_name or ""
+            if tradie_email:
+                await send_dispute_response_posted_email(
+                    to_email=tradie_email,
+                    to_name=tradie_name,
+                    job_title=job.title,
+                    poster_role=actor_role,
+                    response_excerpt=body.response.strip()[:120],
+                )
+        else:
+            homeowner = await db.execute(select(User).where(User.id == job.homeowner_id))
+            homeowner_user = homeowner.scalar_one_or_none()
+            if homeowner_user and homeowner_user.email:
+                await send_dispute_response_posted_email(
+                    to_email=homeowner_user.email,
+                    to_name=homeowner_user.full_name or "",
+                    job_title=job.title,
+                    poster_role=actor_role,
+                    response_excerpt=body.response.strip()[:120],
+                )
+    except Exception:
+        pass
 
     return {
         "status": "disputed",
