@@ -48,9 +48,9 @@ interface Job {
   photo_before_url?: string;
   photo_after_url?: string;
   completion_note?: string;
-  // Redo flag — set when job returned to in_progress after a dispute redo_work resolution
+  // Redo flag  -  set when job returned to in_progress after a dispute redo_work resolution
   is_redo_job?: boolean;
-  // Dispute window — null when no window is active
+  // Dispute window  -  null when no window is active
   dispute_window_hours?: number | null;
   dispute_window_expires_at?: string | null;
 }
@@ -113,14 +113,14 @@ const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   deleted: { label: 'Deleted', color: INK3, bg: CREAM2 },
 };
 
-const URGENCY: Record<string, { label: string; emoji: string }> = {
-  emergency: { label: 'Emergency', emoji: '🚨' },
-  asap: { label: 'ASAP', emoji: '⚡' },
-  today: { label: 'Today', emoji: '⏰' },
-  next_few_days: { label: 'This week', emoji: '📅' },
-  next_few_weeks: { label: 'This month', emoji: '🗓' },
-  next_few_months: { label: 'Planning', emoji: '📌' },
-  flexible: { label: 'Flexible', emoji: '🌿' },
+const URGENCY: Record<string, { label: string }> = {
+  emergency: { label: 'Emergency' },
+  asap: { label: 'ASAP' },
+  today: { label: 'Today' },
+  next_few_days: { label: 'This week' },
+  next_few_weeks: { label: 'This month' },
+  next_few_months: { label: 'Planning' },
+  flexible: { label: 'Flexible' },
 };
 
 const AVATAR_GRADS = [
@@ -170,7 +170,7 @@ function parseMatchIntel(raw?: string): MatchIntel | null {
   catch { return null; }
 }
 const fmtCents = (cents?: number) =>
-  cents != null ? `$${(cents / 100).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '—';
+  cents != null ? `$${(cents / 100).toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : ' - ';
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const card: React.CSSProperties = {
@@ -208,7 +208,7 @@ function ScopeChangeBanner({ job, onRespond }: {
 }) {
   const [loading, setLoading] = useState<'approve' | 'reject' | null>(null);
   const [timeLeft, setTimeLeft] = useState(() =>
-    job.scope_change_expires_at ? timeUntil(job.scope_change_expires_at) : '—'
+    job.scope_change_expires_at ? timeUntil(job.scope_change_expires_at) : ' - '
   );
 
   // Live countdown
@@ -251,7 +251,7 @@ function ScopeChangeBanner({ job, onRespond }: {
             Tradie requesting scope change
           </p>
           <p style={{ fontSize: 12, color: AMBER, margin: '2px 0 0', fontWeight: 600 }}>
-            ⏱ Respond within {timeLeft} — auto-rejected if no response
+            Respond within {timeLeft} - auto-rejected if no response
           </p>
         </div>
       </div>
@@ -318,7 +318,7 @@ function ScopeChangeBanner({ job, onRespond }: {
             {loading === 'approve'
               ? <Loader2 size={15} className="animate-spin" />
               : <CheckCircle2 size={15} />}
-            Approve — {fmtCents(job.pending_scope_amount_cents)}
+            Approve  -  {fmtCents(job.pending_scope_amount_cents)}
           </button>
           <button onClick={() => handle(false)} disabled={!!loading}
             style={{
@@ -330,7 +330,7 @@ function ScopeChangeBanner({ job, onRespond }: {
             {loading === 'reject'
               ? <Loader2 size={15} className="animate-spin" />
               : <XCircle size={15} />}
-            Reject — keep original
+            Reject  -  keep original
           </button>
         </div>
       </div>
@@ -445,7 +445,7 @@ function RedoJobBanner() {
         background: AMBER_LIGHT,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {/* Wrench icon inline — no extra import needed */}
+        {/* Wrench icon inline  -  no extra import needed */}
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={AMBER} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
         </svg>
@@ -456,7 +456,7 @@ function RedoJobBanner() {
         </p>
         <p style={{ fontSize: 13, color: INK, lineHeight: 1.6, margin: 0 }}>
           Your dispute was reviewed and the tradie has been instructed to return and fix the work.
-          The job is active again. Once they mark it complete, you&apos;ll be asked to confirm —
+          The job is active again. Once they mark it complete, you&apos;ll be asked to confirm  - 
           and you can raise another dispute if you&apos;re still not satisfied.
         </p>
       </div>
@@ -515,7 +515,7 @@ function DisputeBanner({ jobId, onResolved }: { jobId: string; onResolved: () =>
     try {
       await api.post(`/jobs/${jobId}/dispute-accept-resolution`, { accept });
       if (accept) {
-        onResolved(); // triggers parent reload — job is now "completed"
+        onResolved(); // triggers parent reload  -  job is now "completed"
       } else {
         setRejected(true);
         await load(); // refresh rejection count
@@ -562,13 +562,13 @@ function DisputeBanner({ jobId, onResolved }: { jobId: string; onResolved: () =>
               onClick={() => handleResolutionResponse(true)}
               disabled={acting}
               style={{ flex: 1, minWidth: 140, padding: '12px 16px', borderRadius: 12, background: GREEN, color: '#fff', border: 'none', fontSize: 13.5, fontWeight: 700, cursor: acting ? 'wait' : 'pointer', opacity: acting ? 0.6 : 1 }}>
-              {acting ? 'Processing...' : '✅  Yes, it\'s resolved'}
+              {acting ? 'Processing...' : 'Yes, it\'s resolved'}
             </button>
             <button
               onClick={() => handleResolutionResponse(false)}
               disabled={acting}
               style={{ flex: 1, minWidth: 140, padding: '12px 16px', borderRadius: 12, background: '#fff', color: ROSE, border: `1.5px solid ${ROSE}`, fontSize: 13.5, fontWeight: 700, cursor: acting ? 'wait' : 'pointer', opacity: acting ? 0.6 : 1 }}>
-              {acting ? 'Processing...' : '❌  Still not right'}
+              {acting ? 'Processing...' : 'Still not right'}
             </button>
           </div>
         )}
@@ -714,11 +714,11 @@ function DisputeModal({ jobId, onClose, onSubmitted }: {
               Describe the issue <span style={{ color: ROSE }}>*</span>
             </label>
             <textarea rows={5} value={reason} onChange={e => setReason(e.target.value)}
-              placeholder="e.g. The tradie left the site incomplete without finishing the work that was agreed on…"
+              placeholder="e.g. The tradie left the site incomplete without finishing the work that was agreed on..."
               style={{ width: '100%', padding: '12px 14px', borderRadius: 12, border: `1.5px solid ${BORDER}`, background: CREAM, color: INK, fontSize: 14, lineHeight: 1.65, resize: 'vertical', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
               onFocus={e => { e.currentTarget.style.borderColor = TERRA; e.currentTarget.style.background = '#fff'; }}
               onBlur={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.background = CREAM; }} />
-            <p style={{ fontSize: 11, color: INK4, marginTop: 5, fontVariantNumeric: 'tabular-nums' }}>{reason.length} characters · minimum 10</p>
+            <p style={{ fontSize: 11, color: INK4, marginTop: 5, fontVariantNumeric: 'tabular-nums' }}>{reason.length} characters  |  minimum 10</p>
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
@@ -728,7 +728,7 @@ function DisputeModal({ jobId, onClose, onSubmitted }: {
             <button onClick={submit} disabled={loading}
               style={{ ...btn(ROSE, '#fff'), flex: 1, padding: '12px', borderRadius: 13, opacity: loading ? .6 : 1 }}>
               {loading ? <Loader2 size={14} className="animate-spin" /> : <ShieldAlert size={14} />}
-              {loading ? 'Submitting…' : 'Submit dispute'}
+              {loading ? 'Submitting...' : 'Submit dispute'}
             </button>
           </div>
         </div>
@@ -752,7 +752,7 @@ function QuoteModal({ quote, onClose, onAction }: {
     setActionError(null);
     try {
       await onAction(quote.id, action);
-      onClose(); // success — close modal (loadData already called inside onAction)
+      onClose(); // success  -  close modal (loadData already called inside onAction)
     } catch (err: any) {
       const detail = err?.response?.data?.detail || err?.message || 'Something went wrong. Please try again.';
       setActionError(detail);
@@ -787,7 +787,7 @@ function QuoteModal({ quote, onClose, onAction }: {
             <p style={{ fontWeight: 700, fontSize: 15, color: INK }}>{quote.tradie_name || 'Tradie'}</p>
             <div style={{ display: 'flex', gap: 2, alignItems: 'center', margin: '3px 0' }}>
               {[...Array(5)].map((_, i) => <Star key={i} size={12} style={{ fill: '#F59E0B', color: '#F59E0B' }} />)}
-              <span style={{ fontSize: 11, color: INK4, marginLeft: 4 }}>5.0 · Verified</span>
+              <span style={{ fontSize: 11, color: INK4, marginLeft: 4 }}>5.0  |  Verified</span>
             </div>
             {quote.created_at && <p style={{ fontSize: 11, color: INK4 }}>{timeAgo(quote.created_at)}</p>}
           </div>
@@ -807,12 +807,12 @@ function QuoteModal({ quote, onClose, onAction }: {
         )}
         <div style={{ padding: '0 22px 14px' }}>
           <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 12px', borderRadius: 20, background: quote.status === 'accepted' ? GREEN_LIGHT : quote.status === 'rejected' ? ROSE_LIGHT : AMBER_LIGHT, color: quote.status === 'accepted' ? GREEN : quote.status === 'rejected' ? ROSE : AMBER }}>
-            {quote.status === 'accepted' ? '✓ Accepted' : quote.status === 'rejected' ? '✕ Declined' : '⏳ Awaiting decision'}
+            {quote.status === 'accepted' ? 'Accepted' : quote.status === 'rejected' ? 'Declined' : 'Awaiting decision'}
           </span>
         </div>
         {actionError && (
           <div style={{ margin: '0 22px 12px', padding: '10px 14px', borderRadius: 10, background: ROSE_LIGHT, border: `1px solid ${ROSE}33` }}>
-            <p style={{ fontSize: 12, color: ROSE, fontWeight: 600, margin: 0 }}>⚠ {actionError}</p>
+            <p style={{ fontSize: 12, color: ROSE, fontWeight: 600, margin: 0 }}>{actionError}</p>
           </div>
         )}
         {isPending && (
@@ -859,9 +859,9 @@ function JobCard({ job, selected, onClick, quoteCount }: {
       onMouseLeave={e => { if (!selected) e.currentTarget.style.background = CREAM; }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
         <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, color: s.color, background: s.bg }}>
-          {isNewState ? '⚡ ' : ''}{s.label}
+          {isNewState ? '' : ''}{s.label}
         </span>
-        {u && <span style={{ fontSize: 10, color: INK4 }}>{u.emoji} {u.label}</span>}
+        {u && <span style={{ fontSize: 10, color: INK4 }}>{u.label}</span>}
         {quoteCount > 0 && (
           <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, background: TERRA, color: '#fff', padding: '3px 8px', borderRadius: 20 }}>
             {quoteCount} quote{quoteCount > 1 ? 's' : ''}
@@ -869,7 +869,7 @@ function JobCard({ job, selected, onClick, quoteCount }: {
         )}
         {needsReview && (
           <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, background: TERRA_LIGHT, color: TERRA, padding: '3px 8px', borderRadius: 20, border: `1px solid ${TERRA}40` }}>
-            ⭐ Review needed
+            Review needed
           </span>
         )}
         {isNewState && !needsReview && (
@@ -880,7 +880,7 @@ function JobCard({ job, selected, onClick, quoteCount }: {
       </div>
       <p style={{ fontWeight: 600, fontSize: 13, color: INK, lineHeight: 1.3 }}>{job.title}</p>
       <p style={{ fontSize: 11, color: INK4, marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-        <MapPin size={11} /> {job.suburb}, {job.state} · {timeAgo(job.created_at || job.created)}
+        <MapPin size={11} /> {job.suburb}, {job.state}  |  {timeAgo(job.created_at || job.created)}
       </p>
     </button>
   );
@@ -953,7 +953,7 @@ export default function HomeownerDashboardView() {
   const [historyJobs, setHistoryJobs] = useState<Job[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [reviewModalJobId, setReviewModalJobId] = useState<string | null>(null);
-  // completingJobId removed — homeowner cannot directly mark in_progress→completed;
+  // completingJobId removed  -  homeowner cannot directly mark in_progress→completed;
   // only the tradie can do that via POST /jobs/{id}/complete with photos.
   // ── NEW: dispute modal ────────────────────────────────────────────────────
   const [disputeModalJobId, setDisputeModalJobId] = useState<string | null>(null);
@@ -1012,7 +1012,7 @@ export default function HomeownerDashboardView() {
   // every party on the job (homeowner + each tradie that has a lead) whenever
   // a status transition is committed. Subscribe here so the dashboard refreshes
   // the instant the tradie marks complete, a dispute is raised, the system
-  // auto-closes after 48h, etc. — no manual page reload needed.
+  // auto-closes after 48h, etc.  -  no manual page reload needed.
   //
   // Falls back to silent no-op if WebSockets aren't reachable (e.g. behind a
   // proxy that strips the upgrade header); the existing manual reload path
@@ -1089,7 +1089,7 @@ export default function HomeownerDashboardView() {
       await api.patch(`/quotes/${quoteId}/status?new_status=${status}`);
       await loadData();
     } catch (err: any) {
-      // Always refresh even on failure — the backend may have committed the
+      // Always refresh even on failure  -  the backend may have committed the
       // change before the response errored, so the UI must stay in sync with DB.
       await loadData().catch(() => {});
       throw err; // re-throw so QuoteModal can display the error message
@@ -1127,7 +1127,7 @@ export default function HomeownerDashboardView() {
     finally { setEditSaving(false); }
   };
 
-  // handleMarkComplete removed — homeowner cannot mark in_progress→completed directly.
+  // handleMarkComplete removed  -  homeowner cannot mark in_progress→completed directly.
   // The state machine enforces that only tradies can make this transition (with photos).
   // Homeowners confirm completion after the tradie has marked it done.
 
@@ -1195,7 +1195,7 @@ export default function HomeownerDashboardView() {
   // A job is "completed" for archive purposes once the homeowner has confirmed it
   // OR the system auto-closed it after the 48-hour dispute window. Either way the
   // work is done and the user is no longer being asked to act. We deliberately do
-  // NOT gate on has_review — leaving a review is optional and shouldn't determine
+  // NOT gate on has_review  -  leaving a review is optional and shouldn't determine
   // whether the homeowner can see their own finished jobs in the archive.
   const completedJobs = jobs.filter(j => j.status === 'confirmed' || j.status === 'closed');
 
@@ -1213,7 +1213,7 @@ export default function HomeownerDashboardView() {
       <div style={{ background: CREAM, minHeight: '100vh', padding: isMobile ? '20px 14px' : '32px 28px', overflowX: 'hidden' }}>
         <div style={{ maxWidth: 800, width: '100%', margin: '0 auto' }}>
           <h2 style={{ fontSize: isMobile ? 24 : 26, fontWeight: 800, color: INK, marginBottom: 6 }}>Job History</h2>
-          <p style={{ fontSize: 13, color: INK4, marginBottom: 20 }}>Cancelled and deleted jobs — re-post anytime.</p>
+          <p style={{ fontSize: 13, color: INK4, marginBottom: 20 }}>Cancelled and deleted jobs  -  re-post anytime.</p>
           <div style={{ ...card, overflow: 'hidden' }}>
             {historyLoading ? (
               <div style={{ padding: 40, textAlign: 'center' }}><Loader2 size={20} color={TERRA} className="animate-spin" /></div>
@@ -1227,10 +1227,10 @@ export default function HomeownerDashboardView() {
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
                       <p style={{ fontWeight: 700, color: INK, fontSize: 14, margin: 0, overflowWrap: 'anywhere' }}>{job.title}</p>
                       <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: job.status === 'cancelled' ? ROSE_LIGHT : CREAM2, color: job.status === 'cancelled' ? ROSE : INK4 }}>
-                        {job.status === 'cancelled' ? '✕ Cancelled' : 'Deleted'}
+                        {job.status === 'cancelled' ? 'Cancelled' : 'Deleted'}
                       </span>
                     </div>
-                    <p style={{ fontSize: 12, color: INK4 }}>{job.suburb}, {job.state}{u && ` · ${u.emoji} ${u.label}`}{job.deleted_at && ` · ${timeAgo(job.deleted_at)}`}</p>
+                    <p style={{ fontSize: 12, color: INK4 }}>{job.suburb}, {job.state}{u && ` | ${u.label}`}{job.deleted_at && ` | ${timeAgo(job.deleted_at)}`}</p>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0, width: isMobile ? '100%' : 'auto' }}>
                     <button onClick={() => handleRepost(job)} style={{ flex: isMobile ? 1 : 'initial', padding: '8px 14px', borderRadius: 10, background: TERRA_LIGHT, border: '1px solid rgba(212,170,58,.25)', color: TERRA, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
@@ -1253,7 +1253,7 @@ export default function HomeownerDashboardView() {
   if (view === 'completed') {
     // Show every confirmed/closed job in the archive. We used to gate on
     // (has_review && >24h since completed_at) which made the archive empty for
-    // homeowners who confirmed a job but hadn't left a review yet — and they
+    // homeowners who confirmed a job but hadn't left a review yet  -  and they
     // could never find their own completed jobs. Confirmation is what marks a
     // job as truly done; reviews are an optional next step, surfaced via the
     // review CTA on the main dashboard.
@@ -1276,11 +1276,11 @@ export default function HomeownerDashboardView() {
                 <div key={job.id} style={{ padding: '18px 22px', borderBottom: i < trueCompleted.length - 1 ? `1px solid ${CREAM2}` : 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', gap: 8, marginBottom: 5, alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, color: GREEN, background: GREEN_LIGHT }}>✓ Completed</span>
-                      {u && <span style={{ fontSize: 11, color: INK4 }}>{u.emoji} {u.label}</span>}
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, color: GREEN, background: GREEN_LIGHT }}>Completed</span>
+                      {u && <span style={{ fontSize: 11, color: INK4 }}>{u.label}</span>}
                     </div>
                     <p style={{ fontWeight: 700, color: INK, fontSize: 14 }}>{job.title}</p>
-                    <p style={{ fontSize: 12, color: INK4, marginTop: 3 }}>{job.suburb}, {job.state}{job.completed_at && ` · Completed ${fmt(job.completed_at)}`}</p>
+                    <p style={{ fontSize: 12, color: INK4, marginTop: 3 }}>{job.suburb}, {job.state}{job.completed_at && `  |  Completed ${fmt(job.completed_at)}`}</p>
                   </div>
                   <button onClick={() => handleRepost(job)} style={{ padding: '8px 14px', borderRadius: 10, background: GREEN_LIGHT, border: '1px solid rgba(46,125,90,.2)', color: GREEN, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
                     Same issue
@@ -1333,7 +1333,7 @@ export default function HomeownerDashboardView() {
         width: '100%', maxWidth: '100%',
       }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800, color: INK, lineHeight: 1.2 }}>Good day, {firstName} 👋</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 800, color: INK, lineHeight: 1.2 }}>Good day, {firstName}</h1>
           <p style={{ fontSize: 12, color: INK4, marginTop: 2 }}>Here's everything happening with your jobs</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1421,14 +1421,14 @@ export default function HomeownerDashboardView() {
                   return (
                     <>
                       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 20, color: s.color, background: s.bg }}>● {s.label}</span>
-                        {u && <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 20, color: INK4, background: CREAM2 }}>{u.emoji} {u.label}</span>}
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 20, color: s.color, background: s.bg }}>{s.label}</span>
+                        {u && <span style={{ fontSize: 10, fontWeight: 700, padding: '4px 10px', borderRadius: 20, color: INK4, background: CREAM2 }}>{u.label}</span>}
                       </div>
                       <h2 style={{ fontSize: 24, fontWeight: 800, color: INK, lineHeight: 1.2, marginBottom: 12 }}>{selectedJob.title}</h2>
                       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 12, color: INK4, display: 'flex', alignItems: 'center', gap: 5 }}><MapPin size={12} /> {selectedJob.suburb}, {selectedJob.state}</span>
                         <span style={{ fontSize: 12, color: INK4, display: 'flex', alignItems: 'center', gap: 5 }}><Calendar size={12} /> Posted {fmt(selectedJob.created_at || selectedJob.created)}</span>
-                        {jobPending.length > 0 && <span style={{ fontSize: 12, color: TERRA, fontWeight: 700 }}>· {jobPending.length} quote{jobPending.length > 1 ? 's' : ''} waiting</span>}
+                        {jobPending.length > 0 && <span style={{ fontSize: 12, color: TERRA, fontWeight: 700 }}> |  {jobPending.length} quote{jobPending.length > 1 ? 's' : ''} waiting</span>}
                       </div>
                       {jobPending.length > 0 && (
                         <button onClick={() => setSelectedQuote(jobPending[0])} style={{ marginTop: 18, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 22px', borderRadius: 12, background: TERRA, color: '#fff', fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer', boxShadow: '0 4px 12px rgba(212,170,58,.15)' }}>
@@ -1443,7 +1443,7 @@ export default function HomeownerDashboardView() {
               {/* ② Match intelligence */}
               <MatchIntelCard raw={selectedJob.match_intelligence} />
 
-              {/* ③ Redo job banner — shown when tradie is returning after dispute */}
+              {/* ③ Redo job banner  -  shown when tradie is returning after dispute */}
               {selectedJob.is_redo_job && ['in_progress', 'completed', 'awaiting_scope_approval'].includes(selectedJob.status) && (
                 <RedoJobBanner />
               )}
@@ -1495,7 +1495,7 @@ export default function HomeownerDashboardView() {
                         disabled={confirmingCompleteJobId === selectedJob.id}
                         style={{ ...btn(GREEN, '#fff'), padding: '11px 18px', borderRadius: 12, opacity: confirmingCompleteJobId === selectedJob.id ? .6 : 1, boxShadow: '0 4px 12px rgba(46,125,90,.2)' }}>
                         {confirmingCompleteJobId === selectedJob.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                        {confirmingCompleteJobId === selectedJob.id ? 'Confirming…' : 'Confirm complete'}
+                        {confirmingCompleteJobId === selectedJob.id ? 'Confirming...' : 'Confirm complete'}
                       </button>
                       {canStillDispute && (
                         <button onClick={() => setDisputeModalJobId(selectedJob.id)}
@@ -1505,7 +1505,7 @@ export default function HomeownerDashboardView() {
                       )}
                     </div>
                   </div>
-                  {/* Inline error — shows instead of a browser alert that can be blocked */}
+                  {/* Inline error  -  shows instead of a browser alert that can be blocked */}
                   {confirmError && (
                     <div style={{ background: '#FFF0F0', border: '1px solid #F5A0A0', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#A33030', display: 'flex', alignItems: 'center', gap: 8 }}>
                       <AlertTriangle size={14} style={{ flexShrink: 0 }} />
@@ -1517,7 +1517,7 @@ export default function HomeownerDashboardView() {
                 );
               })()}
 
-              {/* ⑥b: Job confirmed by homeowner — awaiting payment release.
+              {/* ⑥b: Job confirmed by homeowner  -  awaiting payment release.
                   Report Issue visible only within the dispute window:
                   48h (first dispute) or 10h (re-dispute after resolution). */}
               {selectedJob.status === 'confirmed' && (() => {
@@ -1532,7 +1532,7 @@ export default function HomeownerDashboardView() {
                         <CheckCircle2 size={22} color={GREEN} />
                       </div>
                       <div style={{ flex: 1, minWidth: 200 }}>
-                        <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Job completed — thank you!</p>
+                        <p style={{ fontWeight: 700, fontSize: 14, color: INK, margin: '0 0 3px' }}>Job completed  -  thank you!</p>
                         <p style={{ fontSize: 12, color: INK4, lineHeight: 1.5 }}>
                           Great work is done! Leave a review to help other homeowners find great tradies.
                           {canStillDispute && hoursLeft > 0 && (
@@ -1551,7 +1551,7 @@ export default function HomeownerDashboardView() {
                 );
               })()}
 
-              {/* ⑦ Waiting for tradie — job is in_progress, tradie must mark complete first */}
+              {/* ⑦ Waiting for tradie  -  job is in_progress, tradie must mark complete first */}
               {selectedJob.status === 'in_progress' && (
                 <div style={{ background: '#fff', border: `1.5px solid ${GREEN}30`, borderRadius: 18, padding: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                   <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: GREEN_LIGHT, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1576,7 +1576,7 @@ export default function HomeownerDashboardView() {
                     <>
                       <div style={{ flex: 1, minWidth: 200 }}>
                         <p style={{ fontWeight: 700, fontSize: 14, color: INK }}>Leave a review</p>
-                        <p style={{ fontSize: 12, color: INK4, marginTop: 3, lineHeight: 1.5 }}>Help other homeowners — share your experience with this tradie.</p>
+                        <p style={{ fontSize: 12, color: INK4, marginTop: 3, lineHeight: 1.5 }}>Help other homeowners  -  share your experience with this tradie.</p>
                       </div>
                       <button onClick={() => setReviewModalJobId(selectedJob.id)} style={{ ...btn(TERRA, '#fff'), padding: '11px 20px', borderRadius: 12, boxShadow: '0 4px 14px rgba(212,170,58,.25)' }}>
                         <Star size={14} /> Write review
@@ -1585,10 +1585,7 @@ export default function HomeownerDashboardView() {
                   ) : (
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <p style={{ fontWeight: 700, fontSize: 14, color: INK }}>
-                        {selectedJob.review_status === 'approved' ? 'Review published ✓' : 'Review submitted ✓'}
-                      </p>
-                      <p style={{ fontSize: 12, color: INK4, marginTop: 3, lineHeight: 1.5 }}>
-                        {selectedJob.review_status === 'approved' ? "Your review is live on the tradie's profile. Thank you for your support!" : 'Thank you for your support! Your review helps the community find great tradies.'}
+                        Thank you for your review
                       </p>
                     </div>
                   )}
@@ -1618,7 +1615,7 @@ export default function HomeownerDashboardView() {
                   {/* Photos */}
                   <div style={{ marginBottom: 16 }}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: INK4, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                      Photos {editingJobId === selectedJob.id && <span style={{ color: TERRA, fontWeight: 600 }}>— tap + to add</span>}
+                      Photos {editingJobId === selectedJob.id && <span style={{ color: TERRA, fontWeight: 600 }}> -  tap + to add</span>}
                     </p>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                       {(selectedJob.photos || []).map(photo => (
@@ -1668,14 +1665,14 @@ export default function HomeownerDashboardView() {
                       {editingJobId === selectedJob.id && (
                         <button onClick={() => handleSaveEdit(selectedJob.id)} disabled={editSaving} style={{ flex: 1, padding: '8px 10px', borderRadius: 10, background: TERRA, color: '#fff', border: 'none', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: editSaving ? .6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                           {editSaving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                          {editSaving ? 'Saving…' : 'Save'}
+                          {editSaving ? 'Saving...' : 'Save'}
                         </button>
                       )}
                     </div>
                   )}
                 </div>
 
-                {/* Progress card — updated with new states */}
+                {/* Progress card  -  updated with new states */}
                 <div style={{ ...card, padding: isMobile ? 16 : 20, minWidth: 0, overflow: 'hidden' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
                     <p style={{ fontWeight: 700, fontSize: 14, color: INK }}>Progress</p>
@@ -1703,19 +1700,19 @@ export default function HomeownerDashboardView() {
                     // ── NEW: scope change step (only shown when relevant) ──
                     ...(selectedJob.status === 'awaiting_scope_approval' ? [{
                       done: false,
-                      label: '⏱ Scope change pending',
-                      sub: `Respond within ${selectedJob.scope_change_expires_at ? timeUntil(selectedJob.scope_change_expires_at) : '—'}`,
+                      label: 'Scope change pending',
+                      sub: `Respond within ${selectedJob.scope_change_expires_at ? timeUntil(selectedJob.scope_change_expires_at) : ' - '}`,
                       color: AMBER,
                     }] : []),
                     ...(selectedJob.status === 'partial_stop' ? [{
                       done: false,
-                      label: '⛔ Work stopped mid-job',
+                      label: 'Work stopped mid-job',
                       sub: 'Admin adjudicating payment',
                       color: ROSE,
                     }] : []),
                     ...(selectedJob.status === 'disputed' ? [{
                       done: false,
-                      label: '⚠️ Dispute under review',
+                      label: 'Dispute under review',
                       sub: 'Resolution within 2 business days',
                       color: ROSE,
                     }] : []),
@@ -1726,7 +1723,7 @@ export default function HomeownerDashboardView() {
                 </div>
               </div>
 
-              {/* ⑩ Quotes failed to load — show retry banner */}
+              {/* ⑩ Quotes failed to load  -  show retry banner */}
               {jobQuotes.length === 0 && quoteLoadFailedJobIds.has(selectedJob.id) && (
                 <div style={{ background: '#fff', border: `1px solid ${ROSE}44`, borderRadius: 16, padding: '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <div>
@@ -1756,7 +1753,7 @@ export default function HomeownerDashboardView() {
                   {jobQuotes.map((q, i) => {
                     const statusColor = q.status === 'accepted' ? GREEN : q.status === 'rejected' ? ROSE : AMBER;
                     const statusBg = q.status === 'accepted' ? GREEN_LIGHT : q.status === 'rejected' ? ROSE_LIGHT : AMBER_LIGHT;
-                    const statusLabel = q.status === 'accepted' ? '✓ Accepted' : q.status === 'rejected' ? '✕ Declined' : '⏳ Pending';
+                    const statusLabel = q.status === 'accepted' ? 'Accepted' : q.status === 'rejected' ? 'Declined' : 'Pending';
                     return (
                       <button key={q.id} onClick={() => setSelectedQuote(q)} style={{ width: '100%', textAlign: 'left', padding: isMobile ? '14px 16px' : '16px 20px', borderBottom: i < jobQuotes.length - 1 ? `1px solid ${CREAM2}` : 'none', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 12, flexWrap: isMobile ? 'wrap' : 'nowrap' }}
                         onMouseEnter={e => e.currentTarget.style.background = CREAM2}
@@ -1766,7 +1763,7 @@ export default function HomeownerDashboardView() {
                         </div>
                         <div style={{ flex: '1 1 150px', minWidth: 0 }}>
                           <p style={{ fontWeight: 600, fontSize: 14, color: INK }}>{q.tradie_name || 'Tradie'}</p>
-                          <p style={{ fontSize: 12, color: INK4, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.message?.slice(0, 60)}…</p>
+                          <p style={{ fontSize: 12, color: INK4, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.message?.slice(0, 60)}...</p>
                         </div>
                         <div style={{ textAlign: isMobile ? 'left' : 'right', flexShrink: 0, marginLeft: isMobile ? 56 : 0 }}>
                           <p style={{ fontWeight: 800, fontSize: 20, color: INK }}>${(q.amount || 0).toLocaleString()}</p>
@@ -1779,7 +1776,7 @@ export default function HomeownerDashboardView() {
                 </div>
               )}
 
-              {/* ⑪ Cancel job — last */}
+              {/* ⑪ Cancel job  -  last */}
               {['open', 'quoted'].includes(selectedJob.status) && (
                 <div style={{ background: '#fff', border: `1px solid #F5C0C0`, borderRadius: 16, padding: isMobile ? '16px' : '16px 20px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: 12, minWidth: 0, overflow: 'hidden' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1789,7 +1786,7 @@ export default function HomeownerDashboardView() {
                   <button onClick={() => handleCancelJob(selectedJob.id)} disabled={cancellingJobId === selectedJob.id}
                     style={{ flexShrink: 0, width: isMobile ? '100%' : 'auto', justifyContent: 'center', padding: '9px 16px', borderRadius: 10, background: ROSE_LIGHT, border: `1px solid ${ROSE}30`, color: ROSE, fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: cancellingJobId === selectedJob.id ? .5 : 1 }}>
                     <Ban size={13} />
-                    {cancellingJobId === selectedJob.id ? 'Cancelling…' : 'Cancel job'}
+                    {cancellingJobId === selectedJob.id ? 'Cancelling...' : 'Cancel job'}
                   </button>
                 </div>
               )}
