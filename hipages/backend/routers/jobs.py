@@ -137,39 +137,7 @@ async def create_job(
         )
 
     if not category:
-        # Soft fallback: instead of telling the homeowner "Unknown service",
-        # route them into the uncategorised pathway so a human can triage.
-        # The platform never silently rejects demand -- every request becomes
-        # visible to admin.
-        from services.uncategorised_service import (
-            create_uncategorised_job, notify_homeowner_received,
-            SentinelCategoryMissingError,
-        )
-        try:
-            description_for_human = " ".join(
-                part for part in [body.title, body.description or ""] if part
-            ).strip() or body.category_slug
-            job = await create_uncategorised_job(
-                homeowner=current_user,
-                db=db,
-                description=description_for_human,
-                suburb=body.suburb, state=body.state, postcode=body.postcode,
-                contact_name=body.contact_name,
-                contact_phone=body.contact_phone,
-                contact_email=body.contact_email,
-                original_slug=body.category_slug,
-            )
-            await db.commit()
-            await db.refresh(job)
-            # Best-effort homeowner email; never blocks the response.
-            try:
-                await notify_homeowner_received(current_user, description_for_human)
-            except Exception:
-                pass
-            return job
-        except SentinelCategoryMissingError as exc:
-            # Operator misconfiguration -- surface clearly so they re-run the seed.
-            raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=400, detail="Unknown category_slug")
 
     data = body.model_dump(exclude={"category_slug", "intent_level"})
     data["category_id"] = category.id
@@ -554,13 +522,15 @@ async def list_jobs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # This endpoint returns EVERY job in the system — it is admin-only.
-    # Homeowners use GET /jobs/my-jobs; tradies see their matched jobs via
-    # the leads router. Returning all jobs to any authenticated user leaked
-    # private homeowner data (addresses, contact details) across the marketplace.
-    if current_user.role != "admin":
+    # Admins can see every job. Homeowners get their own jobs here so the
+    # authenticated list endpoint is usable without exposing everyone else's data.
+    query = select(Job).order_by(Job.created_at.desc())
+    if current_user.role == "homeowner":
+        query = query.where(Job.homeowner_id == current_user.id)
+    elif current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    result = await db.execute(select(Job).order_by(Job.created_at.desc()))
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 

@@ -29,7 +29,7 @@ def check_stale_jobs(self):
         loop.run_until_complete(_check_stale_jobs())
     except Exception as exc:
         print(f"[timeout] check_stale_jobs error: {exc}")
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
     finally:
         try:
             loop.close()
@@ -128,7 +128,7 @@ def redistribute_stale_jobs(self):
         loop.run_until_complete(_redistribute_stale_jobs())
     except Exception as exc:
         print(f"[timeout] redistribute_stale_jobs error: {exc}")
-        raise self.retry(exc=exc)
+        raise self.retry(exc=exc) from exc
     finally:
         try:
             loop.close()

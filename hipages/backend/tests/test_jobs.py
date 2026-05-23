@@ -225,7 +225,7 @@ class TestListAndGetJobs:
         job_id = create_resp.json()["id"]
 
         # Fetch it back
-        get_resp = await client.get(f"/api/v1/jobs/{job_id}")
+        get_resp = await client.get(f"/api/v1/jobs/{job_id}", headers=homeowner_headers)
         assert get_resp.status_code == 200, (
             f"Expected 200 fetching job {job_id}, got {get_resp.status_code}: {get_resp.text}"
         )
@@ -237,7 +237,7 @@ class TestListAndGetJobs:
         A 500 here would suggest unhandled database errors.
         """
         fake_id = "00000000-0000-0000-0000-000000000000"
-        resp = await client.get(f"/api/v1/jobs/{fake_id}")
+        resp = await client.get(f"/api/v1/jobs/{fake_id}", headers=homeowner_headers)
 
         assert resp.status_code == 404, (
             f"Expected 404 for non-existent job, got {resp.status_code}: {resp.text}"

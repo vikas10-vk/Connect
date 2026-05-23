@@ -210,13 +210,17 @@ def test_admin_close_uses_state_machine_and_sends_email():
 # ---- Soft fallback in POST /jobs -----------------------------------------
 
 def test_post_jobs_soft_fallback_uses_uncategorised_pathway():
-    """When category resolution fails, POST /jobs must NOT return 400 -- it
-    must route through create_uncategorised_job so demand isn't silently lost."""
+    """Unknown category slugs must be rejected so only the explicit
+    /jobs/uncategorised pathway can create a sentinel job."""
     from routers import jobs as jobs_router
     src = open(jobs_router.__file__).read()
-    # The previous hard-reject phrase is gone or only appears inside other paths
-    assert "Soft fallback" in src or "create_uncategorised_job" in src
-    # Specifically the soft fallback wires through the service module
-    assert "from services.uncategorised_service import" in src
-    # The new explicit endpoint exists
+    assert 'raise HTTPException(status_code=400, detail="Unknown category_slug")' in src
+    assert "create_uncategorised_job" not in src
+
+
+def test_explicit_uncategorised_endpoint_still_exists():
+    from routers import jobs as jobs_router
+    src = open(jobs_router.__file__).read()
+    assert '@router.post("/uncategorised"' in src
+    assert "create_uncategorised_job" in src
     assert '/uncategorised' in src
