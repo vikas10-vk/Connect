@@ -50,7 +50,7 @@ const REJECTION_LABELS: Record<string, string> = {
   invalid_number: 'Number not found in registry',
   expired: 'Licence has lapsed',
   name_mismatch: 'Holder name mismatch',
-  cannot_verify: 'Could not verify — resubmit with clearer details',
+  cannot_verify: 'Could not verify  -  resubmit with clearer details',
   insufficient_cover: 'Coverage below required minimum',
   other: 'See rejection note',
 };
@@ -61,7 +61,7 @@ const fmtCoverage = (cents: number) =>
 const CERT_BADGE: Record<string, { className: string; label: string }> = {
   pending: { className: 'bg-amber-50 text-amber-700', label: 'Pending review' },
   in_review: { className: 'bg-purple-50 text-purple-700', label: 'In review' },
-  verified: { className: 'bg-green-50 text-green-700', label: 'Verified ✓' },
+  verified: { className: 'bg-green-50 text-green-700', label: 'Verified' },
   rejected: { className: 'bg-red-50 text-red-600', label: 'Rejected' },
   expired: { className: 'bg-red-50 text-red-600', label: 'Expired' },
 };
@@ -149,7 +149,7 @@ function VerificationCard({ status }: { status: string }) {
           {data.gates.ready_to_receive_jobs ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#E0F5EC', borderRadius: 10, border: '1px solid #A0D9BC' }}>
               <CheckCircle2 style={{ width: 16, height: 16, color: '#2E7D5A', flexShrink: 0 }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#1B5E3A' }}>You&apos;re live — receiving job leads</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1B5E3A' }}>You&apos;re live  -  receiving job leads</span>
             </div>
           ) : (
             /* Individual gate checks */
@@ -182,7 +182,7 @@ function VerificationCard({ status }: { status: string }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Award style={{ width: 12, height: 12, color: cfg.iconColor, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, color: cfg.textColor, fontWeight: 500 }}>
-                        {cert.category_name || 'Trade'} · <span style={{ fontFamily: 'monospace', fontSize: 11.5 }}>{cert.licence_number}</span> · {cert.issuing_state}
+                        {cert.category_name || 'Trade'}  |  <span style={{ fontFamily: 'monospace', fontSize: 11.5 }}>{cert.licence_number}</span>  |  {cert.issuing_state}
                       </span>
                     </div>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.label}</span>
@@ -206,7 +206,7 @@ function VerificationCard({ status }: { status: string }) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Shield style={{ width: 12, height: 12, color: cfg.iconColor, flexShrink: 0 }} />
                       <span style={{ fontSize: 12.5, color: cfg.textColor, fontWeight: 500 }}>
-                        {INSURANCE_LABELS[policy.insurance_type]} · {policy.insurer_name} · {fmtCoverage(policy.coverage_amount_cents)}
+                        {INSURANCE_LABELS[policy.insurance_type]}  |  {policy.insurer_name}  |  {fmtCoverage(policy.coverage_amount_cents)}
                       </span>
                     </div>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.label}</span>
@@ -235,7 +235,7 @@ function VerificationCard({ status }: { status: string }) {
       {loading && (
         <div style={{ marginTop: '1rem', paddingTop: '0.875rem', borderTop: `1px solid ${cfg.cardBorder}`, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Loader2 style={{ width: 13, height: 13, color: cfg.iconColor }} className="animate-spin" />
-          <span style={{ fontSize: 12.5, color: cfg.subColor }}>Loading licence & insurance status…</span>
+          <span style={{ fontSize: 12.5, color: cfg.subColor }}>Loading licence & insurance status...</span>
         </div>
       )}
 
@@ -328,7 +328,7 @@ export default function TradieDashboardView() {
                   { label: 'New Leads', value: newLeads.length, color: 'text-brand-terracotta' },
                   { label: 'Quotes Sent', value: quotedLeads.length, color: 'text-brand-terracotta' },
                   { label: 'Active Jobs', value: 0, color: 'text-gray-700' },
-                  { label: 'Rating', value: (tradieProfile as any)?.rating || '—', color: 'text-yellow-500' },
+                  { label: 'Rating', value: (tradieProfile as any)?.rating || ' - ', color: 'text-yellow-500' },
                 ].map(s => (
                   <div key={s.label} className="bg-brand-cream/50 p-5 rounded-3xl space-y-1">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{s.label}</p>
@@ -343,14 +343,14 @@ export default function TradieDashboardView() {
 
         {/* Right column */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Soft banner for non-approved tradies — still show leads if any exist */}
+          {/* Soft banner for non-approved tradies  -  still show leads if any exist */}
           {!isApproved && !isLoading && (
             <div className="bg-amber-50 border border-amber-100 rounded-[2rem] px-6 py-4 flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-bold text-amber-800">Profile under review</p>
                 <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                  Our team is reviewing your application. You may already be receiving leads below — full live matching activates once approved.
+                  Our team is reviewing your application. You may already be receiving leads below  -  full live matching activates once approved.
                 </p>
               </div>
             </div>
@@ -385,8 +385,8 @@ export default function TradieDashboardView() {
                               <span className={`text-xs font-bold px-3 py-1 rounded-full ${isQuoted ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-600'}`}>
                                 {isQuoted ? 'Quoted' : 'New Lead'}
                               </span>
-                              {lead.is_urgent && <span className="text-xs font-bold px-3 py-1 rounded-full bg-red-50 text-red-600">🚨 Urgent</span>}
-                              {lead.is_high_value && <span className="text-xs font-bold px-3 py-1 rounded-full bg-yellow-50 text-yellow-700">💰 High Value</span>}
+                              {lead.is_urgent && <span className="text-xs font-bold px-3 py-1 rounded-full bg-red-50 text-red-600">Urgent</span>}
+                              {lead.is_high_value && <span className="text-xs font-bold px-3 py-1 rounded-full bg-yellow-50 text-yellow-700">High Value</span>}
                             </div>
                             <h4 className="font-bold text-gray-900 text-base truncate">{lead.job_title}</h4>
                             <div className="flex items-center gap-4 mt-1.5 flex-wrap">

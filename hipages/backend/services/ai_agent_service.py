@@ -267,18 +267,15 @@ async def execute_tool(tool_name: str, tool_input: dict, user: User, db: AsyncSe
         lead = lead_r.scalar_one_or_none()
         if not lead:
             return {"error": "Lead not found"}
-        if profile.credits < 1:
-            return {"error": "Insufficient credits."}
         quote = Quote(
             id=str(uuid.uuid4()), lead_id=tool_input.get("lead_id"),
             job_id=lead.job_id, tradie_id=profile.id,
             amount=tool_input.get("amount", 0), message=tool_input.get("message", ""),
             status="pending",
         )
-        profile.credits -= 1
         db.add(quote)
         await db.commit()
-        return {"success": True, "quote_id": quote.id, "amount": quote.amount, "credits_remaining": profile.credits}
+        return {"success": True, "quote_id": quote.id, "amount": quote.amount}
 
     if tool_name == "get_earnings_summary":
         tradie_r = await db.execute(select(TradieProfile).where(TradieProfile.user_id == user.id))

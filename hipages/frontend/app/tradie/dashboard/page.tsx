@@ -135,11 +135,11 @@ const timeAgo = (d: string) => {
 };
 const fmtBudget = (a?: number, b?: number) => {
   if (!a && !b) return null;
-  if (a && b) return `$${a.toLocaleString()}–$${b.toLocaleString()}`;
+  if (a && b) return `$${a.toLocaleString()}-$${b.toLocaleString()}`;
   return b ? `Up to $${b.toLocaleString()}` : `From $${a!.toLocaleString()}`;
 };
 const fmtDate = (d?: string) => {
-  if (!d) return '—';
+  if (!d) return ' - ';
   try { return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }); }
   catch { return d; }
 };
@@ -189,7 +189,7 @@ const getCatAccent = (name: string) => {
 const CERT_STATUS: Record<string, { bg: string; color: string; label: string }> = {
   pending: { bg: C.amberL, color: C.amber, label: 'In review' },
   in_review: { bg: '#EEE8FF', color: '#5B3FA6', label: 'In review' },
-  verified: { bg: C.sageL, color: C.sage, label: '✓ Verified' },
+  verified: { bg: C.sageL, color: C.sage, label: 'Verified' },
   rejected: { bg: C.roseL, color: C.rose, label: 'Rejected' },
   expired: { bg: C.roseL, color: C.rose, label: 'Expired' },
 };
@@ -242,7 +242,7 @@ function QuoteModal({ lead, onClose, onSuccess }: { lead: LeadCard; onClose: () 
 
   const submit = async () => {
     if (!amount || Number(amount) <= 0) { setErr('Enter a valid amount.'); return; }
-    if (message.trim().length < 10) { setErr('Message too short — min 10 characters.'); return; }
+    if (message.trim().length < 10) { setErr('Message too short  -  min 10 characters.'); return; }
     setSaving(true); setErr('');
     try {
       await api.post('/quotes', { lead_id: lead.id, amount: Number(amount), message: message.trim() });
@@ -301,7 +301,7 @@ function QuoteModal({ lead, onClose, onSuccess }: { lead: LeadCard; onClose: () 
           <div>
             <label style={{ fontSize: 11, fontWeight: 600, color: C.ink2, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 8 }}>Message <span style={{ color: C.rose }}>*</span></label>
             <textarea rows={4} value={message} onChange={e => setMessage(e.target.value)}
-              placeholder="Introduce yourself, explain your approach, when you can start…"
+              placeholder="Introduce yourself, explain your approach, when you can start..."
               style={{ width: '100%', padding: '12px 14px', borderRadius: 12, border: `1.5px solid ${C.line}`, background: C.paper, fontSize: 14, color: C.ink, lineHeight: 1.6, resize: 'vertical', fontFamily: UI, outline: 'none', boxSizing: 'border-box' }}
               onFocus={e => { e.currentTarget.style.borderColor = C.brass; e.currentTarget.style.background = C.card; }}
               onBlur={e => { e.currentTarget.style.borderColor = C.line; e.currentTarget.style.background = C.paper; }} />
@@ -312,7 +312,7 @@ function QuoteModal({ lead, onClose, onSuccess }: { lead: LeadCard; onClose: () 
             onMouseEnter={e => !saving && (e.currentTarget.style.background = '#000')}
             onMouseLeave={e => !saving && (e.currentTarget.style.background = C.ink)}>
             {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
-            {saving ? 'Sending…' : 'Send quote'}
+            {saving ? 'Sending...' : 'Send quote'}
           </button>
         </div>
       </motion.div>
@@ -405,8 +405,8 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
               src={photos[lightboxIdx]} alt={`Photo ${lightboxIdx + 1}`} onClick={e => e.stopPropagation()}
               style={{ maxWidth: '90vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 10, boxShadow: '0 40px 100px rgba(0,0,0,0.6)' }} />
             {photos.length > 1 && <>
-              <button onClick={navLightbox(-1)} style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', color: 'white', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-              <button onClick={navLightbox(1)} style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', color: 'white', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+              <button onClick={navLightbox(-1)} style={{ position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', color: 'white', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&lt;</button>
+              <button onClick={navLightbox(1)} style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', color: 'white', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&gt;</button>
             </>}
             <button onClick={e => { e.stopPropagation(); setLightboxIdx(null); }} style={{ position: 'absolute', top: 18, right: 18, width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <X size={16} />
@@ -439,7 +439,7 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {/* Redo job banner — shown when admin resolved a dispute with redo_work
+          {/* Redo job banner  -  shown when admin resolved a dispute with redo_work
               and the job is back in_progress. Gives the tradie context. */}
           {lead.is_redo_job && lead.job_status === 'in_progress' && (
             <div style={{ padding: '16px 24px', borderBottom: `1px solid ${C.brassB}`, background: C.brassL }}>
@@ -449,7 +449,7 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
                 </svg>
                 <div>
                   <p style={{ fontSize: 11, fontWeight: 700, color: C.brass, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 5px' }}>
-                    Return visit — post-dispute redo
+                    Return visit  -  post-dispute redo
                   </p>
                   <p style={{ fontSize: 13, color: C.ink, margin: 0, lineHeight: 1.55 }}>
                     Admin reviewed the dispute and asked you to return and fix the work.
@@ -508,7 +508,7 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
                     </div>
                   )}
 
-                  {/* Response box — add more context to the conversation */}
+                  {/* Response box  -  add more context to the conversation */}
                   <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.rose}22` }}>
                     {responseSubmittedOK && (
                       <p style={{ fontSize: 12, color: C.sage, margin: '0 0 8px' }}>
@@ -546,12 +546,12 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
                     {disputeInfo?.resolution_claimed || claimResolvedOK ? (
                       <div style={{ background: C.brassL, border: `1px solid ${C.brassB}`, borderRadius: 10, padding: '12px 16px' }}>
                         <p style={{ fontSize: 13, fontWeight: 700, color: C.brass, margin: '0 0 3px' }}>
-                          ✓ Waiting for homeowner confirmation
+                          Waiting for homeowner confirmation
                         </p>
                         <p style={{ fontSize: 12, color: C.ink3, margin: 0, lineHeight: 1.5 }}>
                           You&apos;ve marked this as resolved.
                           {(disputeInfo?.resolution_rejection_count || 0) > 0
-                            ? ` The homeowner has rejected ${disputeInfo?.resolution_rejection_count} time(s) — try adding more detail to the conversation above.`
+                            ? ` The homeowner has rejected ${disputeInfo?.resolution_rejection_count} time(s)  -  try adding more detail to the conversation above.`
                             : ' The homeowner has been notified and will accept or reject your claim.'}
                         </p>
                       </div>
@@ -575,7 +575,7 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
                           }}
                           disabled={claimingResolved}
                           style={{ width: '100%', padding: '13px 16px', borderRadius: 10, background: C.sage, color: '#fff', border: 'none', fontSize: 14, fontWeight: 700, cursor: claimingResolved ? 'wait' : 'pointer', opacity: claimingResolved ? 0.6 : 1 }}>
-                          {claimingResolved ? 'Submitting...' : '✅  I\'ve fixed it — notify homeowner'}
+                          {claimingResolved ? 'Submitting...' : 'I\'ve fixed it - notify homeowner'}
                         </button>
                         <p style={{ fontSize: 11.5, color: C.ink3, margin: '8px 0 0', lineHeight: 1.5 }}>
                           This sends the homeowner a notification asking them to confirm the issue is resolved. No admin needed.
@@ -594,7 +594,7 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
             </div>
           )}
           <div style={{ padding: '20px 28px', borderBottom: `1px solid ${C.lineSoft}` }}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.12em', margin: '0 0 14px' }}>Photos{photos.length > 0 ? ` · ${photos.length}` : ''}</p>
+            <p style={{ fontSize: 10, fontWeight: 700, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.12em', margin: '0 0 14px' }}>Photos{photos.length > 0 ? `  |  ${photos.length}` : ''}</p>
             {loadingDetails ? (
               <div style={{ display: 'flex', gap: 8 }}>{[1, 2, 3].map(i => <div key={i} style={{ width: 130, height: 98, borderRadius: 8, background: C.panel, flexShrink: 0 }} />)}</div>
             ) : photos.length === 0 ? (
@@ -683,12 +683,12 @@ function LeadRow({ lead, onQuote, onView, onMarkComplete, selected, onClick }: {
               <Eye size={11} /> View
             </button>
             {lead.job_status === 'confirmed' ? (
-              /* Homeowner confirmed — job done, payment released */
+              /* Homeowner confirmed  -  job done, payment released */
               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, background: C.sageL, color: C.sage, border: `1px solid ${C.sage}30`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <CheckCircle size={11} /> Confirmed
               </span>
             ) : lead.job_status === 'completed' ? (
-              /* Tradie marked done — waiting for homeowner to confirm */
+              /* Tradie marked done  -  waiting for homeowner to confirm */
               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, background: C.amberL, color: C.amber, border: `1px solid ${C.amber}30`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <Hourglass size={11} /> Awaiting confirmation
               </span>
@@ -765,7 +765,7 @@ function LeadMap({ leads, selectedId, onSelect }: { leads: LeadCard[]; selectedI
     leads.forEach(lead => {
       const c = getCoords(lead.job_suburb); if (!c) return;
       const sel = selectedId === lead.id; const nw = isNew(lead.status); const size = sel ? 32 : 24;
-      const icon = L.divIcon({ className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2], html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${sel ? C.ink : nw ? C.brass : C.card};border:2px solid ${C.card};box-shadow:0 2px 8px rgba(26,26,26,0.18);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${sel ? C.card : nw ? C.card : C.ink3}">${nw ? '!' : '✓'}</div>` });
+      const icon = L.divIcon({ className: '', iconSize: [size, size], iconAnchor: [size / 2, size / 2], html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${sel ? C.ink : nw ? C.brass : C.card};border:2px solid ${C.card};box-shadow:0 2px 8px rgba(26,26,26,0.18);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:${sel ? C.card : nw ? C.card : C.ink3}">${nw ? '!' : ''}</div>` });
       const budget = fmtBudget(lead.job_budget_min, lead.job_budget_max);
       const marker = L.marker(c, { icon }).addTo(mapRef.current)
         .bindPopup(`<div style="min-width:160px;font-family:${UI}"><p style="font-weight:600;font-size:13px;margin:0 0 4px;color:${C.ink}">${lead.job_title || 'Job'}</p><p style="font-size:12px;color:${C.ink3};margin:0">${lead.job_suburb}, ${lead.job_state}</p>${budget ? `<p style="font-size:13px;font-weight:700;margin:6px 0 0;color:${C.brass}">${budget}</p>` : ''}</div>`);
@@ -808,7 +808,7 @@ function TradieDashboardContent() {
   const searchParams = useSearchParams();
 
   // Open specific tab when navigated here with ?tab=... etc.
-  // Note: 'licences' is handled by the dedicated /tradie/licences page — redirect there.
+  // Note: 'licences' is handled by the dedicated /tradie/licences page  -  redirect there.
   useEffect(() => {
     const t = searchParams.get('tab') as TabId | null;
     if (t === 'licences') { router.push('/tradie/licences'); return; }
@@ -1058,7 +1058,7 @@ function TradieDashboardContent() {
   // ── Derived ───────────────────────────────────────────────────────────────────
   const newLeads = useMemo(() => leads.filter(l => isNew(l.status)), [leads]);
   // "Active" = any lead where the tradie is still engaged (working, awaiting something, or awaiting homeowner confirmation).
-  // hired / in_progress / awaiting_scope_approval / partial_stop / completed all count — only confirmed/closed/cancelled/disputed are "done".
+  // hired / in_progress / awaiting_scope_approval / partial_stop / completed all count  -  only confirmed/closed/cancelled/disputed are "done".
   const ACTIVE_JOB_STATUSES = new Set(['hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'completed', 'disputed']);
   const DONE_JOB_STATUSES = new Set(['confirmed', 'closed']);
   const activeLeads = useMemo(() => leads.filter(l =>
@@ -1069,7 +1069,7 @@ function TradieDashboardContent() {
   const selectedCategories = useMemo(() => allCategories.filter(c => selectedCatIds.includes(c.id)), [allCategories, selectedCatIds]);
   const requiredDocuments = useMemo(() => getRequiredDocuments(selectedCategories), [selectedCategories]);
 
-  // Services grouped by verification group — used in the preferences two-column picker
+  // Services grouped by verification group  -  used in the preferences two-column picker
   const groupedAllCategories = useMemo(() => {
     const q = catSearchQuery.trim().toLowerCase();
     const filtered = allCategories.filter(c => {
@@ -1087,7 +1087,7 @@ function TradieDashboardContent() {
   }, [allCategories, catSearchQuery, serviceLevelFilter]);
 
 
-  // Unique AU states the tradie operates in — sourced from service area selections.
+  // Unique AU states the tradie operates in  -  sourced from service area selections.
   // Also absorbs any states already in submitted certs (edge case: cert in a state
   // they removed from service areas). Result is always sorted AU_STATES order.
   const tradieStates = useMemo(() => {
@@ -1190,7 +1190,7 @@ function TradieDashboardContent() {
                 {verificationStatus === 'suspended' && 'Account suspended'}
               </p>
               <p style={{ fontSize: 13, color: C.ink2, margin: 0, lineHeight: 1.6 }}>
-                {verificationStatus === 'pending_review' && 'Your dashboard unlocks fully once approved — usually within 1 business day.'}
+                {verificationStatus === 'pending_review' && 'Your dashboard unlocks fully once approved  -  usually within 1 business day.'}
                 {verificationStatus === 'needs_documents' && 'Upload the requested documents in the Licences & Docs tab to continue.'}
                 {verificationStatus === 'rejected' && 'Contact support@proconnect.com.au to discuss your application.'}
                 {verificationStatus === 'suspended' && 'Your account is suspended. Contact support to resolve.'}
@@ -1221,7 +1221,7 @@ function TradieDashboardContent() {
                         {newLeads.length > 0 ? <>You have <em style={{ fontStyle: 'italic', color: C.brass }}>{newLeads.length} new {newLeads.length === 1 ? 'lead' : 'leads'}</em> waiting.</> : 'Your day is clear.'}
                       </h2>
                       <p style={{ fontSize: 14, color: C.ink2, margin: 0, lineHeight: 1.55, maxWidth: 480 }}>
-                        {newLeads.length > 0 ? 'Quote fast — most homeowners pick a tradie within 24 hours.' : 'Check back soon. New jobs appear as they come in from your area.'}
+                        {newLeads.length > 0 ? 'Quote fast  -  most homeowners pick a tradie within 24 hours.' : 'Check back soon. New jobs appear as they come in from your area.'}
                       </p>
                     </div>
                     {newLeads.length > 0 && (
@@ -1236,10 +1236,10 @@ function TradieDashboardContent() {
                 </div>
                 <div className="stat-grid">
                   {[
-                    { label: 'New leads', value: loading ? '—' : String(newLeads.length), sub: newLeads.length > 0 ? 'Quote to win' : 'Nothing pending', emphasis: newLeads.length > 0 },
-                    { label: 'Active jobs', value: loading ? '—' : String(activeLeads.length), sub: activeLeads.length > 0 ? 'In progress or awaiting' : 'None in flight' },
-                    { label: 'Total leads', value: loading ? '—' : String(leads.length), sub: 'All time' },
-                    { label: 'Completed jobs', value: loading ? '—' : String(completedJobsCount), sub: completedJobsCount > 0 ? 'Confirmed by homeowners' : 'None confirmed yet' },
+                    { label: 'New leads', value: loading ? ' - ' : String(newLeads.length), sub: newLeads.length > 0 ? 'Quote to win' : 'Nothing pending', emphasis: newLeads.length > 0 },
+                    { label: 'Active jobs', value: loading ? ' - ' : String(activeLeads.length), sub: activeLeads.length > 0 ? 'In progress or awaiting' : 'None in flight' },
+                    { label: 'Total leads', value: loading ? ' - ' : String(leads.length), sub: 'All time' },
+                    { label: 'Completed jobs', value: loading ? ' - ' : String(completedJobsCount), sub: completedJobsCount > 0 ? 'Confirmed by homeowners' : 'None confirmed yet' },
                   ].map((s, i) => (
                     <div key={i} className="stat-card" style={{ background: C.card, borderRadius: 12, border: `1px solid ${C.line}`, padding: '18px 20px', boxShadow: SHADOW_XS }}>
                       <p style={{ fontSize: 11, fontWeight: 600, color: C.ink3, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 12px' }}>{s.label}</p>
@@ -1262,7 +1262,7 @@ function TradieDashboardContent() {
                     {newLeads.slice(0, 3).map(l => <LeadRow key={l.id} lead={l} onQuote={setQuoting} onView={setViewing} />)}
                   </div>
                 )}
-                {/* Active jobs in overview — in-progress and awaiting-confirmation jobs */}
+                {/* Active jobs in overview  -  in-progress and awaiting-confirmation jobs */}
                 {!loading && activeLeads.length > 0 && (
                   <div style={panelStyle}>
                     <div style={{ padding: '14px 24px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1296,7 +1296,7 @@ function TradieDashboardContent() {
                 <div className="leads-layout">
                   <div className="leads-list-wrap" style={panelStyle}>
                     <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-                      <p style={sectionTitle}>All · {leads.length}</p>
+                      <p style={sectionTitle}>All  |  {leads.length}</p>
                       {newLeads.length > 0 && <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: C.brassL, color: C.brass, border: `1px solid ${C.brassB}` }}>{newLeads.length} new</span>}
                     </div>
                     <div className="leads-scroll">
@@ -1327,7 +1327,7 @@ function TradieDashboardContent() {
               <motion.div key="active" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
                 <div style={panelStyle}>
                   <div style={{ padding: '14px 24px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <p style={sectionTitle}>Active jobs · {activeLeads.length}</p>
+                    <p style={sectionTitle}>Active jobs  |  {activeLeads.length}</p>
                     {activeLeads.some(l => l.job_status === 'completed') && (
                       <span style={{ fontSize: 11, fontWeight: 600, color: C.amber, background: C.amberL, border: `1px solid ${C.amber}30`, padding: '2px 8px', borderRadius: 20 }}>
                         {activeLeads.filter(l => l.job_status === 'completed').length} awaiting confirmation
@@ -1355,8 +1355,8 @@ function TradieDashboardContent() {
               <motion.div key="licences" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 24px', gap: 14 }}>
                 <Loader2 size={22} color={C.brass} className="animate-spin" />
-                <p style={{ fontSize: 14, color: C.ink3, margin: 0 }}>Redirecting to Licences &amp; Docs…</p>
-                {/* Trigger redirect imperatively — avoids hook-in-callback issues */}
+                <p style={{ fontSize: 14, color: C.ink3, margin: 0 }}>Redirecting to Licences &amp; Docs...</p>
+                {/* Trigger redirect imperatively  -  avoids hook-in-callback issues */}
                 {typeof window !== 'undefined' && (() => { setTimeout(() => router.push('/tradie/licences'), 0); return null; })()}
               </motion.div>
             )}
@@ -1364,12 +1364,12 @@ function TradieDashboardContent() {
             {tab === 'preferences' && (
               <motion.div key="prefs" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-                {/* ── 1. Service areas & states — TOP, always visible ── */}
+                {/* ── 1. Service areas & states  -  TOP, always visible ── */}
                 <div style={panelStyle}>
                   <div className="pref-area-header" style={{ padding: '14px 24px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', gap: 10 }}>
                     <MapPin size={14} color={C.brass} />
                     <p style={sectionTitle}>Service areas & states</p>
-                    <span className="pref-area-sub" style={{ fontSize: 11, color: C.ink3 }}>— determines which state licences you need</span>
+                    <span className="pref-area-sub" style={{ fontSize: 11, color: C.ink3 }}> -  determines which state licences you need</span>
                   </div>
                   <div style={{ padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -1397,7 +1397,7 @@ function TradieDashboardContent() {
                               catch { setSuburbResults([]); } finally { setSuburbSearching(false); }
                             }, 300);
                           }}
-                          placeholder={`Search suburbs in ${prefStateFilter}…`}
+                          placeholder={`Search suburbs in ${prefStateFilter}...`}
                           style={{ ...inputStyle, paddingLeft: 36 }}
                           onFocus={e => { e.target.style.borderColor = C.brass; e.target.style.background = C.card; }}
                           onBlur={e => { e.target.style.borderColor = C.line; e.target.style.background = C.paper; }} />
@@ -1488,7 +1488,7 @@ function TradieDashboardContent() {
                                     <p style={{ fontSize: 11, color: rule.level === 'strict' ? C.amber : C.ink3, margin: 0, fontWeight: 600 }}>{getLevelLabel(rule.level)}</p>
                                   </div>
                                   {hasVerified && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: C.sageL, color: C.sage, flexShrink: 0 }}>Verified</span>}
-                                  <button onClick={() => { if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: '⚠️' }); setSelectedCatIds(prev => prev.filter(id => id !== cat.id)); }}
+                                  <button onClick={() => { if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: undefined }); setSelectedCatIds(prev => prev.filter(id => id !== cat.id)); }}
                                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.ink4, padding: 4, display: 'flex', flexShrink: 0 }}>
                                     <X size={13} />
                                   </button>
@@ -1503,7 +1503,7 @@ function TradieDashboardContent() {
                       <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 9 }}>
                         <div style={{ position: 'relative' }}>
                           <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
-                          <input value={catSearchQuery} onChange={e => setCatSearchQuery(e.target.value)} placeholder="Search services…"
+                          <input value={catSearchQuery} onChange={e => setCatSearchQuery(e.target.value)} placeholder="Search services..."
                             style={{ ...inputStyle, paddingLeft: 32, padding: '10px 10px 10px 32px', fontSize: 13 }}
                             onFocus={e => { e.target.style.borderColor = C.brass; e.target.style.background = C.card; }}
                             onBlur={e => { e.target.style.borderColor = C.line; e.target.style.background = C.paper; }} />
@@ -1526,7 +1526,7 @@ function TradieDashboardContent() {
                       {!catLoaded ? (
                         <div style={{ padding: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: C.ink3 }}>
                           <Loader2 size={16} className="animate-spin" />
-                          <span style={{ fontSize: 13 }}>Loading services…</span>
+                          <span style={{ fontSize: 13 }}>Loading services...</span>
                         </div>
                       ) : (
                         <div>
@@ -1546,7 +1546,7 @@ function TradieDashboardContent() {
                                     onClick={() => {
                                       if (selected) {
                                         const hasVerified = onboardingStatus?.certifications.some(c => c.category_id === cat.id && c.status === 'verified') ?? false;
-                                        if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: '⚠️' });
+                                        if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: undefined });
                                         setSelectedCatIds(prev => prev.filter(id => id !== cat.id));
                                         setConfirmAddCat(null);
                                       } else if (rule.level === 'strict') {
@@ -1631,7 +1631,7 @@ function TradieDashboardContent() {
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: rule.level === 'strict' ? C.amberL : rule.level === 'standard' ? C.brassL : C.panel, color: rule.level === 'strict' ? C.amber : rule.level === 'standard' ? C.brass : C.ink3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{getLevelLabel(rule.level)}</span>
-                                {isSelected && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: C.sageL, color: C.sage }}>✓ Selected</span>}
+                                {isSelected && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: C.sageL, color: C.sage }}>Selected</span>}
                               </div>
                               <div>
                                 <p style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 500, color: C.ink, margin: '0 0 6px', letterSpacing: '-0.01em' }}>{cat.name}</p>
@@ -1675,7 +1675,7 @@ function TradieDashboardContent() {
                                       {hasVerified && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 6, background: C.sageL, color: C.sage, flexShrink: 0 }}>Verified</span>}
                                       <button
                                         onClick={() => {
-                                          if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: '⚠️' });
+                                          if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: undefined });
                                           setSelectedCatIds(prev => prev.filter(id => id !== cat.id));
                                         }}
                                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.ink4, padding: 2, display: 'flex', flexShrink: 0 }}
@@ -1697,7 +1697,7 @@ function TradieDashboardContent() {
                         <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 9 }}>
                           <div style={{ position: 'relative' }}>
                             <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
-                            <input value={catSearchQuery} onChange={e => setCatSearchQuery(e.target.value)} placeholder="Search services…"
+                            <input value={catSearchQuery} onChange={e => setCatSearchQuery(e.target.value)} placeholder="Search services..."
                               style={{ ...inputStyle, paddingLeft: 32, padding: '9px 10px 9px 32px', fontSize: 13 }}
                               onFocus={e => { e.target.style.borderColor = C.brass; e.target.style.background = C.card; }}
                               onBlur={e => { e.target.style.borderColor = C.line; e.target.style.background = C.paper; }} />
@@ -1718,7 +1718,7 @@ function TradieDashboardContent() {
                         {!catLoaded ? (
                           <div style={{ padding: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: C.ink3 }}>
                             <Loader2 size={16} className="animate-spin" />
-                            <span style={{ fontSize: 13 }}>Loading services…</span>
+                            <span style={{ fontSize: 13 }}>Loading services...</span>
                           </div>
                         ) : (
                           <div className="services-scroll" style={{ overflowY: 'auto', maxHeight: 380 }}>
@@ -1741,7 +1741,7 @@ function TradieDashboardContent() {
                                       onClick={() => {
                                         if (selected) {
                                           const hasVerified = onboardingStatus?.certifications.some(c => c.category_id === cat.id && c.status === 'verified') ?? false;
-                                          if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: '⚠️' });
+                                          if (hasVerified) toast('Removing won\'t delete your verified licence data', { icon: undefined });
                                           setSelectedCatIds(prev => prev.filter(id => id !== cat.id));
                                           setConfirmAddCat(null);
                                         } else if (rule.level === 'strict') {
@@ -1810,7 +1810,7 @@ function TradieDashboardContent() {
                   onMouseEnter={e => { if (!prefSaving) e.currentTarget.style.background = '#000'; }}
                   onMouseLeave={e => { if (!prefSaving) e.currentTarget.style.background = C.ink; }}>
                   {prefSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  {prefSaving ? 'Saving…' : 'Save preferences'}
+                  {prefSaving ? 'Saving...' : 'Save preferences'}
                 </button>
               </motion.div>
             )}
@@ -1871,7 +1871,7 @@ function TradieDashboardContent() {
                     </div>
                     <div>
                       <label style={labelStyle}>About your work</label>
-                      <textarea rows={4} value={prof.bio} onChange={e => setProf(p => ({ ...p, bio: e.target.value.slice(0, 500) }))} placeholder="Describe your experience…"
+                      <textarea rows={4} value={prof.bio} onChange={e => setProf(p => ({ ...p, bio: e.target.value.slice(0, 500) }))} placeholder="Describe your experience..."
                         style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.65 }}
                         onFocus={e => { e.currentTarget.style.borderColor = C.brass; e.currentTarget.style.background = C.card; }}
                         onBlur={e => { e.currentTarget.style.borderColor = C.line; e.currentTarget.style.background = C.paper; }} />
@@ -1884,7 +1884,7 @@ function TradieDashboardContent() {
                   onMouseEnter={e => { if (!profSaving) e.currentTarget.style.background = '#000'; }}
                   onMouseLeave={e => { if (!profSaving) e.currentTarget.style.background = C.ink; }}>
                   {profSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  {profSaving ? 'Saving…' : 'Save profile'}
+                  {profSaving ? 'Saving...' : 'Save profile'}
                 </button>
               </motion.div>
             )}

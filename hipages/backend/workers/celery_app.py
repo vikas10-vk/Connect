@@ -34,7 +34,7 @@ celery_app = Celery(
     backend=CELERY_RESULT_BACKEND,
     include=[
         "tasks.lead_tasks",
-        "tasks.billing_tasks",
+        "tasks.outbox_tasks",
         "tasks.verification_tasks",
         "tasks.timeout_tasks",
     ],
@@ -77,9 +77,9 @@ celery_app.conf.update(
         "tasks.lead_tasks.detect_no_shows":                         {"queue": "normal"},
         "tasks.timeout_tasks.check_stale_jobs":                     {"queue": "normal"},
         "tasks.timeout_tasks.redistribute_stale_jobs":              {"queue": "normal"},
+        "tasks.outbox_tasks.process_outbox_events":                 {"queue": "normal"},
 
         # ── bulk — background, delay-tolerant ──────────────────────────────
-        "tasks.billing_tasks.sweep_expired_subscriptions":          {"queue": "bulk"},
     },
 )
 
@@ -147,6 +147,11 @@ celery_app.conf.beat_schedule = {
     "detect-no-shows": {
         "task":     "tasks.lead_tasks.detect_no_shows",
         "schedule": 300.0,
+        "options":  {"queue": "normal"},
+    },
+    "process-outbox-events": {
+        "task":     "tasks.outbox_tasks.process_outbox_events",
+        "schedule": 60.0,
         "options":  {"queue": "normal"},
     },
 }

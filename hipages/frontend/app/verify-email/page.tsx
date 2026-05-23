@@ -181,7 +181,7 @@ function VerifyEmailForm() {
                             </div>
                             <div>
                                 <h2 style={{ fontSize: 24, fontWeight: 800, color: C.ink, margin: '0 0 8px', letterSpacing: '-0.02em' }}>Email verified!</h2>
-                                <p style={{ fontSize: 14, color: C.ink3, margin: 0 }}>Taking you to your dashboard…</p>
+                                <p style={{ fontSize: 14, color: C.ink3, margin: 0 }}>Taking you to your dashboard...</p>
                             </div>
                             <Loader2 size={18} color={C.gold} style={{ animation: 'spin 1s linear infinite' }} />
                         </motion.div>
@@ -266,7 +266,7 @@ function VerifyEmailForm() {
                                     onMouseLeave={e => { if (!submitting && code.join('').length === 6) e.currentTarget.style.background = C.ink; }}
                                 >
                                     {submitting
-                                        ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Verifying…</>
+                                        ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Verifying...</>
                                         : <><ArrowRight size={15} /> Verify email</>
                                     }
                                 </button>
@@ -289,7 +289,7 @@ function VerifyEmailForm() {
                                     }}
                                 >
                                     {resending
-                                        ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending…</>
+                                        ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Sending...</>
                                         : resendCooldown > 0
                                             ? `Resend in ${resendCooldown}s`
                                             : <>Resend code</>

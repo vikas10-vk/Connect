@@ -686,6 +686,23 @@ async def get_dashboard(
     )
     total_credits_spent = sum(l.credits_charged for l in leads)
 
+    # ── Bulk-fetch redo flags ─────────────────────────────────────────────────
+    # A job is a "redo job" when admin resolved a dispute with redo_work, which
+    # writes a JobEvent(action="dispute_resolved"). One query covers all leads.
+    from models.job_event import JobEvent
+    all_job_ids = [lead.job_id for lead in leads]
+    redo_job_ids: set[str] = set()
+    if all_job_ids:
+        redo_res = await db.execute(
+            select(JobEvent.job_id)
+            .where(
+                JobEvent.job_id.in_(all_job_ids),
+                JobEvent.action == "dispute_resolved",
+            )
+        )
+        for (jid,) in redo_res.all():
+            redo_job_ids.add(jid)
+
     lead_cards = []
     for lead in leads:
         job           = lead.job
@@ -711,6 +728,7 @@ async def get_dashboard(
             is_urgent=is_urgent,
             is_high_value=is_high_value,
             job_status=job.status if job else None,
+            is_redo_job=lead.job_id in redo_job_ids,
         ))
 
     return {

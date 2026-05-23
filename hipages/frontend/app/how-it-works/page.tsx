@@ -7,7 +7,7 @@ import { Zap, CheckCircle2, ArrowRight, Search, ShieldCheck, MessageSquare } fro
 export default function HowItWorksPage() {
   return (
     <div className="min-h-screen font-sans" style={{ background: '#FFF8E7' }}>
-      {/* Navbar — matches site-wide navy */}
+      {/* Navbar  -  matches site-wide navy */}
       <nav className="sticky top-0 z-[100] shadow-lg" style={{ background: '#071D36', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="max-w-7xl mx-auto px-6 py-3.5 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-2.5 group">

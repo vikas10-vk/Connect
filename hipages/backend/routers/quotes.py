@@ -8,7 +8,7 @@ see the tradie's name, business and suburb on each quote card.
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from db.session import get_db
 from models.quote import Quote
@@ -75,10 +75,15 @@ async def create_quote(
     job_result = await db.execute(select(Job).where(Job.id == lead.job_id))
     job = job_result.scalar_one_or_none()
     if job and job.status == "open":
-        from datetime import datetime as _dt
-        job.status = "quoted"
-        job.updated_at = _dt.utcnow()
-        db.add(job)
+        try:
+            await JobStateMachine.system_transition(
+                job,
+                "quoted",
+                db,
+                note="Tradie submitted the first quote for this job.",
+            )
+        except InvalidTransitionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
 
     await db.commit()
     await db.refresh(quote)
@@ -195,7 +200,7 @@ async def update_quote_status(
     if new_status not in ("accepted", "rejected"):
         raise HTTPException(status_code=400, detail="Status must be 'accepted' or 'rejected'")
 
-    result = await db.execute(select(Quote).where(Quote.id == quote_id))
+    result = await db.execute(select(Quote).where(Quote.id == quote_id).with_for_update())
     quote = result.scalar_one_or_none()
     if not quote:
         raise HTTPException(status_code=404, detail="Quote not found")
@@ -205,7 +210,7 @@ async def update_quote_status(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    job_result = await db.execute(select(Job).where(Job.id == lead.job_id))
+    job_result = await db.execute(select(Job).where(Job.id == lead.job_id).with_for_update())
     job = job_result.scalar_one_or_none()
     if not job or job.homeowner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your job")
@@ -252,6 +257,16 @@ async def update_quote_status(
     all_lead_ids = [l.id for l in all_leads_result.scalars().all()]
 
     if new_status == "accepted":
+        accepted_result = await db.execute(
+            select(Quote).where(
+                Quote.lead_id.in_(all_lead_ids),
+                Quote.id != quote_id,
+                Quote.status == "accepted",
+            )
+        )
+        if accepted_result.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="This job already has an accepted quote")
+
         # Auto-reject all other pending quotes for this job
         others_result = await db.execute(
             select(Quote).where(
@@ -264,13 +279,30 @@ async def update_quote_status(
             other.status = "rejected"
             db.add(other)
 
-        # Move job to in_progress via explicit SQL
+        # Move job through the state machine while the job row is locked.
         TERMINAL = {"in_progress", "completed", "closed", "cancelled"}
         if job_status not in TERMINAL:
-            await db.execute(
-                text("UPDATE jobs SET status='in_progress', updated_at=NOW() WHERE id=:jid"),
-                {"jid": job_id_val},
-            )
+            target_status = "hired" if job_status == "quoted" else "in_progress"
+            try:
+                if job_status == "open":
+                    await JobStateMachine.system_transition(
+                        job,
+                        "quoted",
+                        db,
+                        note="Quote accepted before job was marked quoted.",
+                    )
+                    await JobStateMachine.transition(job, "hired", current_user, db)
+                elif target_status == "hired":
+                    await JobStateMachine.transition(job, "hired", current_user, db)
+                if job.status == "hired":
+                    await JobStateMachine.system_transition(
+                        job,
+                        "in_progress",
+                        db,
+                        note="Job moved in progress after homeowner accepted quote.",
+                    )
+            except InvalidTransitionError as exc:
+                raise HTTPException(status_code=409, detail=str(exc))
 
     elif new_status == "rejected":
         # Reopen job only if no accepted quote remains for this job
@@ -287,11 +319,6 @@ async def update_quote_status(
                 except Exception as e:
                     if not isinstance(e, InvalidTransitionError):
                         print(f"[quotes] State machine error on reopen (non-fatal): {e}")
-                # Explicit UPDATE as the definitive source of truth
-                await db.execute(
-                    text("UPDATE jobs SET status='open', updated_at=NOW() WHERE id=:jid"),
-                    {"jid": job_id_val},
-                )
 
     await db.commit()
     # All ORM objects are expired past this point -- use only local vars above

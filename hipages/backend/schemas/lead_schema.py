@@ -39,5 +39,10 @@ class LeadResponse(BaseModel):
     # High Value: job budget is $1000+ (significant Australian trade job)
     is_high_value:   bool = False
 
+    # Redo flag — True when this job was returned to in_progress after a
+    # dispute resolution (redo_work). Drives the 'redo job' banner on the
+    # tradie Active tab so the tradie knows this is a post-dispute return.
+    is_redo_job:     bool = False
+
     class Config:
         from_attributes = True

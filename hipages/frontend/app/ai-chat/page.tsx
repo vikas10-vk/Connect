@@ -45,7 +45,7 @@ export default function AIChatPage() {
             </div>
             <div>
               <p className="font-bold text-gray-900 text-sm leading-none">ProConnect AI</p>
-              <p className="text-xs text-green-500 font-medium mt-0.5">● Online</p>
+              <p className="text-xs text-green-500 font-medium mt-0.5">Online</p>
             </div>
           </div>
 

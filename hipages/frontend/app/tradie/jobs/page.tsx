@@ -98,7 +98,7 @@ function LeadCard({
               )}
               {lead.is_high_value && (
                 <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-black uppercase tracking-[0.15em] px-3 py-1 rounded-full">
-                  💰 High Value
+                  High Value
                 </span>
               )}
               {isQuoted && (
@@ -315,7 +315,7 @@ export default function Jobs() {
         <div>
           <h1 className="text-4xl font-black tracking-tighter text-[#071D36] uppercase">Jobs</h1>
           <p className="text-gray-500 font-bold text-sm mt-1">
-            {isLoading ? 'Loading…' : `${leads.length} total lead${leads.length !== 1 ? 's' : ''}`}
+            {isLoading ? 'Loading...' : `${leads.length} total lead${leads.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         <div className="flex gap-3">
@@ -323,7 +323,7 @@ export default function Jobs() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-[#1DE9B6] transition-colors" />
             <input
               type="text"
-              placeholder="Search jobs or suburb…"
+              placeholder="Search jobs or suburb..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{ backgroundColor: '#FFFFFF' }}
@@ -374,7 +374,7 @@ export default function Jobs() {
             className="rounded-[3rem] p-20 flex flex-col items-center justify-center gap-4 border border-white/5"
           >
             <Loader2 className="w-10 h-10 text-[#1DE9B6] animate-spin" />
-            <p className="text-gray-500 font-bold text-sm uppercase tracking-widest">Loading leads…</p>
+            <p className="text-gray-500 font-bold text-sm uppercase tracking-widest">Loading leads...</p>
           </div>
         ) : filtered.length === 0 ? (
           <EmptyState tab={activeTab} />

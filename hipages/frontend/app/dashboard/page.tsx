@@ -210,7 +210,7 @@ function DashboardContent() {
       {/* ── Main ── */}
       <div style={{ flex: 1, minWidth: 0, width: '100%', maxWidth: '100vw', marginLeft: isMobile ? 0 : 240, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* Mobile topbar — only on mobile */}
+        {/* Mobile topbar  -  only on mobile */}
         {isMobile && (
           <div
             style={{

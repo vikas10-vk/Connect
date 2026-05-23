@@ -31,7 +31,7 @@ export interface TradieProfile {
   reviewCount: number
   credits: number
   responseRate: number
-  // Mirrors backend VERIFICATION_STATUS_CHOICES exactly — "verified" not "approved"
+  // Mirrors backend VERIFICATION_STATUS_CHOICES exactly  -  "verified" not "approved"
   verification_status: 'pending_review' | 'in_review' | 'verified' | 'rejected' | 'suspended' | 'needs_documents'
   solo_or_team?: 'solo' | 'team'
   team_size?: string | null
@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = useCallback(async () => {
     try {
-      // Tokens are HttpOnly — JS cannot read them. hasSession() checks the
+      // Tokens are HttpOnly  -  JS cannot read them. hasSession() checks the
       // readable csrf_token cookie purely as a "skip the probe if clearly
       // logged out" hint. The /auth/me call is always the real check.
       if (!hasSession()) {
@@ -108,12 +108,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const profileRes = await api.get(`/tradies/profile/me`)
           setTradieProfile(profileRes.data)
         } catch {
-          // Profile may not exist yet — ignore
+          // Profile may not exist yet  -  ignore
         }
       }
       return mappedUser
     } catch {
-      // Session invalid/expired — the proxy + interceptor handle token refresh;
+      // Session invalid/expired  -  the proxy + interceptor handle token refresh;
       // if we still land here the session is gone, so just clear local state.
       setUser(null)
     } finally {
@@ -149,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         full_name: data.name,
         role: data.role,
       })
-      // Backend sends OTP on register — log user in so context is populated,
+      // Backend sends OTP on register  -  log user in so context is populated,
       // then caller redirects to /verify-email.
       await login(data.email, data.password, data.role)
     } catch (error: any) {

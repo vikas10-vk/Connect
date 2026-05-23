@@ -26,6 +26,7 @@
 from models.user import User                            # noqa: F401
 from models.suburb import Suburb                        # noqa: F401
 from models.audit_event import AuditEvent               # noqa: F401
+from models.outbox_event import OutboxEvent             # noqa: F401
 
 # ── ServiceQuestion MUST come before Category ────────────────────────────────
 # Category.service_questions = relationship("ServiceQuestion", ...)
@@ -56,6 +57,7 @@ from models.job import Job                              # noqa: F401
 from models.job_event import JobEvent                   # noqa: F401
 from models.job_photo import JobPhoto                   # noqa: F401
 from models.job_assignment import JobAssignment         # noqa: F401
+from models.realtime_notification import RealtimeNotification  # noqa: F401
 
 # ── Transaction models (depend on job + tradie) ──────────────────────────────
 from models.lead import Lead                            # noqa: F401

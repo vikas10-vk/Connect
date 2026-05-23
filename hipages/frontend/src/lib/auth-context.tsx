@@ -1,5 +1,5 @@
 /**
- * DEPRECATED — this file is kept only for backward-compatibility.
+ * DEPRECATED  -  this file is kept only for backward-compatibility.
  *
  * The canonical auth context lives at:
  *   src/contexts/AuthContext.tsx

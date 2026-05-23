@@ -7,7 +7,7 @@
  *
  * Features:
  *  - Sticky sidebar that stays visible on scroll (correct height containment)
- *  - Unified nav — shows Leads + Active Jobs only when approved
+ *  - Unified nav  -  shows Leads + Active Jobs only when approved
  *  - Available/Offline status toggle in the sidebar header
  *  - Live verification status badge
  *  - Mobile hamburger + slide-out drawer
@@ -102,7 +102,7 @@ function TradieStudioLayoutInner({ children }: Props) {
       setNewLeadCount(leads.filter(l => l.status === 'sent').length);
 
       // "Active jobs" badge: leads whose job is in progress
-      // (accept goes directly to in_progress — no separate "hired" step)
+      // (accept goes directly to in_progress  -  no separate "hired" step)
       setActiveJobCount(
         leads.filter(l => l.job_status === 'in_progress').length
       );
@@ -158,7 +158,7 @@ function TradieStudioLayoutInner({ children }: Props) {
     const [base, query] = href.split('?');
     if (pathname !== base) return false;
     if (!query) {
-      // Overview — active only when there's no ?tab= param in the URL.
+      // Overview  -  active only when there's no ?tab= param in the URL.
       return !searchParams.get('tab');
     }
     const hrefParams = new URLSearchParams(query);
@@ -324,7 +324,7 @@ function TradieStudioLayoutInner({ children }: Props) {
       `}</style>
 
       <div className="ts-shell">
-        {/* Desktop sidebar — sticky, full height, never scrolls away */}
+        {/* Desktop sidebar  -  sticky, full height, never scrolls away */}
         <aside className="ts-sidebar">
           <SidebarContent />
         </aside>

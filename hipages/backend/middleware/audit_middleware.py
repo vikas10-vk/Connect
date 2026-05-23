@@ -47,7 +47,6 @@ ENTITY_PATTERNS = [
     (re.compile(r"/api/v1/reviews/([^/]+)"),        "review"),
     (re.compile(r"/api/v1/auth/"),                  "auth"),
     (re.compile(r"/api/v1/uploads/"),               "upload"),
-    (re.compile(r"/api/v1/payments/"),              "payment"),
 ]
 
 # Non-UUID path segments that should not be treated as entity IDs

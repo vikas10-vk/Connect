@@ -1,5 +1,5 @@
 /**
- * Canonical trade categories — exactly 24 entries matching the backend DB seed.
+ * Canonical trade categories  -  exactly 24 entries matching the backend DB seed.
  * Each slug matches the Level-1 category slug in the categories table.
  *
  * DO NOT add free-form entries here. If a new trade is needed, add it to
@@ -7,36 +7,36 @@
  */
 export interface TradieCategory {
   name: string;   // Display name shown to users
-  slug: string;   // DB slug — used when posting a job
+  slug: string;   // DB slug  -  used when posting a job
   icon: string;   // Emoji icon for the category grid
   description: string;
 }
 
 export const TRADIE_CATEGORIES: TradieCategory[] = [
-  { name: 'Plumbing',                    slug: 'plumbing',             icon: '🔧', description: 'Taps, pipes, drains, hot water & gas plumbing' },
-  { name: 'Electrical',                  slug: 'electrical',           icon: '⚡', description: 'Wiring, switchboards, power points & lighting' },
-  { name: 'Carpentry & Joinery',         slug: 'carpentry',            icon: '🪵', description: 'Decking, doors, frames, built-ins & pergolas' },
-  { name: 'Painting & Decorating',       slug: 'painting',             icon: '🎨', description: 'Interior, exterior & commercial painting' },
-  { name: 'Tiling',                      slug: 'tiling',               icon: '🧱', description: 'Floor & wall tiling, waterproofing & grout' },
-  { name: 'Roofing',                     slug: 'roofing',              icon: '🏠', description: 'Roof repairs, replacement, gutters & downpipes' },
-  { name: 'Air Conditioning & Heating',  slug: 'hvac',                 icon: '❄️', description: 'Split systems, ducted AC, heating units & service' },
-  { name: 'Landscaping & Gardening',     slug: 'landscaping',          icon: '🌿', description: 'Garden design, lawn care, irrigation & trees' },
-  { name: 'Concreting & Paving',         slug: 'concreting',           icon: '🛣️', description: 'Driveways, paths, slabs & concrete resurfacing' },
-  { name: 'Plastering',                  slug: 'plastering',           icon: '🏗️', description: 'Plasterboard, cornice, render & patch repairs' },
-  { name: 'Flooring',                    slug: 'flooring',             icon: '🪜', description: 'Timber, hybrid, carpet & vinyl floor installation' },
-  { name: 'Fencing & Gates',             slug: 'fencing',              icon: '🔩', description: 'Colorbond, timber, pool fencing & gate automation' },
-  { name: 'Glazing & Window Repairs',    slug: 'glazing',              icon: '🪟', description: 'Window glass, shower screens, splashbacks & mirrors' },
-  { name: 'Pest Control',                slug: 'pest-control',         icon: '🐛', description: 'Termite inspection, treatment & general pest control' },
-  { name: 'Security Systems',            slug: 'security',             icon: '🔒', description: 'Alarms, CCTV, intercoms & access control' },
-  { name: 'Solar & Renewable Energy',    slug: 'solar',                icon: '☀️', description: 'Solar panels, battery storage & solar hot water' },
-  { name: 'Gas Fitting',                 slug: 'gas-fitting',          icon: '🔥', description: 'Gas appliance installation, repair & leak detection' },
-  { name: 'Demolition',                  slug: 'demolition',           icon: '🔨', description: 'Residential & commercial demolition & site clearance' },
-  { name: 'Waterproofing',               slug: 'waterproofing',        icon: '💧', description: 'Wet areas, decks, balconies & below-slab waterproofing' },
-  { name: 'Cleaning',                    slug: 'cleaning',             icon: '🧹', description: 'End of lease, builders, deep cleaning & pressure washing' },
-  { name: 'Handyman',                    slug: 'handyman',             icon: '🛠️', description: 'General repairs, flat-pack assembly & odd jobs' },
-  { name: 'Building & Construction',     slug: 'building',             icon: '🏗️', description: 'Extensions, renovations & structural building work' },
-  { name: 'Bathroom Renovation',         slug: 'bathroom-renovation',  icon: '🛁', description: 'Full bathroom & ensuite renovations' },
-  { name: 'Kitchen Renovation',          slug: 'kitchen-renovation',   icon: '🍳', description: 'Full kitchen renovations & cabinet installation' },
+  { name: 'Plumbing',                    slug: 'plumbing',             icon: '', description: 'Taps, pipes, drains, hot water & gas plumbing' },
+  { name: 'Electrical',                  slug: 'electrical',           icon: '', description: 'Wiring, switchboards, power points & lighting' },
+  { name: 'Carpentry & Joinery',         slug: 'carpentry',            icon: '', description: 'Decking, doors, frames, built-ins & pergolas' },
+  { name: 'Painting & Decorating',       slug: 'painting',             icon: '', description: 'Interior, exterior & commercial painting' },
+  { name: 'Tiling',                      slug: 'tiling',               icon: '', description: 'Floor & wall tiling, waterproofing & grout' },
+  { name: 'Roofing',                     slug: 'roofing',              icon: '', description: 'Roof repairs, replacement, gutters & downpipes' },
+  { name: 'Air Conditioning & Heating',  slug: 'hvac',                 icon: '', description: 'Split systems, ducted AC, heating units & service' },
+  { name: 'Landscaping & Gardening',     slug: 'landscaping',          icon: '', description: 'Garden design, lawn care, irrigation & trees' },
+  { name: 'Concreting & Paving',         slug: 'concreting',           icon: '', description: 'Driveways, paths, slabs & concrete resurfacing' },
+  { name: 'Plastering',                  slug: 'plastering',           icon: '', description: 'Plasterboard, cornice, render & patch repairs' },
+  { name: 'Flooring',                    slug: 'flooring',             icon: '', description: 'Timber, hybrid, carpet & vinyl floor installation' },
+  { name: 'Fencing & Gates',             slug: 'fencing',              icon: '', description: 'Colorbond, timber, pool fencing & gate automation' },
+  { name: 'Glazing & Window Repairs',    slug: 'glazing',              icon: '', description: 'Window glass, shower screens, splashbacks & mirrors' },
+  { name: 'Pest Control',                slug: 'pest-control',         icon: '', description: 'Termite inspection, treatment & general pest control' },
+  { name: 'Security Systems',            slug: 'security',             icon: '', description: 'Alarms, CCTV, intercoms & access control' },
+  { name: 'Solar & Renewable Energy',    slug: 'solar',                icon: '', description: 'Solar panels, battery storage & solar hot water' },
+  { name: 'Gas Fitting',                 slug: 'gas-fitting',          icon: '', description: 'Gas appliance installation, repair & leak detection' },
+  { name: 'Demolition',                  slug: 'demolition',           icon: '', description: 'Residential & commercial demolition & site clearance' },
+  { name: 'Waterproofing',               slug: 'waterproofing',        icon: '', description: 'Wet areas, decks, balconies & below-slab waterproofing' },
+  { name: 'Cleaning',                    slug: 'cleaning',             icon: '', description: 'End of lease, builders, deep cleaning & pressure washing' },
+  { name: 'Handyman',                    slug: 'handyman',             icon: '', description: 'General repairs, flat-pack assembly & odd jobs' },
+  { name: 'Building & Construction',     slug: 'building',             icon: '', description: 'Extensions, renovations & structural building work' },
+  { name: 'Bathroom Renovation',         slug: 'bathroom-renovation',  icon: '', description: 'Full bathroom & ensuite renovations' },
+  { name: 'Kitchen Renovation',          slug: 'kitchen-renovation',   icon: '', description: 'Full kitchen renovations & cabinet installation' },
 ];
 
 /**

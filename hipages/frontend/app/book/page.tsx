@@ -31,7 +31,7 @@ const STEPS = [
 
 const URGENCY_OPTIONS = [
   { id: 'emergency', label: 'Emergency', subtitle: 'Right now', icon: Bell, color: '#DC2626', bg: '#FEF2F2' },
-  { id: 'asap', label: 'ASAP', subtitle: '24–48 hours', icon: Bell, color: '#D97706', bg: '#FFFBEB' },
+  { id: 'asap', label: 'ASAP', subtitle: '24-48 hours', icon: Bell, color: '#D97706', bg: '#FFFBEB' },
   { id: 'next_few_days', label: 'This week', subtitle: 'Within a few days', icon: Clock, color: '#2563EB', bg: '#EFF6FF' },
   { id: 'next_few_weeks', label: 'Next few weeks', subtitle: 'No rush', icon: Calendar, color: '#16A34A', bg: '#F0FDF4' },
   { id: 'flexible', label: 'Flexible', subtitle: 'Best tradie first', icon: Calendar, color: '#7C3AED', bg: '#F5F3FF' },
@@ -153,7 +153,7 @@ function CancelModal({ step, selectedCategory, jobTitle, onSave, onDiscard, onRe
             <AlertTriangle className="w-7 h-7 text-amber-500" />
           </div>
           <h2 className="text-lg font-black text-gray-900">Cancel booking?</h2>
-          <p className="text-sm text-gray-500 mt-1">Step {step} of 5 — progress will be lost.</p>
+          <p className="text-sm text-gray-500 mt-1">Step {step} of 5  -  progress will be lost.</p>
         </div>
         <div className="mx-6 mb-4 p-4 rounded-2xl bg-gray-50 border border-gray-100">
           <div className="flex items-center gap-2 mb-3">
@@ -168,7 +168,7 @@ function CancelModal({ step, selectedCategory, jobTitle, onSave, onDiscard, onRe
                 i + 1 < step ? 'bg-emerald-100 text-emerald-700' :
                   i + 1 === step ? 'bg-brand-gold/10 text-brand-gold' : 'bg-gray-100 text-gray-400'
               )}>
-                {i + 1 < step ? '✓ ' : ''}{label}
+                {label}
               </span>
             ))}
           </div>
@@ -207,7 +207,7 @@ function GuidedQuestions({
   const questions = getGuidedQuestions(category);
   const [dismissed, setDismissed] = useState<number[]>([]);
 
-  // Reset dismissed when category changes — P1 fix
+  // Reset dismissed when category changes  -  P1 fix
   const prevCat = useRef(category);
   useEffect(() => {
     if (prevCat.current !== category) {
@@ -228,7 +228,7 @@ function GuidedQuestions({
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
       <div className="flex items-center gap-2">
         <Sparkles className="w-3.5 h-3.5 text-violet-500" />
-        <p className="text-xs font-bold text-violet-700">Help tradies quote accurately — add these details:</p>
+        <p className="text-xs font-bold text-violet-700">Help tradies quote accurately  -  add these details:</p>
       </div>
       <div className="space-y-2">
         {visible.map((q, idx) => {
@@ -300,8 +300,8 @@ function JobSummaryCard({
       {/* Stats row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 bg-white border-b border-gray-100">
         {[
-          { label: 'Service', value: selectedCategory || '—', step: 1 },
-          { label: 'Urgency', value: selectedUrgency?.label || '—', step: 2 },
+          { label: 'Service', value: selectedCategory || ' - ', step: 1 },
+          { label: 'Urgency', value: selectedUrgency?.label || ' - ', step: 2 },
           { label: 'Photos', value: photos.length > 0 ? `${photos.length} attached` : 'None', step: 2 },
         ].map(({ label, value, step }) => (
           <button key={label} onClick={() => onEdit(step)}
@@ -339,7 +339,7 @@ function JobSummaryCard({
           </div>
           <div>
             <p className="text-xs font-black text-emerald-800">Ready to match tradies</p>
-            <p className="text-[10px] text-emerald-600 mt-0.5">3 steps completed · Verified professionals only</p>
+            <p className="text-[10px] text-emerald-600 mt-0.5">3 steps completed  |  Verified professionals only</p>
           </div>
         </div>
         <div className="text-right">
@@ -387,7 +387,7 @@ function BookingContent() {
           .map(c => ({
             name: c.name,
             slug: c.slug,
-            icon: TRADIE_CATEGORIES.find(t => t.slug === c.slug)?.icon ?? '🔧',
+            icon: TRADIE_CATEGORIES.find(t => t.slug === c.slug)?.icon ?? '',
             description: c.description ?? '',
           }));
         if (mapped.length > 0) setApiCategories(mapped);
@@ -591,7 +591,7 @@ function BookingContent() {
         return;
       }
     }
-    // Could not auto-detect a canonical category — carry the text into description
+    // Could not auto-detect a canonical category  -  carry the text into description
     // so the user can still describe their problem, but keep them on Step 1 to
     // explicitly pick a service tile.
     if (!description) setDescription(categorySearch);
@@ -633,7 +633,7 @@ function BookingContent() {
       setFieldErrors(e => ({ ...e, category: '' }));
       setStep(2);
     } else {
-      // Category in suggestion doesn't match canonical list — keep user on Step 1
+      // Category in suggestion doesn't match canonical list  -  keep user on Step 1
       // and pre-fill description so they can manually pick the right service tile.
       if (!description) setDescription(s.problem);
       setFieldErrors(e => ({ ...e, category: `Could not auto-select "${s.category}". Please pick a service below.` }));
@@ -770,7 +770,7 @@ function BookingContent() {
       }
     }
     if (step === 2) {
-      if (description.trim().length < 10) errors.description = `Add more detail — at least 10 characters (${description.length}/10)`;
+      if (description.trim().length < 10) errors.description = `Add more detail  -  at least 10 characters (${description.length}/10)`;
       if (!urgency) errors.urgency = 'Please select how urgent this job is.';
     }
     if (step === 3 && jobTitle.trim().length < 3) errors.jobTitle = 'Please enter a project title (min 3 characters).';
@@ -843,7 +843,7 @@ function BookingContent() {
       try {
         await postJob();
         try { localStorage.removeItem(DRAFT_KEY); } catch { }
-        toast.success('Job posted! Tradies will be in touch. 🎉');
+        toast.success('Job posted! Tradies will be in touch.');
         router.push('/dashboard');
       } catch (err: any) {
         toast.error(parseApiError(err));
@@ -857,7 +857,7 @@ function BookingContent() {
   const postJob = async () => {
     // Resolve slug from the fetched canonical list first, fall back to local map.
     // This guarantees the slug we send is always one the backend can look up
-    // directly without relying on NLP — so the job lands on the exact category
+    // directly without relying on NLP  -  so the job lands on the exact category
     // the tradie registered under.
     const slug = selectedCategorySlug();
     if (!slug) {
@@ -889,14 +889,14 @@ function BookingContent() {
     }
     setLoading(true); setAuthError(''); setOtpError('');
     try {
-      // Create the account — backend sends OTP email automatically on register
+      // Create the account  -  backend sends OTP email automatically on register
       await register({ email, password, name: fullName || email.split('@')[0], role: 'homeowner' });
       // Now send OTP explicitly (account is created & logged in at this point)
       try {
         await api.post('/auth/send-email-otp');
         toast.success('A 6-digit code was sent to your email.');
       } catch (otpErr: any) {
-        // 429 = OTP already sent recently — still show the OTP input
+        // 429 = OTP already sent recently  -  still show the OTP input
         if (otpErr?.response?.status !== 429) throw otpErr;
         toast.success('Check your email for the verification code.');
       }
@@ -918,10 +918,10 @@ function BookingContent() {
     try {
       await api.post('/auth/verify-email-otp', { code: otpCode.trim() });
       setOtpVerified(true);
-      // OTP passed — now post the job
+      // OTP passed  -  now post the job
       await postJob();
       try { localStorage.removeItem(DRAFT_KEY); } catch { }
-      toast.success('Job posted! Tradies will be in touch. 🎉');
+      toast.success('Job posted! Tradies will be in touch.');
       router.push('/dashboard');
     } catch (err: any) {
       const msg = err?.response?.data?.detail || 'Invalid or expired code. Try again.';
@@ -940,12 +940,12 @@ function BookingContent() {
     setLoading(true); setAuthError('');
     try {
       if (!isAuthenticated) {
-        // Login flow: straight through — no OTP needed for returning users
+        // Login flow: straight through  -  no OTP needed for returning users
         await login(email, password);
       }
       await postJob();
       try { localStorage.removeItem(DRAFT_KEY); } catch { }
-      toast.success('Job posted! Tradies will be in touch. 🎉');
+      toast.success('Job posted! Tradies will be in touch.');
       router.push('/dashboard');
     } catch (err: any) {
       let msg = parseApiError(err);
@@ -1005,7 +1005,7 @@ function BookingContent() {
                 className="flex items-center gap-1.5">
                 {saveIndicator === 'saving' ? (
                   <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Saving…
+                    <Loader2 className="w-3 h-3 animate-spin" /> Saving...
                   </span>
                 ) : (
                   <span className="text-xs text-emerald-600 font-bold flex items-center gap-1">
@@ -1033,7 +1033,7 @@ function BookingContent() {
         </div>
       </header>
 
-      {/* Progress bar — stays visible with header */}
+      {/* Progress bar  -  stays visible with header */}
       <div className="border-b border-gray-100 shadow-sm" style={{ background: '#FFF8E7' }}>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-2 pb-3">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -1079,7 +1079,7 @@ function BookingContent() {
                 {searchParams.get('q') && (
                   <div className="mt-3 flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-4 py-2.5">
                     <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                    <p className="text-xs text-violet-700 font-medium">Your description is ready — pick a service and we'll continue from there.</p>
+                    <p className="text-xs text-violet-700 font-medium">Your description is ready  -  pick a service and we'll continue from there.</p>
                   </div>
                 )}
                 {/* P2: Category error */}
@@ -1111,7 +1111,7 @@ function BookingContent() {
                       : null;
                     return canonical ? (
                       <span className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-[#D4AA3A] bg-[#D4AA3A]/8 px-2.5 py-1 rounded-full mr-2 whitespace-nowrap">
-                        {canonical.icon} {canonical.name}
+                        {canonical.name}
                       </span>
                     ) : null;
                   })()}
@@ -1128,7 +1128,7 @@ function BookingContent() {
                       className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-3xl shadow-2xl overflow-hidden"
                     >
                       <div className="px-3 pt-3 pb-1">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Common issues — click to select</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Common issues  -  click to select</p>
                       </div>
                       {suggestions.map((s, i) => (
                         <button
@@ -1137,7 +1137,6 @@ function BookingContent() {
                           onClick={() => handleSuggestionClick(s)}
                           className={`w-full text-left px-5 py-3 flex items-center gap-3 transition-colors ${activeIdx === i ? 'bg-[#D4AA3A]/5' : 'hover:bg-gray-50'}`}
                         >
-                          <span className="text-lg shrink-0">{s.icon}</span>
                           <span className="flex-1 text-sm font-semibold text-gray-800">{s.problem}</span>
                           <span className="text-[11px] font-bold text-[#D4AA3A] bg-[#D4AA3A]/8 px-2.5 py-1 rounded-full shrink-0">
                             {s.category}
@@ -1159,7 +1158,6 @@ function BookingContent() {
                     className={cn("p-4 rounded-2xl border-2 flex flex-col items-center gap-2 transition-all group text-center",
                       selectedCategory === cat.name ? "border-brand-gold bg-brand-gold/5" : "border-gray-100 bg-white hover:border-brand-gold/30 hover:shadow-md"
                     )}>
-                    <span className="text-2xl">{cat.icon}</span>
                     <span className={cn("text-xs font-bold leading-snug",
                       selectedCategory === cat.name ? "text-brand-gold" : "text-gray-800")}>{cat.name}</span>
                   </button>
@@ -1173,7 +1171,7 @@ function BookingContent() {
             <motion.div key="s2" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} className="space-y-6">
               <div>
                 <h2 className="text-2xl sm:text-3xl font-black text-gray-900">Describe the job</h2>
-                <p className="text-gray-500 mt-2">Tell us what's needed — AI writes the professional brief in the next step.</p>
+                <p className="text-gray-500 mt-2">Tell us what's needed  -  AI writes the professional brief in the next step.</p>
               </div>
               <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-6">
                 {/* Description */}
@@ -1194,7 +1192,7 @@ function BookingContent() {
                     </p>
                   ) : (
                     <div className="flex items-center justify-between">
-                      <p className="text-xs text-gray-400">{description.length} chars — include materials, quantities, location</p>
+                      <p className="text-xs text-gray-400">{description.length} chars  -  include materials, quantities, location</p>
                       {description.length >= 10 && description.length < 40 && (
                         <p className="text-xs text-amber-600 font-medium">More detail = better AI brief</p>
                       )}
@@ -1229,7 +1227,7 @@ function BookingContent() {
                       <AlertCircle className="w-3 h-3" /> {fieldErrors.urgency}
                     </p>
                   ) : selectedUrgency && (
-                    <p className="text-xs text-gray-400 pl-1">{selectedUrgency.subtitle} — AI will include this timing in the brief</p>
+                    <p className="text-xs text-gray-400 pl-1">{selectedUrgency.subtitle}  -  AI will include this timing in the brief</p>
                   )}
                 </div>
 
@@ -1238,7 +1236,7 @@ function BookingContent() {
                   <div className="flex items-center justify-between">
                     <div>
                       <label className="text-sm font-bold text-gray-700">Photos</label>
-                      <span className="text-gray-400 font-normal text-sm"> — optional but recommended</span>
+                      <span className="text-gray-400 font-normal text-sm">  -  optional but recommended</span>
                     </div>
                     {photos.length > 0 && <span className="text-xs text-gray-400">{photos.length}/5</span>}
                   </div>
@@ -1327,7 +1325,7 @@ function BookingContent() {
                   {aiError && (
                     <div className="flex items-center gap-2 bg-amber-50 border border-amber-100 px-4 py-3 rounded-2xl">
                       <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                      <p className="text-sm text-amber-800">AI unavailable — your original description will be used.</p>
+                      <p className="text-sm text-amber-800">AI unavailable  -  your original description will be used.</p>
                     </div>
                   )}
                   <div className="space-y-1.5">
@@ -1396,7 +1394,7 @@ function BookingContent() {
                 <p className="text-gray-500 mt-2">We connect you with tradies who work in your area.</p>
               </div>
               <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm space-y-5">
-                {/* P3: Main location input — accepts suburb name OR postcode */}
+                {/* P3: Main location input  -  accepts suburb name OR postcode */}
                 <div className="relative">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                   <input
@@ -1546,7 +1544,7 @@ function BookingContent() {
                       disabled={otpLoading || otpCode.length < 4}
                       className="w-full bg-brand-gold text-white py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                     >
-                      {otpLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</> : <><Check className="w-4 h-4" /> Verify &amp; Post Job</>}
+                      {otpLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying...</> : <><Check className="w-4 h-4" /> Verify &amp; Post Job</>}
                     </button>
                     <button
                       type="button"
@@ -1611,14 +1609,14 @@ function BookingContent() {
                           className={cn("w-full bg-brand-ivory/50 border rounded-xl pl-11 pr-12 py-3.5 text-sm font-medium focus:outline-none focus:ring-2 transition-all",
                             fieldErrors.password ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-brand-gold/50 focus:ring-brand-gold/10"
                           )} />
-                        {/* Live password rules — register mode only */}
+                        {/* Live password rules  -  register mode only */}
                         {authMode === 'register' && pwdFocused && password.length > 0 && (
                           <div className="mt-2 px-1 grid grid-cols-2 gap-1">
                             {([
                               [password.length >= 8,    '8+ characters'],
                               [/[A-Z]/.test(password),  'Uppercase letter'],
                               [/[a-z]/.test(password),  'Lowercase letter'],
-                              [/\d/.test(password),     'Number (0–9)'],
+                              [/\d/.test(password),     'Number (0-9)'],
                             ] as [boolean, string][]).map(([ok, label]) => (
                               <div key={label} className="flex items-center gap-1.5 text-xs" style={{ color: ok ? '#16A34A' : '#9CA3AF' }}>
                                 <CheckCircle2 className="w-3 h-3 shrink-0" style={{ opacity: ok ? 1 : 0.35 }} />
@@ -1707,7 +1705,7 @@ function BookingContent() {
               className="flex items-center gap-2 bg-brand-gold text-white px-5 py-2.5 rounded-2xl font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:brightness-105"
             >
               {loading || otpLoading
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> {authMode === 'register' ? 'Creating account…' : 'Posting job…'}</>
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> {authMode === 'register' ? 'Creating account...' : 'Posting job...'}</>
                 : authMode === 'register'
                   ? <>Create Account &amp; Continue <ChevronRight className="w-4 h-4" /></>
                   : <>Post Job <ChevronRight className="w-4 h-4" /></>

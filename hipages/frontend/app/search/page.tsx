@@ -28,7 +28,7 @@ interface Tradie {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SearchPageContent — the real component.
+// SearchPageContent  -  the real component.
 // Must NOT be the default export because useSearchParams() requires
 // this component to be wrapped in <Suspense> before Next.js can
 // statically generate the page shell.
@@ -186,7 +186,7 @@ function SearchPageContent() {
                     <p className="text-xs font-black text-white leading-none truncate max-w-[90px]">
                       {user?.name?.split(' ')[0] || user?.email?.split('@')[0]}
                     </p>
-                    <p className="text-[10px] font-bold mt-0.5" style={{ color: '#D4AA3A' }}>Dashboard →</p>
+                    <p className="text-[10px] font-bold mt-0.5" style={{ color: '#D4AA3A' }}>Dashboard</p>
                   </div>
                 </Link>
                 <button
@@ -254,7 +254,7 @@ function SearchPageContent() {
               {isLoading ? 'Finding tradies...' : (
                 <>
                   {tradies.length} tradie{tradies.length !== 1 ? 's' : ''} found
-                  {selectedCategory && <span className="text-brand-gold"> · {selectedCategory}</span>}
+                  {selectedCategory && <span className="text-brand-gold">  |  {selectedCategory}</span>}
                   {suburb && <span className="text-gray-500"> near {suburb}</span>}
                 </>
               )}
@@ -400,7 +400,7 @@ function SearchPageContent() {
                           {tradie.suburb}, {tradie.state}
                         </span>
                         {tradie.radius_km && (
-                          <span className="text-sm text-gray-400">· {tradie.radius_km}km radius</span>
+                          <span className="text-sm text-gray-400"> |  {tradie.radius_km}km radius</span>
                         )}
                       </div>
                     </div>
@@ -463,7 +463,7 @@ function SearchPageContent() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SearchPage — the exported page.
+// SearchPage  -  the exported page.
 // Wraps SearchPageContent in <Suspense> so Next.js 15 can statically
 // generate the page shell without hitting the useSearchParams() error.
 // The Loader2 spinner shows during the server-side pre-render pass,

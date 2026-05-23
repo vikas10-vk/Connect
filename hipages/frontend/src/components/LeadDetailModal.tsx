@@ -81,14 +81,14 @@ interface Props {
 }
 
 // ── Urgency labels ────────────────────────────────────────────────────────────
-const URGENCY: Record<string, { label: string; emoji: string; color: string }> = {
-    emergency: { label: 'Emergency', emoji: '🚨', color: '#A33030' },
-    asap: { label: 'ASAP', emoji: '⚡', color: '#B85C00' },
-    today: { label: 'Today', emoji: '⏰', color: '#B85C00' },
-    next_few_days: { label: 'This week', emoji: '📅', color: '#0077AA' },
-    next_few_weeks: { label: 'Next few weeks', emoji: '🗓', color: '#2E7D5A' },
-    next_few_months: { label: 'Planning', emoji: '📌', color: '#7A6558' },
-    flexible: { label: 'Flexible', emoji: '🌿', color: '#2E7D5A' },
+const URGENCY: Record<string, { label: string; color: string }> = {
+    emergency: { label: 'Emergency', color: '#A33030' },
+    asap: { label: 'ASAP', color: '#B85C00' },
+    today: { label: 'Today', color: '#B85C00' },
+    next_few_days: { label: 'This week', color: '#0077AA' },
+    next_few_weeks: { label: 'Next few weeks', color: '#2E7D5A' },
+    next_few_months: { label: 'Planning', color: '#7A6558' },
+    flexible: { label: 'Flexible', color: '#2E7D5A' },
 };
 
 const COMPETITION_CONFIG = {
@@ -320,7 +320,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                                         background: `${urgency.color}15`,
                                         fontSize: 12, fontWeight: 700, color: urgency.color,
                                     }}>
-                                        {urgency.emoji} {urgency.label}
+                                        {urgency.label}
                                     </span>
                                 )}
                                 {job?.created_at && (
@@ -354,7 +354,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                                         padding: '4px 10px', borderRadius: 20, background: CREAM2,
                                         fontSize: 12, color: INK3, fontWeight: 600,
                                     }}>
-                                        {(lead.job_type || job?.job_type) === 'residential' ? '🏠 Residential' : '🏢 Commercial'}
+                                        {(lead.job_type || job?.job_type) === 'residential' ? 'Residential' : 'Commercial'}
                                     </span>
                                 )}
                                 {(lead.service_type || job?.service_type) && (
@@ -362,7 +362,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                                         padding: '4px 10px', borderRadius: 20, background: CREAM2,
                                         fontSize: 12, color: INK3, fontWeight: 600,
                                     }}>
-                                        🔧 {SERVICE_TYPE_LABELS[lead.service_type || job?.service_type || ''] || 'Other'}
+                                        {SERVICE_TYPE_LABELS[lead.service_type || job?.service_type || ''] || 'Other'}
                                     </span>
                                 )}
                             </div>
@@ -386,7 +386,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                                             {(() => {
                                                 const lo = lead.job_budget_min ?? job?.budget_min;
                                                 const hi = lead.job_budget_max ?? job?.budget_max;
-                                                if (lo && hi) return `$${lo.toLocaleString()} – $${hi.toLocaleString()}`;
+                                                if (lo && hi) return `$${lo.toLocaleString()} - $${hi.toLocaleString()}`;
                                                 if (hi) return `Up to $${hi.toLocaleString()}`;
                                                 if (lo) return `From $${lo.toLocaleString()}`;
                                                 return 'Not specified';
@@ -465,7 +465,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                                                 background: existing.status === 'accepted' ? GREEN_LIGHT : existing.status === 'rejected' ? '#FFEBEB' : AMBER_LIGHT,
                                                 color: existing.status === 'accepted' ? GREEN : existing.status === 'rejected' ? '#A33030' : AMBER,
                                             }}>
-                                                {existing.status === 'accepted' ? '✓ Accepted' : existing.status === 'rejected' ? '✕ Declined' : '⏳ Pending'}
+                                                {existing.status === 'accepted' ? 'Accepted' : existing.status === 'rejected' ? 'Declined' : 'Pending'}
                                             </span>
                                         </div>
                                     </div>
@@ -477,7 +477,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                                 </div>
                             )}
 
-                            {/* Quote form — only show if not yet quoted */}
+                            {/* Quote form  -  only show if not yet quoted */}
                             {!alreadyQuoted && (
                                 <div style={{
                                     background: CREAM, border: `1px solid ${BORDER}`, borderRadius: 16,
@@ -532,7 +532,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                                             }}
                                         />
                                         <p style={{ fontSize: 11, color: INK4, marginTop: 4, textAlign: 'right' }}>
-                                            {message.length}/1000 — min 20 characters
+                                            {message.length}/1000  -  min 20 characters
                                         </p>
                                     </div>
 
@@ -541,7 +541,7 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                                         background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 10,
                                         padding: '10px 12px', marginBottom: 14,
                                     }}>
-                                        <p style={{ fontSize: 11, fontWeight: 700, color: INK3, marginBottom: 4 }}>💡 Tips for winning quotes</p>
+                                        <p style={{ fontSize: 11, fontWeight: 700, color: INK3, marginBottom: 4 }}>Tips for winning quotes</p>
                                         <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: INK4, lineHeight: 1.8 }}>
                                             <li>Mention similar jobs you've completed</li>
                                             <li>Be specific about what's included in your price</li>
@@ -595,8 +595,8 @@ export default function LeadDetailModal({ lead, onClose, onQuoteSubmitted }: Pro
                             }}
                         >
                             {submitting
-                                ? <><Loader2 size={16} className="animate-spin" /> Sending…</>
-                                : <><Send size={15} /> Send Quote{amount ? ` — $${parseFloat(amount || '0').toLocaleString()}` : ''}</>
+                                ? <><Loader2 size={16} className="animate-spin" /> Sending...</>
+                                : <><Send size={15} /> Send Quote{amount ? `  -  $${parseFloat(amount || '0').toLocaleString()}` : ''}</>
                             }
                         </button>
                     </div>

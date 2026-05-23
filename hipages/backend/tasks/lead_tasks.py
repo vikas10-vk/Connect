@@ -40,6 +40,7 @@ from datetime import datetime, timedelta
 
 from celery import shared_task
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from models.user import User
 from models.category import Category
@@ -239,7 +240,237 @@ async def _tradie_satisfies_service_docs(db, profile: TradieProfile, category: C
 # EXISTING TASK — PRESERVED EXACTLY
 # ═══════════════════════════════════════════════════════════════════════════
 
+# ── Specificity scoring constants ────────────────────────────────────────────
+# Used by _distribute_leads to rank candidate tradies by how closely their
+# registered service categories match the job's category.
+#
+#   3.0  → Tradie registered for the EXACT job category (or a child of it —
+#          i.e. they are a *more specialised* tradie than the job requires).
+#          Example: job is "Cleaning", tradie registered for "Pool Cleaning".
+#          Example: job is "Pool Cleaning", tradie registered for "Pool Cleaning".
+#   1.0  → Tradie registered for the job category's PARENT (they cover the
+#          broader trade). Example: job is "Pool Cleaning", tradie registered
+#          for the parent "Cleaning". They CAN do it but they're not specialists.
+#   0.5  → Tradie registered for the GRANDPARENT (last-resort match).
+#
+# This means a pool-cleaning specialist always receives pool cleaning leads
+# BEFORE a generic cleaning tradie does, even if the generic tradie is slightly
+# closer. The pay-per-lead self-correcting filter on real hipages is replaced
+# here by an explicit ranking — bad matches simply never beat good matches.
+SCORE_EXACT_OR_DEEPER = 3.0
+SCORE_PARENT          = 1.0
+SCORE_GRANDPARENT     = 0.5
+
+
+async def _build_category_score_map(db, job_category_id: str) -> tuple[dict[str, float], dict[str, str | None]]:
+    """
+    Build a {category_id: score} map for a given job category, plus a
+    {role: category_id} structure that the supply-gap audit can describe.
+
+    Returns:
+      score_map      — category_id → score (see SCORE_* constants).
+      taxonomy_refs  — {"job": <id>, "parent": <id|None>, "grandparent": <id|None>,
+                       "child_count": <int>, "grandchild_count": <int>}
+
+    Why both directions are scored at 3.0 (exact OR deeper):
+      A "Pool Cleaning" specialist is a better match for a broader "Cleaning"
+      job than a generalist is, so deeper specificity (children/grandchildren
+      of the job category) is rewarded just like an exact match. Going *up*
+      (parent / grandparent) is what gets penalised — the tradie is broader
+      than the job requires, so they're a less specific fit.
+    """
+    # ── Expand DOWN: children + grandchildren ────────────────────────────
+    child_res = await db.execute(
+        select(Category.id).where(Category.parent_id == job_category_id)
+    )
+    child_ids = [row[0] for row in child_res.all()]
+    grandchild_ids: list[str] = []
+    if child_ids:
+        gc_res = await db.execute(
+            select(Category.id).where(Category.parent_id.in_(child_ids))
+        )
+        grandchild_ids = [row[0] for row in gc_res.all()]
+
+    # ── Expand UP: parent + grandparent ──────────────────────────────────
+    parent_res = await db.execute(
+        select(Category.parent_id).where(Category.id == job_category_id)
+    )
+    parent_row = parent_res.first()
+    parent_id = parent_row[0] if parent_row and parent_row[0] else None
+    grandparent_id = None
+    if parent_id:
+        gp_res = await db.execute(
+            select(Category.parent_id).where(Category.id == parent_id)
+        )
+        gp_row = gp_res.first()
+        grandparent_id = gp_row[0] if gp_row and gp_row[0] else None
+
+    score_map: dict[str, float] = {}
+    # Exact match (job's own category) takes the highest score.
+    score_map[job_category_id] = SCORE_EXACT_OR_DEEPER
+    # Children & grandchildren of the job — these tradies are *specialists*.
+    for cid in child_ids + grandchild_ids:
+        score_map[cid] = SCORE_EXACT_OR_DEEPER
+    # Parent — broader tradie, can still do the job.
+    if parent_id:
+        score_map.setdefault(parent_id, SCORE_PARENT)
+    # Grandparent — much broader, last-resort match.
+    if grandparent_id:
+        score_map.setdefault(grandparent_id, SCORE_GRANDPARENT)
+
+    taxonomy = {
+        "job":              job_category_id,
+        "parent":           parent_id,
+        "grandparent":      grandparent_id,
+        "child_count":      len(child_ids),
+        "grandchild_count": len(grandchild_ids),
+    }
+    return score_map, taxonomy
+
+
+async def _gather_scored_candidates(
+    db,
+    score_map: dict[str, float],
+    is_dev: bool,
+    job_category: Category | None,
+):
+    """
+    Pull all candidate tradies whose TradieCategory.category_id appears in
+    score_map. For each unique tradie, keep the MAX score across all of their
+    registered categories (a tradie who has both "Cleaning" and "Pool Cleaning"
+    on a pool job should be scored 3.0, not the average).
+
+    Production runs additionally enforce verified docs for the job's required
+    document set — the same gate used by the live system.
+
+    Returns: list of (profile, user, pref, score) tuples, one per tradie.
+    """
+    base_filters = [
+        TradieCategory.category_id.in_(list(score_map.keys())),
+        TradieProfile.is_available == True,
+        User.is_active == True,
+    ]
+    if not is_dev:
+        base_filters += [
+            TradieProfile.verification_status == "verified",
+            TradieProfile.lat.is_not(None),
+            TradieProfile.lng.is_not(None),
+            User.is_verified == True,
+        ]
+
+    q = (
+        select(TradieProfile, User, TradiePreference, TradieCategory.category_id)
+        .join(TradieCategory, TradieCategory.tradie_id == TradieProfile.id)
+        .join(User, User.id == TradieProfile.user_id)
+        .outerjoin(TradiePreference, TradiePreference.tradie_id == TradieProfile.id)
+        .where(*base_filters)
+    )
+    result = await db.execute(q)
+
+    # Reduce multi-category-per-tradie rows to one row per tradie with MAX score.
+    best: dict[str, tuple[TradieProfile, User, TradiePreference | None, float]] = {}
+    for profile, user, pref, matched_cat_id in result.all():
+        score = score_map.get(matched_cat_id, 0.0)
+        existing = best.get(profile.id)
+        if existing is None or score > existing[3]:
+            best[profile.id] = (profile, user, pref, score)
+    rows = list(best.values())
+
+    # Production document-verification gate.
+    if not is_dev:
+        eligible: list = []
+        for profile, user, pref, score in rows:
+            ok, missing = await _tradie_satisfies_service_docs(db, profile, job_category)
+            if ok:
+                eligible.append((profile, user, pref, score))
+            else:
+                print(
+                    f"[leads]   Skip {profile.business_name}: "
+                    f"missing verified docs for {job_category.name if job_category else 'service'} "
+                    f"({', '.join(missing)})"
+                )
+        rows = eligible
+    return rows
+
+
+def _radius_filter(scored_rows, job_lat, job_lng, job_suburb, radius_multiplier: float = 1.0):
+    """
+    Apply a haversine + suburb-name geo filter to scored candidates.
+
+    A tradie passes if EITHER:
+      • the job is inside (tradie.radius_km × radius_multiplier) kilometres, OR
+      • the job's suburb is explicitly listed in TradiePreference.service_suburbs.
+
+    Returns: list of (distance_km, score, profile, user) tuples.
+    """
+    has_coords = bool(job_lat and job_lng)
+    in_range = []
+    for profile, user, pref, score in scored_rows:
+        suburb_match = _suburb_in_list(job_suburb, pref.service_suburbs if pref else None)
+
+        if has_coords and profile.lat and profile.lng:
+            dist = haversine_distance(job_lat, job_lng, profile.lat, profile.lng)
+            radius = (profile.radius_km or 25) * radius_multiplier
+            in_radius = dist <= radius
+        else:
+            # No coordinates available — include everyone (suburb match is a bonus).
+            dist = 0.0
+            in_radius = True
+
+        if in_radius or suburb_match:
+            in_range.append((dist, score, profile, user))
+    return in_range
+
+
+async def _log_supply_gap(db, job, attempts: list[str], score_map_size: int):
+    """
+    Write a structured JobEvent so admins can spot zero-supply areas and the
+    business team can recruit. Uses the same actor_role='system' pattern that
+    no-show alerts use, so the existing admin audit views surface it.
+    """
+    try:
+        from models.job_event import JobEvent
+        ev = JobEvent(
+            job_id=job.id,
+            actor_id="system",
+            actor_role="system",
+            action="supply_gap_alert",
+            old_value={"status": job.status},
+            new_value={
+                "category_id":     job.category_id,
+                "suburb":          job.suburb,
+                "state":           job.state,
+                "attempts_tried":  attempts,
+                "categories_searched": score_map_size,
+            },
+            note=(
+                f"0 tradies matched for category {job.category_id} in {job.suburb}, "
+                f"{job.state}. Attempts: {', '.join(attempts)}. "
+                f"Consider recruiting tradies in this region/category."
+            ),
+        )
+        db.add(ev)
+    except Exception as exc:
+        # Audit logging must never block the user-facing path.
+        print(f"[leads]   Warning: supply-gap audit log failed: {exc}")
+
+
 async def _distribute_leads(job_id: str, session_factory):
+    """
+    Match a homeowner job to up to 3 tradies, ranked by specificity then distance.
+
+    Pipeline:
+      1. Load job & normalise category to the canonical trade taxonomy.
+      2. Build score_map: exact-or-deeper (3.0), parent (1.0), grandparent (0.5).
+      3. Gather candidate tradies (one row per tradie, with their MAX score).
+      4. NLP title/description fallback if the SQL category match returns 0
+         (handles the historical bug where some jobs had stale category_ids).
+      5. Geo-filter at base radius. If <3, expand to 1.5×. If still <3, expand to 2×.
+      6. Sort by (-score, distance) → highest-specificity, then closest first.
+      7. Take top 3 and create Lead rows.
+      8. If no leads were created after every fallback, notify the homeowner
+         honestly AND write a JobEvent so admins see the supply gap.
+    """
     from sqlalchemy import select
 
     async with session_factory() as db:
@@ -252,8 +483,8 @@ async def _distribute_leads(job_id: str, session_factory):
             return
 
         # 2. Idempotency guard — only skip if we already found at least 1 lead.
-        #    If previous run found 0 leads (no tradies matched), allow retry so that
-        #    newly-onboarded tradies or tradies who just turned on availability can be matched.
+        #    A previous 0-lead run is allowed to retry so that newly-onboarded
+        #    tradies or tradies who just turned availability on can be matched.
         if job.match_intelligence:
             try:
                 mi = json.loads(job.match_intelligence)
@@ -264,7 +495,6 @@ async def _distribute_leads(job_id: str, session_factory):
             except Exception:
                 pass
 
-        # Geocoding is non-fatal — fall back to suburb-name-only matching
         has_coords = bool(job.lat and job.lng)
         if not has_coords:
             print(f"[leads] Job {job_id} has no coordinates — matching by suburb name only")
@@ -277,77 +507,36 @@ async def _distribute_leads(job_id: str, session_factory):
 
         cat_res = await db.execute(select(Category).where(Category.id == job.category_id))
         job_category = cat_res.scalar_one_or_none()
-        canonical_category = await canonical_trade_category(db, job_category) if job_category else None
-        if canonical_category and canonical_category.id != job.category_id:
-            print(f"[leads]   Normalising job category {job.category_id} -> {canonical_category.id} ({canonical_category.name})")
-            job.category_id = canonical_category.id
-            job_category = canonical_category
-            db.add(job)
 
-        child_res = await db.execute(select(Category.id).where(Category.parent_id == job.category_id))
-        child_ids = [row[0] for row in child_res.all()]
-        grandchild_ids = []
-        if child_ids:
-            grandchild_res = await db.execute(select(Category.id).where(Category.parent_id.in_(child_ids)))
-            grandchild_ids = [row[0] for row in grandchild_res.all()]
-        match_category_ids = [job.category_id, *child_ids, *grandchild_ids]
-
-        # 3. SQL filter — in DEV mode we relax approval + geocoding requirements
-        #    so that test tradies receive leads without going through full verification.
-        IS_DEV = os.getenv("ENVIRONMENT", "development") == "development"
-
-        base_filters = [
-            TradieCategory.category_id.in_(match_category_ids),
-            TradieProfile.is_available == True,
-            User.is_active == True,
-        ]
-        if IS_DEV:
-            # Dev: accept any tradie that has a profile and is active
-            print(f"[leads]   DEV mode — skipping verification_status/lat/lng/is_verified filters")
-        else:
-            # Production: strict — only verified, geocoded tradies
-            # Django admin sets verification_status="verified" (NOT "approved")
-            base_filters += [
-                TradieProfile.verification_status == "verified",
-                TradieProfile.lat.is_not(None),
-                TradieProfile.lng.is_not(None),
-                User.is_verified == True,
-            ]
-
-        candidates_q = (
-            select(TradieProfile, User, TradiePreference)
-            .join(TradieCategory, TradieCategory.tradie_id == TradieProfile.id)
-            .join(User, User.id == TradieProfile.user_id)
-            .outerjoin(TradiePreference, TradiePreference.tradie_id == TradieProfile.id)
-            .where(*base_filters)
+        # ── 3. Build the specificity score map ────────────────────────────
+        # NOTE: We deliberately do NOT collapse the job's category to its level-1
+        # parent here. Jobs posted at the subcategory level ("Pool Cleaning")
+        # must stay at the subcategory level so specialist tradies score higher
+        # than generalists. The booking wizard is responsible for picking the
+        # right level; the matcher only uses the taxonomy to score, never to
+        # rewrite the job's category.
+        score_map, taxonomy = await _build_category_score_map(db, job.category_id)
+        print(
+            f"[leads]   Score map — {len(score_map)} IDs "
+            f"(exact+children {sum(1 for s in score_map.values() if s == SCORE_EXACT_OR_DEEPER)}, "
+            f"parent {sum(1 for s in score_map.values() if s == SCORE_PARENT)}, "
+            f"grandparent {sum(1 for s in score_map.values() if s == SCORE_GRANDPARENT)})"
         )
-        result = await db.execute(candidates_q)
-        rows = result.all()
 
-        if not IS_DEV:
-            doc_eligible_rows = []
-            for profile, user, pref in rows:
-                ok, missing = await _tradie_satisfies_service_docs(db, profile, job_category)
-                if ok:
-                    doc_eligible_rows.append((profile, user, pref))
-                else:
-                    print(
-                        f"[leads]   Skip {profile.business_name}: "
-                        f"missing verified docs for {job_category.name if job_category else 'service'} "
-                        f"({', '.join(missing)})"
-                    )
-            rows = doc_eligible_rows
+        # ── 4. SQL filter — production vs dev gates ────────────────────────
+        IS_DEV = os.getenv("ENVIRONMENT", "development") == "development"
+        if IS_DEV:
+            print(f"[leads]   DEV mode — skipping verification_status/lat/lng/is_verified filters")
 
-        print(f"[leads]   Eligible tradies (sql): {len(rows)}")
+        scored_rows = await _gather_scored_candidates(db, score_map, IS_DEV, job_category)
+        print(f"[leads]   Eligible tradies (sql): {len(scored_rows)}")
 
-        if not rows:
+        attempts: list[str] = ["category_match"]
+
+        # ── 5. NLP fallback for jobs that arrived with a stale category_id ─
+        if not scored_rows:
             print(f"[leads]   0 tradies — trying NLP title/description fallback...")
-
-            # ── Safety net: the job's category_id may be wrong (phantom UUID created
-            #    by an old bug, or incorrectly resolved before the category fix was
-            #    deployed). Re-resolve the correct canonical trade category using the
-            #    job's title and description via the same NLP resolver the booking
-            #    wizard uses. This is far more accurate than a slug CONTAINS query.
+            attempts.append("nlp_remap")
             from services.category_resolver import resolve_trade_category as _resolve
 
             search_text = " ".join(
@@ -366,47 +555,9 @@ async def _distribute_leads(job_id: str, session_factory):
                 )
                 job.category_id = real_category.id
                 db.add(job)
-
-                # Rebuild the child/grandchild id list for the remapped category
-                child_res2 = await db.execute(
-                    select(Category.id).where(Category.parent_id == real_category.id)
-                )
-                child_ids2 = [r[0] for r in child_res2.all()]
-                grandchild_ids2: list[str] = []
-                if child_ids2:
-                    gc_res2 = await db.execute(
-                        select(Category.id).where(Category.parent_id.in_(child_ids2))
-                    )
-                    grandchild_ids2 = [r[0] for r in gc_res2.all()]
-                remap_ids = [real_category.id, *child_ids2, *grandchild_ids2]
-
-                new_filters = base_filters.copy()
-                new_filters[0] = TradieCategory.category_id.in_(remap_ids)
-                retry_q = (
-                    select(TradieProfile, User, TradiePreference)
-                    .join(TradieCategory, TradieCategory.tradie_id == TradieProfile.id)
-                    .join(User, User.id == TradieProfile.user_id)
-                    .outerjoin(TradiePreference, TradiePreference.tradie_id == TradieProfile.id)
-                    .where(*new_filters)
-                )
-                retry_result = await db.execute(retry_q)
-                rows = retry_result.all()
-
-                if not IS_DEV:
-                    doc_eligible_rows = []
-                    for profile, user, pref in rows:
-                        ok, missing = await _tradie_satisfies_service_docs(db, profile, real_category)
-                        if ok:
-                            doc_eligible_rows.append((profile, user, pref))
-                        else:
-                            print(
-                                f"[leads]   Skip {profile.business_name}: "
-                                f"missing verified docs for {real_category.name} "
-                                f"({', '.join(missing)})"
-                            )
-                    rows = doc_eligible_rows
-
-                print(f"[leads]   After NLP remap — eligible tradies: {len(rows)}")
+                score_map, taxonomy = await _build_category_score_map(db, real_category.id)
+                scored_rows = await _gather_scored_candidates(db, score_map, IS_DEV, real_category)
+                print(f"[leads]   After NLP remap — eligible tradies: {len(scored_rows)}")
             else:
                 if not search_text:
                     print(f"[leads]   No title/description to resolve from")
@@ -415,89 +566,105 @@ async def _distribute_leads(job_id: str, session_factory):
                 else:
                     print(f"[leads]   NLP resolved same category — no change")
 
-            if not rows:
-                print(f"[leads]   0 tradies even after fallback — notifying homeowner")
-                await _store_match_intelligence(db, job, 0, 0)
-                await _notify_homeowner_no_tradies(db, job)
-                await db.commit()
-                return
-
-        # 4. Geo filter — gracefully handle missing coordinates on job or tradie
-        in_range, out_of_range = [], []
-        for profile, user, pref in rows:
-            suburb_match = _suburb_in_list(job.suburb, pref.service_suburbs if pref else None)
-
-            if has_coords and profile.lat and profile.lng:
-                dist = haversine_distance(job.lat, job.lng, profile.lat, profile.lng)
-                in_radius = dist <= (profile.radius_km or 25)
-            else:
-                # No coordinates available — include everyone (suburb match is a bonus)
-                dist = 0.0
-                in_radius = True
-
-            if in_radius or suburb_match:
-                print(f"[leads]   ✓ {profile.business_name} ({dist:.1f}km)")
-                in_range.append((dist, profile))
-            else:
-                out_of_range.append((dist, profile))
-                print(f"[leads]   ✗ {profile.business_name} ({dist:.1f}km, out of range)")
-
-        # 5. Expand radius 1.5× if < 3 found (only meaningful when coords exist)
-        if len(in_range) < 3 and out_of_range and has_coords:
-            print(f"[leads]   Expanding radius 1.5×...")
-            for dist, profile in out_of_range:
-                if dist <= (profile.radius_km or 25) * 1.5:
-                    print(f"[leads]   ↗ {profile.business_name} (extended {dist:.1f}km)")
-                    in_range.append((dist, profile))
-
-        in_range.sort(key=lambda x: x[0])
-        selected = in_range[:3]
-
-        if not selected:
-            print(f"[leads]   No tradies after expansion — notifying homeowner")
+        if not scored_rows:
+            print(f"[leads]   0 tradies even after NLP fallback — supply gap")
             await _store_match_intelligence(db, job, 0, 0)
+            await _log_supply_gap(db, job, attempts + ["zero_candidates"], len(score_map))
             await _notify_homeowner_no_tradies(db, job)
             await db.commit()
             return
 
-        # 6. Create leads (skip duplicates) and collect new ones for notification
+        # ── 6. Geo filter with auto-radius expansion ──────────────────────
+        # Stages: base radius → 1.5× → 2×. We stop as soon as we have ≥ 3
+        # candidates so the closest, most relevant tradies always win.
+        # When coordinates are missing on the job, every stage returns the
+        # full set (because _radius_filter falls back to "include all"),
+        # so we just take the first stage and move on.
+        in_range = _radius_filter(scored_rows, job.lat, job.lng, job.suburb, 1.0)
+        print(f"[leads]   In base radius: {len(in_range)}")
+
+        if len(in_range) < 3 and has_coords:
+            attempts.append("radius_1.5x")
+            in_range_15 = _radius_filter(scored_rows, job.lat, job.lng, job.suburb, 1.5)
+            if len(in_range_15) > len(in_range):
+                print(f"[leads]   Expanded radius 1.5× → {len(in_range_15)}")
+                in_range = in_range_15
+
+        if len(in_range) < 3 and has_coords:
+            attempts.append("radius_2x")
+            in_range_20 = _radius_filter(scored_rows, job.lat, job.lng, job.suburb, 2.0)
+            if len(in_range_20) > len(in_range):
+                print(f"[leads]   Expanded radius 2.0× → {len(in_range_20)}")
+                in_range = in_range_20
+
+        if not in_range:
+            print(f"[leads]   No tradies after every radius — supply gap")
+            await _store_match_intelligence(db, job, 0, 0)
+            await _log_supply_gap(db, job, attempts + ["all_radii_empty"], len(score_map))
+            await _notify_homeowner_no_tradies(db, job)
+            await db.commit()
+            return
+
+        # ── 7. Rank: (specificity DESC, distance ASC) ─────────────────────
+        # The negative score in the sort key flips the natural ascending
+        # order to descending — so a pool-cleaning specialist (score 3.0)
+        # is always picked over a generic cleaning tradie (score 1.0),
+        # even when the generic tradie is slightly closer. Distance is
+        # the tie-breaker.
+        in_range.sort(key=lambda r: (-r[1], r[0]))
+        selected = in_range[:3]
+
+        for dist, score, profile, _ in selected:
+            tag = "EXACT" if score >= SCORE_EXACT_OR_DEEPER else "PARENT" if score >= SCORE_PARENT else "GRANDPARENT"
+            print(f"[leads]   ✓ {profile.business_name} ({dist:.1f}km, score {score}, {tag})")
+
+        # ── 8. Create Lead rows (idempotent on (job_id, tradie_id)) ───────
         leads_created = 0
-        new_lead_profiles = []   # (profile, user) for email notifications
-        for dist, profile in selected:
+        new_lead_profiles: list = []
+        for dist, score, profile, _ in selected:
             exists = await db.execute(
                 select(Lead).where(Lead.job_id == job_id, Lead.tradie_id == profile.id)
             )
             if exists.scalar_one_or_none():
                 print(f"[leads]   - Lead exists for {profile.business_name}, skip")
                 continue
-            db.add(Lead(
-                id=str(uuid.uuid4()),
-                job_id=job_id,
-                tradie_id=profile.id,
-                credits_charged=0,
-                status="sent",
-            ))
+            insert_result = await db.execute(
+                pg_insert(Lead)
+                .values(
+                    id=str(uuid.uuid4()),
+                    job_id=job_id,
+                    tradie_id=profile.id,
+                    credits_charged=0,
+                    status="sent",
+                )
+                .on_conflict_do_nothing(index_elements=["job_id", "tradie_id"])
+            )
+            if not insert_result.rowcount:
+                print(f"[leads]   - Lead raced for {profile.business_name}, skip")
+                continue
             leads_created += 1
             print(f"[leads]   → Lead: {profile.business_name} ({dist:.1f}km)")
             new_lead_profiles.append(profile)
 
         await _store_match_intelligence(db, job, leads_created, len(in_range))
 
-        # ── Transition job from "open" → "quoted" now that tradies are notified ──
-        # This is the system-level transition that unlocks homeowner accept flow.
-        # We do this directly (not via the state machine) so it works even before
-        # the job_events table migration has been applied.
-        if job.status == "open":
-            job.status = "quoted"
-            db.add(job)
-            print(f"[leads]   Job status: open → quoted")
+        # Job stays "open" after distribution — status only flips to "quoted"
+        # when a tradie actually submits a quote (see routers/quotes.py).
 
         await db.commit()
         print(f"[leads] DONE — {leads_created} lead(s) for {job_id}")
 
-        # 7. Email each tradie about the new lead (best-effort, non-fatal)
+        # 9. Notify tradies — best-effort, never fatal.
         if new_lead_profiles:
             await _notify_tradies_new_lead(db, job, new_lead_profiles)
+
+        # 10. If even after radius expansion we ended up with 0 leads
+        #     (e.g. every candidate already had a Lead row), still log a
+        #     supply-gap event so admins see what happened.
+        if leads_created == 0:
+            await _log_supply_gap(db, job, attempts + ["all_already_have_leads"], len(score_map))
+            await _notify_homeowner_no_tradies(db, job)
+            await db.commit()
 
         print(f"[leads] ─────────────────────────────────────────────────")
 
@@ -791,6 +958,9 @@ async def _async_auto_close_completed_jobs(session_factory):
     import logging
     from sqlalchemy import select
     from services.job_state_machine import JobStateMachine, InvalidTransitionError
+    from services.earnings_service import record_earning, EarningsNotPayableError
+    from models.quote import Quote
+    from models.lead import Lead
 
     logger = logging.getLogger(__name__)
     cutoff = datetime.utcnow() - timedelta(hours=48)
@@ -811,6 +981,7 @@ async def _async_auto_close_completed_jobs(session_factory):
 
         logger.info("[auto-close] Found %d job(s) eligible for auto-close.", len(jobs))
         closed = 0
+        booked = 0
 
         for job in jobs:
             try:
@@ -824,13 +995,67 @@ async def _async_auto_close_completed_jobs(session_factory):
                     ),
                 )
                 closed += 1
-                logger.info("[auto-close] Job %s → closed.", job.id)
+                logger.info("[auto-close] Job %s -> closed.", job.id)
             except InvalidTransitionError as e:
                 logger.error("[auto-close] Could not close job %s: %s", job.id, e)
                 continue
 
+            # ── Auto-book the earning for the hired tradie ───────────────
+            # Now that status is 'closed', the dispute window is fully
+            # closed and the accepted quote amount is safe to book.
+            # We never raise here — booking failures are logged so the manual
+            # /earnings/record fallback still works.
+            try:
+                quote_res = await db.execute(
+                    select(Quote).where(
+                        Quote.job_id == job.id,
+                        Quote.status == "accepted",
+                    ).limit(1)
+                )
+                accepted_quote = quote_res.scalar_one_or_none()
+                if not accepted_quote:
+                    logger.debug("[auto-close] Job %s has no accepted quote — no earning to book.", job.id)
+                    continue
+
+                # The Lead row tells us which tradie was actually hired
+                lead_res = await db.execute(
+                    select(Lead).where(Lead.job_id == job.id).limit(1)
+                )
+                lead = lead_res.scalar_one_or_none()
+                tradie_id = (
+                    getattr(accepted_quote, "tradie_id", None)
+                    or (lead.tradie_id if lead else None)
+                )
+                if not tradie_id:
+                    logger.warning("[auto-close] Job %s has no tradie to book the earning to.", job.id)
+                    continue
+
+                amount = float(getattr(accepted_quote, "amount", 0) or 0)
+                if amount <= 0:
+                    logger.warning("[auto-close] Job %s accepted quote has non-positive amount %s.", job.id, amount)
+                    continue
+
+                # enforce_payable=False is safe here — we just transitioned
+                # to 'closed' in this same transaction so the strict job check
+                # would race on the not-yet-committed status.
+                await record_earning(
+                    tradie_id=tradie_id,
+                    job_id=job.id,
+                    gross_amount=amount,
+                    db=db,
+                    enforce_payable=False,
+                )
+                booked += 1
+                logger.info("[auto-close] Booked $%.2f earning for tradie %s on job %s.",
+                            amount, tradie_id, job.id)
+            except EarningsNotPayableError as exc:
+                logger.warning("[auto-close] Earning skipped for job %s: %s", job.id, exc)
+            except Exception as exc:
+                logger.error("[auto-close] Earning booking failed for job %s: %s", job.id, exc)
+
         await db.commit()
-        logger.info("[auto-close] Done — %d/%d job(s) closed.", closed, len(jobs))
+        logger.info("[auto-close] Done -- %d/%d job(s) closed, %d earning(s) booked.",
+                    closed, len(jobs), booked)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1163,3 +1388,217 @@ async def _notify_tradie_no_show_warning(job: Job, db, logger):
         )
     except Exception as e:
         logger.error("[no-show] Tradie warning email failed (non-fatal): %s", e)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NEW TASK: Retroactive lead distribution for newly-verified tradies
+# ═══════════════════════════════════════════════════════════════════════════
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60, queue="critical")
+def redistribute_open_jobs_for_tradie(self, tradie_profile_id: str):
+    """
+    Fired immediately when a tradie's verification_status transitions to 'verified'.
+
+    Solves the "late subscriber" / "delayed consumer" problem at production scale:
+
+      ► Instagram analogy: when a user follows a new creator, past posts are
+        retroactively surfaced in their feed. We do the same — when a tradie
+        gets verified, past open jobs that got 0 leads (because no tradie existed
+        at post time) are retroactively pushed to them.
+
+      ► Uber analogy: when a driver comes online, the dispatch queue immediately
+        assigns waiting trip requests. We scan the queue of 0-lead open jobs and
+        re-trigger distribution so the newly-available tradie can be matched.
+
+    Algorithm:
+      1. Load the tradie's service categories and service area (radius + coords).
+      2. Find all OPEN jobs posted in the last 30 days whose category overlaps.
+      3. Skip jobs that already have ≥ 1 lead (another tradie was already matched).
+      4. Filter by geography — only jobs within 1.5× the tradie's service radius.
+      5. Reset match_intelligence on eligible jobs (clears the idempotency guard).
+      6. Re-queue distribute_leads for each job with a staggered jitter.
+
+    The 30-day lookback window prevents lead spam for jobs that homeowners have
+    already resolved via other channels. Jobs older than 30 days are handled by
+    the existing redistribute-stale-jobs beat task which runs every 6 hours.
+    """
+    _run_task(lambda sf: _async_redistribute_open_jobs_for_tradie(tradie_profile_id, sf))
+
+
+async def _async_redistribute_open_jobs_for_tradie(
+    tradie_profile_id: str,
+    session_factory,
+) -> None:
+    """
+    Core async logic for redistribute_open_jobs_for_tradie.
+    Runs inside a fresh event loop + fresh DB engine (see _run_task).
+    """
+    async with session_factory() as db:
+
+        # ── 1. Load the newly-verified tradie ─────────────────────────────
+        profile_res = await db.execute(
+            select(TradieProfile).where(TradieProfile.id == tradie_profile_id)
+        )
+        profile = profile_res.scalar_one_or_none()
+        if not profile:
+            print(f"[retrodist] Tradie profile {tradie_profile_id} not found — skip")
+            return
+
+        if profile.verification_status != "verified":
+            print(
+                f"[retrodist] Tradie {profile.business_name} is not yet verified "
+                f"(status={profile.verification_status}) — skip"
+            )
+            return
+
+        print(
+            f"[retrodist] ══════════════════════════════════════════════════════"
+        )
+        print(
+            f"[retrodist] Tradie verified: {profile.business_name} ({tradie_profile_id})"
+        )
+
+        # ── 2. Fetch the tradie's registered categories ───────────────────
+        cat_res = await db.execute(
+            select(TradieCategory.category_id)
+            .where(TradieCategory.tradie_id == tradie_profile_id)
+        )
+        tradie_category_ids: list[str] = [row[0] for row in cat_res.all()]
+
+        if not tradie_category_ids:
+            print(
+                f"[retrodist] {profile.business_name} has no registered categories — skip"
+            )
+            return
+
+        # Also include parent categories so a "Pool Cleaning" tradie can be matched
+        # against a job posted with the parent "Cleaning" category (and vice-versa).
+        parent_res = await db.execute(
+            select(Category.parent_id)
+            .where(
+                Category.id.in_(tradie_category_ids),
+                Category.parent_id.isnot(None),
+            )
+        )
+        parent_ids: list[str] = [row[0] for row in parent_res.all() if row[0]]
+
+        # Also include child categories of the tradie's registered categories.
+        child_res = await db.execute(
+            select(Category.id)
+            .where(Category.parent_id.in_(tradie_category_ids))
+        )
+        child_ids: list[str] = [row[0] for row in child_res.all()]
+
+        match_category_ids = list(
+            set(tradie_category_ids + parent_ids + child_ids)
+        )
+        print(
+            f"[retrodist]   Service categories (incl. parent/child): {len(match_category_ids)}"
+        )
+
+        # ── 3. Find candidate open jobs (last 30 days, matching categories) ─
+        lookback = datetime.utcnow() - timedelta(days=30)
+        jobs_res = await db.execute(
+            select(Job)
+            .where(
+                Job.status == "open",
+                Job.is_deleted == False,
+                Job.category_id.in_(match_category_ids),
+                Job.created_at >= lookback,
+            )
+        )
+        all_open_jobs: list[Job] = jobs_res.scalars().all()
+        print(
+            f"[retrodist]   Open jobs in last 30 days matching categories: "
+            f"{len(all_open_jobs)}"
+        )
+
+        if not all_open_jobs:
+            print(f"[retrodist] No candidate jobs — done.")
+            return
+
+        # ── 4. Filter: skip already-matched jobs + apply geography ────────
+        eligible_jobs: list[Job] = []
+        tradie_radius_km = (profile.radius_km or 25) * 1.5  # extend 1.5× for retro-delivery
+
+        for job in all_open_jobs:
+            # Skip jobs that already have at least one lead — another tradie was matched.
+            # The homeowner is already being served; injecting a 4th lead would be
+            # spammy and violates the "max 3 tradies per job" marketplace contract.
+            if job.match_intelligence:
+                try:
+                    mi = json.loads(job.match_intelligence)
+                    if mi.get("matched", 0) > 0:
+                        print(
+                            f"[retrodist]   ✗ '{job.title}' already has "
+                            f"{mi['matched']} lead(s) — skip"
+                        )
+                        continue
+                except Exception:
+                    pass
+
+            # Geography filter — only re-queue if the job is in the tradie's area.
+            # Fall back to "include all" when coordinates are missing (dev/test safety).
+            if profile.lat and profile.lng and job.lat and job.lng:
+                dist = haversine_distance(job.lat, job.lng, profile.lat, profile.lng)
+                if dist > tradie_radius_km:
+                    print(
+                        f"[retrodist]   x '{job.title}' is {dist:.1f}km away "
+                        f"(tradie radius {tradie_radius_km:.0f}km) -- skip"
+                    )
+                    continue
+                print(
+                    f"[retrodist]   ok '{job.title}' ({dist:.1f}km) -- eligible"
+                )
+            else:
+                print(
+                    f"[retrodist]   ok '{job.title}' (no coords -- included by default)"
+                )
+
+            eligible_jobs.append(job)
+
+        print(
+            f"[retrodist]   Jobs eligible for re-distribution: {len(eligible_jobs)}"
+        )
+
+        if not eligible_jobs:
+            print(f"[retrodist] No eligible jobs after filtering -- done.")
+            return
+
+        # 5. Reset match_intelligence so _distribute_leads runs fresh
+        for job in eligible_jobs:
+            job.match_intelligence = None
+            db.add(job)
+        await db.commit()
+
+        # 6. Re-queue distribute_leads for each eligible job
+        queued = 0
+        for i, job in enumerate(eligible_jobs):
+            try:
+                jitter = random.uniform(5, 15) + (i * 8)
+                distribute_leads.apply_async(
+                    args=[job.id],
+                    countdown=jitter,
+                    queue="critical",
+                )
+                print(
+                    f"[retrodist]   -> Queued '{job.title}' ({job.id}) "
+                    f"in {jitter:.0f}s"
+                )
+                queued += 1
+            except Exception as exc:
+                print(
+                    f"[retrodist]   Warning: could not queue job {job.id}: {exc}"
+                )
+
+        print(
+            f"[retrodist] DONE -- {queued}/{len(eligible_jobs)} job(s) re-queued "
+            f"for {profile.business_name}"
+        )
+        print(f"[retrodist] ======================================================")
+
+
+# NOTE: A duplicate definition of redistribute_open_jobs_for_tradie used to live
+# here. Python lets you redefine a @shared_task with the same name, but it makes
+# the first definition silently dead -- only the second would ever be registered
+# with Celery. Removed to avoid the time-bomb of "fixed the wrong copy".

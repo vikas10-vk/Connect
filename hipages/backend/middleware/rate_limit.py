@@ -1,5 +1,5 @@
 # =============================================================================
-# middleware/rate_limit.py — Redis-based rate limiting
+# middleware/rate_limit.py â€” Redis-based rate limiting
 # Tradie Platform
 # =============================================================================
 #
@@ -7,14 +7,14 @@
 #
 # WHY: FastAPI dependencies (get_current_user) run inside route handlers,
 # AFTER middleware has already executed. So request.state.user_id was never
-# set when this middleware ran — the per-user rate limiting never activated.
+# set when this middleware ran â€” the per-user rate limiting never activated.
 #
 # FIX: Decode the JWT directly from the Authorization header inside this
-# middleware. This is NOT authentication — it's purely to make the rate
+# middleware. This is NOT authentication â€” it's purely to make the rate
 # limit key user-specific. The route dependency still performs full auth.
 #
 # NOTE: We set verify_exp=False intentionally. We want to rate-limit by
-# user_id even for expired tokens — otherwise an expired-token request
+# user_id even for expired tokens â€” otherwise an expired-token request
 # gets the weaker IP-based limit instead of the user-specific one.
 # Rejecting expired tokens is the auth dependency's job, not ours.
 # =============================================================================
@@ -36,13 +36,9 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM  = os.getenv("ALGORITHM", "HS256")
 
 # Paths that skip rate limiting entirely.
-# Webhook must never be rate-limited — Stripe retries are legitimate traffic.
-# Missed webhook = missed payment event = funds not released to tradie.
 EXEMPT_PATHS = {
     "/health",
     "/health/db",
-    "/api/v1/payments/webhook",
-    "/api/v1/payments/stripe-webhook",
 }
 
 
@@ -59,15 +55,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         redis_client = getattr(request.app.state, "redis_client", None)
         if redis_client is None:
-            logger.error("Rate limit check skipped — Redis unavailable")
+            logger.error("Rate limit check skipped â€” Redis unavailable")
             return await call_next(request)
 
-        # ── Extract user identity ──────────────────────────────────────────────
+        # â”€â”€ Extract user identity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         #
         # We decode the JWT directly here because middleware runs before route
         # dependencies. request.state.user_id would always be None otherwise.
         #
-        # This is NOT authentication — we do not reject expired tokens here.
+        # This is NOT authentication â€” we do not reject expired tokens here.
         # We just want to know: is this request from a known user?
         # Authentication (including token expiry) is the route dependency's job.
         #
@@ -88,11 +84,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 )
                 user_id = payload.get("sub")
             except Exception:
-                # Invalid token — fall through to IP-based limiting.
+                # Invalid token â€” fall through to IP-based limiting.
                 # Authentication will reject it later in the route dependency.
                 pass
 
-        # ── Build rate limit key ───────────────────────────────────────────────
+        # â”€â”€ Build rate limit key â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if user_id:
             # Per-user: authenticated users are limited by their account,
             # not their IP. This prevents bypass via IP rotation.
@@ -104,7 +100,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
             identifier = f"ip:{ip}"
 
-        # ── Sliding window counter ─────────────────────────────────────────────
+        # â”€â”€ Sliding window counter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         bucket    = int(time.time()) // 60
         redis_key = f"rate:{identifier}:{bucket}"
 
@@ -140,7 +136,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 )
 
         except Exception as e:
-            # Redis error — fail open (don't block all traffic for a Redis blip).
+            # Redis error â€” fail open (don't block all traffic for a Redis blip).
             logger.error(f"Rate limit Redis error: {e}")
 
         return await call_next(request)

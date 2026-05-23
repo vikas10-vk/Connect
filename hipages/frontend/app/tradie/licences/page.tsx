@@ -115,7 +115,7 @@ function RequestEditModal({
           </div>
           <h2 style={{ fontFamily: DISPLAY, fontSize: 20, fontWeight: 500, color: C.ink, margin: '0 0 4px', letterSpacing: '-0.01em' }}>Request to edit document</h2>
           <p style={{ fontSize: 13, color: C.ink3, margin: 0 }}>
-            <strong style={{ color: C.ink2 }}>{docRef}</strong> — our admin team will review your request.
+            <strong style={{ color: C.ink2 }}>{docRef}</strong>  -  our admin team will review your request.
           </p>
         </div>
 
@@ -157,7 +157,7 @@ function RequestEditModal({
             <button onClick={submit} disabled={saving}
               style={{ flex: 2, padding: '11px', borderRadius: 10, border: 'none', background: saving ? C.ink3 : C.ink, color: C.card, fontWeight: 600, fontSize: 13, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: UI }}>
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Send size={13} />}
-              {saving ? 'Sending…' : 'Send Request'}
+              {saving ? 'Sending...' : 'Send Request'}
             </button>
           </div>
         </div>
@@ -192,7 +192,7 @@ function CertCard({ cert, onRequestEdit }: { cert: Certification; onRequestEdit:
           </div>
           <div>
             <div style={{ fontSize: 14.5, fontWeight: 600, color: C.ink, lineHeight: 1.3 }}>{cert.category_name}</div>
-            <div style={{ fontSize: 12, color: C.ink3 }}>{cert.issuing_state}{cert.issuing_body ? ` · ${cert.issuing_body}` : ''}</div>
+            <div style={{ fontSize: 12, color: C.ink3 }}>{cert.issuing_state}{cert.issuing_body ? `  |  ${cert.issuing_body}` : ''}</div>
           </div>
         </div>
         <StatusBadge status={cert.status} />
@@ -404,7 +404,7 @@ export default function LicencesPage() {
       setCerts(certRes.data.certifications ?? []);
       setInsurance(insRes.data.insurance_policies ?? []);
     } catch {
-      // silent fail — layout shows the error state
+      // silent fail  -  layout shows the error state
     } finally {
       setLoading(false);
     }
@@ -431,7 +431,7 @@ export default function LicencesPage() {
           return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 12 }}>
               <Loader2 size={24} color={C.ink3} className="animate-spin" />
-              <span style={{ fontSize: 13, color: C.ink3, fontFamily: UI }}>Loading your documents…</span>
+              <span style={{ fontSize: 13, color: C.ink3, fontFamily: UI }}>Loading your documents...</span>
             </div>
           );
         }
@@ -444,7 +444,7 @@ export default function LicencesPage() {
                 <h1 style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: '-0.01em' }}>Licences &amp; Documents</h1>
                 <p style={{ fontSize: 13, color: C.ink3, margin: '2px 0 0', fontFamily: UI }}>
                   {totalDocs === 0
-                    ? 'No documents submitted yet — complete onboarding to add your documents.'
+                    ? 'No documents submitted yet  -  complete onboarding to add your documents.'
                     : `${verifiedDocs} of ${totalDocs} document${totalDocs !== 1 ? 's' : ''} verified`}
                 </p>
               </div>
@@ -484,7 +484,7 @@ export default function LicencesPage() {
               <div style={{ padding: '12px 16px', background: C.brassL, border: `1px solid ${C.brassB}`, borderRadius: 12, display: 'flex', gap: 10, marginBottom: 28 }}>
                 <Info size={15} color={C.brass} style={{ flexShrink: 0, marginTop: 1 }} />
                 <p style={{ fontSize: 13, color: C.ink2, margin: 0, lineHeight: 1.55, fontFamily: UI }}>
-                  <strong style={{ color: C.ink }}>Documents are locked after submission</strong> to maintain verification integrity. If you need to correct a document, use the <em>Request Edit</em> button — our team will review and unlock it for you.
+                  <strong style={{ color: C.ink }}>Documents are locked after submission</strong> to maintain verification integrity. If you need to correct a document, use the <em>Request Edit</em> button  -  our team will review and unlock it for you.
                 </p>
               </div>
 

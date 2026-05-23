@@ -44,7 +44,7 @@ export default function LandingPage() {
 
   // ── No auto-redirect on cold landing ─────────────────────────────────────
   // Removed the useEffect that pushed tradies straight to /tradie/dashboard.
-  // Logged-in users still see the landing — they can navigate themselves
+  // Logged-in users still see the landing  -  they can navigate themselves
   // via the Dashboard button in the header.
 
   const [scrolled, setScrolled] = useState(false);
@@ -142,7 +142,7 @@ export default function LandingPage() {
   const STEPS = [
     { num: '01', title: 'Describe your job', body: 'Type what needs doing in plain language. Our AI reads it and matches the right category automatically.' },
     { num: '02', title: 'AI writes the brief', body: 'Our AI reads your description and writes a professional scope of work tradies can quote from accurately.' },
-    { num: '03', title: 'Verified tradies quote', body: 'Only tradies in your area with matching skills receive the job. You get real quotes — not phone spam.' },
+    { num: '03', title: 'Verified tradies quote', body: 'Only tradies in your area with matching skills receive the job. You get real quotes  -  not phone spam.' },
     { num: '04', title: 'You decide, they deliver', body: 'Review quotes with full context on each tradie. Accept the one you trust. Done.' },
   ];
 
@@ -175,7 +175,7 @@ export default function LandingPage() {
             <div className="flex items-center gap-2 shrink-0">
               {!isAuthenticated ? (
                 <>
-                  {/* Tradie entry — separated visually */}
+                  {/* Tradie entry  -  separated visually */}
                   <Link href="/tradie/onboarding"
                     className="hidden md:flex items-center gap-1.5 text-sm font-bold transition-colors px-3 py-2 rounded-xl whitespace-nowrap border-r pr-4"
                     style={{ color: 'rgba(255,255,255,0.75)', borderColor: 'rgba(255,255,255,0.15)' }}
@@ -214,7 +214,7 @@ export default function LandingPage() {
                         <p className="text-xs font-black text-white leading-none truncate max-w-[100px]">
                           {user?.name?.split(' ')[0] || user?.email?.split('@')[0]}
                         </p>
-                        <p className="text-[10px] font-bold mt-0.5" style={{ color: '#D4AA3A' }}>View dashboard →</p>
+                        <p className="text-[10px] font-bold mt-0.5" style={{ color: '#D4AA3A' }}>View dashboard</p>
                       </div>
                     </Link>
                     <button
@@ -303,7 +303,7 @@ export default function LandingPage() {
                 className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 rounded-3xl shadow-2xl z-50 overflow-hidden"
               >
                 <div className="px-3 pt-3 pb-1">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Common issues — click to get quotes</p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Common issues  -  click to get quotes</p>
                 </div>
                 {suggestions.map((s, i) => (
                   <button
@@ -312,7 +312,6 @@ export default function LandingPage() {
                     onClick={() => handleSuggestionClick(s)}
                     className={`w-full text-left px-5 py-3 flex items-center gap-3 transition-colors ${activeIdx === i ? 'bg-[#D4AA3A]/5' : 'hover:bg-gray-50'}`}
                   >
-                    <span className="text-lg shrink-0">{s.icon}</span>
                     <span className="flex-1 text-sm font-semibold text-gray-800">{s.problem}</span>
                     <span className="text-[11px] font-bold text-[#D4AA3A] bg-[#D4AA3A]/8 px-2.5 py-1 rounded-full shrink-0">
                       {s.category}
@@ -365,7 +364,7 @@ export default function LandingPage() {
                   <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
                   <p className="text-xs text-gray-600 font-medium">
                     <span className="font-bold text-[#1C0E06]">{categoryStat.tradies.toLocaleString()} {detectedCategory.toLowerCase()} tradies</span>
-                    {' '}active right now · avg first quote in{' '}
+                    {' '}active right now  |  avg first quote in{' '}
                     <span className="font-bold text-[#1C0E06]">{categoryStat.avgHours}h</span>
                   </p>
                 </motion.div>
@@ -408,7 +407,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Tradie CTA — both Sign in and Join now ── */}
+      {/* ── Tradie CTA  -  both Sign in and Join now ── */}
       <section className="py-12 sm:py-20 px-4 sm:px-6">
         <div className="max-w-5xl mx-auto bg-white rounded-3xl sm:rounded-[2rem] p-8 sm:p-12 md:p-16 text-center relative overflow-hidden shadow-2xl shadow-[#071D36]/10 border border-[#D7E4F1]">
           <div className="relative z-10">

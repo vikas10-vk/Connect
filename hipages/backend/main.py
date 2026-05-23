@@ -26,7 +26,7 @@ from middleware.rate_limit import RateLimitMiddleware
 from middleware.request_id import RequestIDMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
 
-# ── All existing router imports — UNCHANGED ──────────────────────────────────
+# â”€â”€ All existing router imports â€” UNCHANGED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from routers.auth import router as auth_router
 from routers.tradies import router as tradies_router
 from routers.categories import router as categories_router
@@ -35,7 +35,7 @@ from routers.leads import router as leads_router
 from routers.quotes import router as quotes_router
 from routers.reviews import router as reviews_router
 from routers.websocket import router as ws_router
-from routers.payments import router as payments_router
+from routers.websocket import start_realtime_pubsub, stop_realtime_pubsub
 from routers.uploads import router as uploads_router
 from routers.assets import router as assets_router
 from routers.compliance import router as compliance_router
@@ -66,13 +66,13 @@ if SENTRY_DSN:
         integrations=[FastApiIntegration(), SqlalchemyIntegration(), CeleryIntegration()],
         send_default_pii=False,
     )
-    logger.info(f"Sentry initialised — environment: {os.getenv('ENVIRONMENT')}")
+    logger.info(f"Sentry initialised â€” environment: {os.getenv('ENVIRONMENT')}")
 else:
-    logger.warning("SENTRY_BACKEND_DSN not set — Sentry disabled")
+    logger.warning("SENTRY_BACKEND_DSN not set â€” Sentry disabled")
 
 
 # =============================================================================
-# Lifespan — startup checks
+# Lifespan â€” startup checks
 # =============================================================================
 
 @asynccontextmanager
@@ -92,55 +92,40 @@ async def lifespan(app: FastAPI):
 
     try:
         await check_database_health()
-        logger.info("✓ Database connection verified")
+        logger.info("âœ“ Database connection verified")
     except Exception as e:
-        logger.critical(f"✗ Database unreachable — refusing to start: {e}")
+        logger.critical(f"âœ— Database unreachable â€” refusing to start: {e}")
         sys.exit(1)
 
     try:
         await app.state.redis_client.ping()
-        logger.info("✓ Redis connection verified")
+        logger.info("âœ“ Redis connection verified")
+        await start_realtime_pubsub(app.state.redis_client)
+        logger.info("Realtime Redis pub/sub listener started")
     except Exception as e:
-        logger.critical(f"✗ Redis unreachable — refusing to start: {e}")
+        logger.critical(f"âœ— Redis unreachable â€” refusing to start: {e}")
         sys.exit(1)
 
-    # ── Payments configuration ───────────────────────────────────────────────
-    # The API serves Stripe checkout and the webhook endpoint. Without these,
-    # checkout fails and — worse — webhook signatures cannot be verified.
-    # This check lives at the API layer (not config.validate_production) so that
-    # Celery workers which never touch Stripe are not forced to carry the keys.
-    if IS_PRODUCTION:
-        missing_payment_cfg = [
-            name
-            for name in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET")
-            if not os.getenv(name)
-        ]
-        if missing_payment_cfg:
-            logger.critical(
-                "✗ Missing required payment configuration in production: "
-                f"{', '.join(missing_payment_cfg)} — refusing to start"
-            )
-            sys.exit(1)
-        logger.info("✓ Payment configuration present")
 
-    logger.info("✓ All startup checks passed — accepting traffic")
+    logger.info("âœ“ All startup checks passed â€” accepting traffic")
 
     yield
 
     logger.info("Shutting down...")
 
     try:
+        await stop_realtime_pubsub()
         await app.state.redis_client.aclose()
-        logger.info("✓ Redis connection closed")
+        logger.info("âœ“ Redis connection closed")
     except Exception as e:
-        logger.warning(f"Shutdown — Redis close skipped: {e}")
+        logger.warning(f"Shutdown â€” Redis close skipped: {e}")
 
     try:
         from db.session import engine
         await engine.dispose()
-        logger.info("✓ Database engine disposed")
+        logger.info("âœ“ Database engine disposed")
     except Exception as e:
-        logger.warning(f"Shutdown — Engine dispose skipped: {e}")
+        logger.warning(f"Shutdown â€” Engine dispose skipped: {e}")
 
 
 # =============================================================================
@@ -174,11 +159,11 @@ app.add_middleware(RateLimitMiddleware)
 # 2. Audit logging
 app.add_middleware(AuditMiddleware)
 
-# 1. CORS — only in development.
+# 1. CORS â€” only in development.
 #
 # FIX: In production, nginx handles CORS via conf.d/api.conf.
 # If FastAPI CORSMiddleware also ran in production, every response would have
-# two Access-Control-Allow-Origin headers — browsers reject this entirely.
+# two Access-Control-Allow-Origin headers â€” browsers reject this entirely.
 #
 # In development (no nginx), FastAPI handles CORS so localhost:3000 works.
 #
@@ -192,11 +177,11 @@ if not IS_PRODUCTION:
         expose_headers=["X-Request-ID", "X-Response-Time"],
     )
 
-# 0. Outermost — must run first so everything else has request_id.
+# 0. Outermost â€” must run first so everything else has request_id.
 app.add_middleware(RequestIDMiddleware)
 
 # =============================================================================
-# Routers — all existing routes preserved
+# Routers â€” all existing routes preserved
 # =============================================================================
 
 app.include_router(auth_router)
@@ -207,7 +192,6 @@ app.include_router(leads_router)
 app.include_router(quotes_router)
 app.include_router(reviews_router)
 app.include_router(ws_router)
-app.include_router(payments_router)
 app.include_router(uploads_router)
 app.include_router(assets_router)
 app.include_router(compliance_router)
@@ -239,7 +223,7 @@ async def health() -> ORJSONResponse:
     except Exception as e:
         result["checks"]["database"] = "error"
         overall_ok = False
-        logger.error(f"Health check — database failed: {e}")
+        logger.error(f"Health check â€” database failed: {e}")
 
     try:
         redis_client = getattr(app.state, "redis_client", None)
@@ -252,7 +236,7 @@ async def health() -> ORJSONResponse:
     except Exception as e:
         result["checks"]["redis"] = "error"
         overall_ok = False
-        logger.error(f"Health check — Redis failed: {e}")
+        logger.error(f"Health check â€” Redis failed: {e}")
 
     if not overall_ok:
         result["status"] = "degraded"
@@ -272,4 +256,4 @@ async def health_db() -> ORJSONResponse:
             content={"status": "error", "database": str(e)},
         )
 
-# NOTE: /sentry-debug removed — never expose a deliberate exception trigger in production.
+# NOTE: /sentry-debug removed â€” never expose a deliberate exception trigger in production.

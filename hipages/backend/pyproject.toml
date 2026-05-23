@@ -41,9 +41,6 @@ dependencies = [
     "redbeat==2.3.0",
     "flower==2.0.1",
 
-    # Payments
-    "stripe==14.4.1",
-
     # HTTP client
     "httpx==0.28.1",
 

@@ -49,7 +49,7 @@ export default function ChatFAB() {
                             </div>
                             <div>
                                 <p className="font-bold text-gray-900 text-sm">ProConnect AI</p>
-                                <p className="text-xs text-green-500 font-medium">● Online</p>
+                                <p className="text-xs text-green-500 font-medium">Online</p>
                             </div>
                             <button
                                 onClick={() => setIsOpen(false)}

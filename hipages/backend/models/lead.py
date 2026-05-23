@@ -1,11 +1,14 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, ForeignKey
+from sqlalchemy import String, Integer, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.session import Base
 
 class Lead(Base):
     __tablename__ = "leads"
+    __table_args__ = (
+        UniqueConstraint("job_id", "tradie_id", name="uq_leads_job_id_tradie_id"),
+    )
 
     id:              Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     job_id:          Mapped[str] = mapped_column(String, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)

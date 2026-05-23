@@ -26,7 +26,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,7 @@ from models.category import Category
 from models.insurance_policy import InsurancePolicy, InsuranceStatus
 from models.job import Job
 from models.lead import Lead
+from models.job_photo import JobPhoto
 from models.review import Review
 from models.tradie_category import TradieCategory
 from models.tradie_change_request import (
@@ -224,6 +225,7 @@ def _fmt_cert(cert: TradieCertification) -> dict:
         "tradie_id":        profile.id if profile else None,
         "business_name":    profile.business_name if profile else None,
         "tradie_email":     profile.user.email if profile and profile.user else None,
+        "phone":            profile.user.phone if profile and profile.user else None,
         "category_name":    cert.category.name if cert.category else None,
         "licence_number":   cert.licence_number,
         "issuing_state":    cert.issuing_state,
@@ -247,6 +249,7 @@ def _fmt_insurance(policy: InsurancePolicy) -> dict:
         "tradie_id":              profile.id if profile else None,
         "business_name":          profile.business_name if profile else None,
         "tradie_email":           profile.user.email if profile and profile.user else None,
+        "phone":                  profile.user.phone if profile and profile.user else None,
         "insurance_type":         policy.insurance_type,
         "insurer_name":           policy.insurer_name,
         "policy_number":          policy.policy_number,
@@ -384,12 +387,39 @@ async def list_tradies(
     return {"total": total, "page": page, "limit": limit, "items": items}
 
 
+# ── Background helper — mirrors _distribute_leads_background in jobs.py ───────
+
+async def _redistribute_jobs_background(tradie_profile_id: str) -> None:
+    """
+    Runs _async_redistribute_open_jobs_for_tradie in-process without Celery.
+    Used as the always-on fallback alongside the Celery task, matching the
+    same two-layer pattern used by create_job → distribute_leads.
+    """
+    try:
+        from tasks.lead_tasks import (
+            _async_redistribute_open_jobs_for_tradie,
+            _make_session_factory,
+        )
+        engine, session_factory = _make_session_factory()
+        try:
+            await _async_redistribute_open_jobs_for_tradie(tradie_profile_id, session_factory)
+            print(f"[retrodist] Background fallback completed for tradie {tradie_profile_id}")
+        finally:
+            try:
+                await engine.dispose()
+            except Exception:
+                pass
+    except Exception as exc:
+        print(f"[retrodist] Background fallback failed for tradie {tradie_profile_id}: {exc}")
+
+
 # ── PATCH /admin/tradies/{tradie_id}/verification ──────────────────────────────
 
 @router.patch("/tradies/{tradie_id}/verification")
 async def set_tradie_verification(
     tradie_id: str,
     body: VerificationStatusBody,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(require_admin),
     db:    AsyncSession = Depends(get_db),
 ):
@@ -413,7 +443,115 @@ async def set_tradie_verification(
     elif body.verification_status in {"rejected", "suspended"}:
         profile.is_available = False
     await db.commit()
+
+    # ── Retroactive lead distribution — "late subscriber" fix ─────────────
+    # Two-layer strategy (same pattern as create_job → distribute_leads):
+    #   Layer 1: Celery task on critical queue (fast, distributed)
+    #   Layer 2: background_tasks fallback (always runs, no Celery needed)
+    # This guarantees the newly-verified tradie receives waiting jobs even
+    # when Celery is down or tasks are still draining from the queue.
+    if body.verification_status == "verified":
+        try:
+            from tasks.lead_tasks import redistribute_open_jobs_for_tradie
+            redistribute_open_jobs_for_tradie.apply_async(
+                args=[tradie_id],
+                countdown=5,   # 5s delay lets the DB commit propagate to replicas
+                queue="critical",
+            )
+        except Exception as _exc:
+            print(
+                f"[admin] Celery unavailable for retroactive distribution "
+                f"(tradie {tradie_id}): {_exc} — background fallback will handle it"
+            )
+        # Always also schedule in-process fallback — zero dependency on Celery
+        background_tasks.add_task(_redistribute_jobs_background, tradie_id)
+
     return {"id": tradie_id, "verification_status": profile.verification_status}
+
+
+# ── POST /admin/tradies/{tradie_id}/redistribute-leads ────────────────────────
+
+@router.post("/tradies/{tradie_id}/redistribute-leads")
+async def trigger_redistribute_leads(
+    tradie_id: str,
+    background_tasks: BackgroundTasks,
+    admin: User = Depends(require_admin),
+):
+    """
+    Manually trigger retroactive lead distribution for a tradie.
+
+    Use this when:
+      - Tradie was verified before the redistribution trigger was deployed
+      - Celery was down at the time of verification
+      - Admin wants to force-retry lead matching for a specific tradie
+
+    Runs both Celery (if available) AND an in-process background task so
+    it works reliably even without a running Celery worker.
+    Returns immediately; distribution happens in the background.
+    """
+    # Layer 1: Celery (fast, distributed)
+    try:
+        from tasks.lead_tasks import redistribute_open_jobs_for_tradie
+        redistribute_open_jobs_for_tradie.apply_async(
+            args=[tradie_id],
+            countdown=2,
+            queue="critical",
+        )
+    except Exception as _exc:
+        print(
+            f"[admin] Celery unavailable for manual redistribute "
+            f"(tradie {tradie_id}): {_exc}"
+        )
+
+    # Layer 2: In-process fallback — always runs regardless of Celery
+    background_tasks.add_task(_redistribute_jobs_background, tradie_id)
+
+    return {
+        "status": "queued",
+        "message": "Lead redistribution triggered. Matching jobs will be distributed shortly.",
+    }
+
+
+@router.post("/categories/seed-cleaning")
+async def seed_cleaning_subcategories(
+    admin: User = Depends(require_admin),
+    db:    AsyncSession = Depends(get_db),
+):
+    """
+    Idempotent: inserts missing cleaning subcategories (Pool Cleaning, etc.)
+    into the live database. Safe to call multiple times — skips existing slugs.
+    """
+    import uuid as _uuid
+    from models.category import Category, CategoryLevel
+
+    NEW_SUBCATS = [
+        ("cleaning-pool",       "Pool Cleaning",      "Swimming pool cleaning, chemical balancing and maintenance"),
+        ("cleaning-oven",       "Oven & BBQ Cleaning","Professional oven, range hood and BBQ degreasing"),
+        ("cleaning-commercial", "Commercial Cleaning","Office, retail and commercial premises cleaning"),
+    ]
+
+    parent_res = await db.execute(select(Category).where(Category.slug == "cleaning"))
+    parent = parent_res.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=404, detail="'cleaning' parent category not found. Run the full seed first.")
+
+    added, skipped = [], []
+    for slug, name, desc in NEW_SUBCATS:
+        existing = await db.execute(select(Category).where(Category.slug == slug))
+        if existing.scalar_one_or_none():
+            skipped.append(name)
+            continue
+        db.add(Category(
+            id=str(_uuid.uuid4()),
+            name=name, slug=slug,
+            parent_id=parent.id,
+            level=CategoryLevel.SUBCATEGORY,
+            is_active=True, icon_slug=None, description=desc,
+        ))
+        added.append(name)
+
+    await db.commit()
+    return {"added": added, "skipped": skipped}
 
 
 @router.post("/tradies/{tradie_id}/suspend")
@@ -652,9 +790,11 @@ async def get_pending_verifications(
     profiles = [
         {
             "id": p.id, "type": "profile",
+            "tradie_id": p.id,
             "business_name": p.business_name,
             "tradie_email": p.user.email if p.user else None,
             "full_name": p.user.full_name if p.user else None,
+            "phone": p.user.phone if p.user else None,
             "suburb": p.suburb, "state": p.state,
             "abn": p.abn, "created_at": p.created_at,
             "verification_status": p.verification_status,
@@ -817,27 +957,216 @@ async def list_jobs(
 
 # ── GET /admin/disputes ────────────────────────────────────────────────────────
 
+async def _build_dispute_payload(j: Job, db: AsyncSession) -> dict:
+    """
+    Compose the full dispute context for the admin Disputes view:
+      * homeowner contact + their dispute reason
+      * tradie contact + their completion note + accepted quote details
+      * before/after photos
+      * full job description + category + location
+      * recent timeline events (so admin sees the whole story without leaving the page)
+    """
+    from models.job_event import JobEvent
+    from models.quote import Quote
+    from models.lead import Lead
+    from models.job_photo import JobPhoto
+    from models.user import User as UserModel
+    from models.tradie_profile import TradieProfile as TP
+    from models.category import Category as Cat
+
+    # Dispute reason from the JobEvent that flipped the job to 'disputed'.
+    dispute_event_res = await db.execute(
+        select(JobEvent)
+        .where(JobEvent.job_id == j.id, JobEvent.action == "status_change")
+        .order_by(JobEvent.created_at.desc())
+    )
+    dispute_reason = None
+    dispute_raised_at = None
+    dispute_raised_by_role = None
+    for ev in dispute_event_res.scalars().all():
+        nv = ev.new_value or {}
+        if nv.get("status") == "disputed":
+            note = ev.note or ""
+            # Stored as "Homeowner raised dispute: <reason>"; strip the prefix.
+            for prefix in ("Homeowner raised dispute: ", "Homeowner raised dispute:"):
+                if note.startswith(prefix):
+                    note = note[len(prefix):].strip()
+                    break
+            dispute_reason = note or None
+            dispute_raised_at = ev.created_at
+            dispute_raised_by_role = ev.actor_role
+            break
+
+    # Recent timeline -- last 10 events.
+    tl_res = await db.execute(
+        select(JobEvent)
+        .where(JobEvent.job_id == j.id)
+        .order_by(JobEvent.created_at.desc())
+        .limit(10)
+    )
+    timeline = [
+        {
+            "action":     ev.action,
+            "actor_role": ev.actor_role,
+            "note":       ev.note,
+            "old_value":  ev.old_value,
+            "new_value":  ev.new_value,
+            "created_at": ev.created_at,
+        }
+        for ev in tl_res.scalars().all()
+    ]
+
+    # Homeowner contact
+    hw_res = await db.execute(select(UserModel).where(UserModel.id == j.homeowner_id))
+    hw = hw_res.scalar_one_or_none()
+
+    # Category
+    cat_res = await db.execute(select(Cat).where(Cat.id == j.category_id))
+    cat = cat_res.scalar_one_or_none()
+
+    # Tradie via accepted quote (preferred -- this is the tradie who actually did the work).
+    accepted_q_res = await db.execute(
+        select(Quote, TP, UserModel)
+        .join(TP,        TP.id == Quote.tradie_id)
+        .join(UserModel, UserModel.id == TP.user_id)
+        .join(Lead,      Lead.id == Quote.lead_id)
+        .where(Lead.job_id == j.id, Quote.status == "accepted")
+        .limit(1)
+    )
+    accepted_row = accepted_q_res.first()
+    tradie_info = None
+    if accepted_row:
+        q_obj, tp_obj, tu_obj = accepted_row
+        tradie_info = {
+            "tradie_profile_id":   tp_obj.id,
+            "business_name":       tp_obj.business_name,
+            "full_name":           tu_obj.full_name,
+            "email":               tu_obj.email,
+            "phone":               tu_obj.phone,
+            "verification_status": tp_obj.verification_status,
+            "quote_amount":        q_obj.amount,
+            "quote_message":       q_obj.message,
+        }
+    else:
+        # Fallback to any tradie with a lead on this job (shouldn't normally happen
+        # for completed-then-disputed jobs, but covers partial_stop disputes).
+        lead_res = await db.execute(
+            select(TP, UserModel)
+            .join(UserModel, UserModel.id == TP.user_id)
+            .join(Lead,      Lead.tradie_id == TP.id)
+            .where(Lead.job_id == j.id)
+            .limit(1)
+        )
+        lead_row = lead_res.first()
+        if lead_row:
+            tp_obj, tu_obj = lead_row
+            tradie_info = {
+                "tradie_profile_id":   tp_obj.id,
+                "business_name":       tp_obj.business_name,
+                "full_name":           tu_obj.full_name,
+                "email":               tu_obj.email,
+                "phone":               tu_obj.phone,
+                "verification_status": tp_obj.verification_status,
+                "quote_amount":        None,
+                "quote_message":       None,
+            }
+
+    # After-photos (the JobPhoto rows tradies upload mid/post job).
+    photo_res = await db.execute(
+        select(JobPhoto).where(JobPhoto.job_id == j.id).order_by(JobPhoto.created_at.desc())
+    )
+    after_photos = [{"id": p.id, "url": p.url} for p in photo_res.scalars().all()]
+
+    # Tradie responses to the dispute -- text + evidence URLs, oldest first
+    # so admin reads them as a conversation.
+    resp_res = await db.execute(
+        select(JobEvent)
+        .where(JobEvent.job_id == j.id, JobEvent.action == "dispute_response")
+        .order_by(JobEvent.created_at.asc())
+    )
+    tradie_responses = [
+        {
+            "id":          ev.id,
+            "actor_id":    ev.actor_id,
+            "actor_role":  ev.actor_role,
+            "response":    ev.note,
+            "evidence_url": (ev.new_value or {}).get("evidence_url"),
+            "created_at":  ev.created_at,
+        }
+        for ev in resp_res.scalars().all()
+    ]
+
+    return {
+        "id":          j.id,
+        "title":       j.title,
+        "description": j.description,
+        "category":    cat.name if cat else None,
+        "status":      j.status,
+        "suburb":      j.suburb,
+        "state":       j.state,
+        "postcode":    j.postcode,
+        "urgency":     j.urgency,
+        "created_at":           j.created_at,
+        "completed_at":         j.completed_at,
+        "confirmed_by_user_at": j.confirmed_by_user_at,
+        "updated_at":           j.updated_at,
+        "homeowner": {
+            "id":    hw.id        if hw else None,
+            "name":  hw.full_name if hw else None,
+            "email": hw.email     if hw else None,
+            "phone": hw.phone     if hw else None,
+        },
+        "tradie":           tradie_info,
+        "photo_before_url": j.photo_before_url,
+        "photo_after_url":  j.photo_after_url,
+        "completion_note":  j.completion_note,   # tradie's note when they marked complete
+        "after_photos":     after_photos,
+        "tradie_responses": tradie_responses,
+        # ── Dispute-specific fields ─────────────────────────────────────────
+        "dispute_reason":         dispute_reason,
+        "dispute_raised_at":      dispute_raised_at,
+        "dispute_raised_by_role": dispute_raised_by_role,
+        "timeline":               timeline,
+    }
+
+
 @router.get("/disputes")
 async def list_disputes(
     _:  User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    List every disputed job with the FULL context admins need to adjudicate:
+    homeowner's reason, tradie's completion note, before/after photos, contacts,
+    accepted quote, recent timeline. Previously this endpoint only returned a
+    handful of fields and admins couldn't see the actual complaint.
+    """
     result = await db.execute(
         select(Job)
         .where(Job.status == "disputed")
         .order_by(Job.updated_at.desc())
     )
-    items = [
-        {
-            "id": j.id, "title": j.title, "status": j.status,
-            "suburb": j.suburb, "state": j.state,
-            "homeowner_id": j.homeowner_id,
-            "completion_note": j.completion_note,
-            "created_at": j.created_at, "updated_at": j.updated_at,
-        }
-        for j in result.scalars().all()
-    ]
+    jobs = result.scalars().all()
+    items = []
+    for j in jobs:
+        items.append(await _build_dispute_payload(j, db))
     return {"items": items, "total": len(items)}
+
+
+@router.get("/disputes/{job_id}")
+async def get_dispute(
+    job_id: str,
+    _:  User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Detail view for a single disputed job. Same shape as the list payload."""
+    res = await db.execute(select(Job).where(Job.id == job_id))
+    job = res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status != "disputed":
+        raise HTTPException(status_code=400, detail=f"Job is not disputed (status={job.status})")
+    return await _build_dispute_payload(job, db)
 
 
 # ── GET /admin/reviews ─────────────────────────────────────────────────────────
@@ -994,3 +1323,388 @@ async def list_completed_jobs(
         })
 
     return {"total": total, "page": page, "limit": limit, "items": items}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# UNCATEGORISED SERVICE-REQUEST TRIAGE
+#
+# When a homeowner submits a request that doesn't match any of the 24 trades
+# (either via POST /jobs/uncategorised, or because POST /jobs couldn't
+# resolve the slug), the job lands in the sentinel 'other-services' category
+# with status='open' and a JobEvent action='uncategorised_request'. Admin
+# uses these endpoints to either route it into a real trade or close it out
+# with a polite "not supported" email.
+# ═══════════════════════════════════════════════════════════════════════════
+
+from services.uncategorised_service import SENTINEL_OTHER_SLUG, get_sentinel_category
+
+
+class ClassifyUncategorisedRequest(BaseModel):
+    category_slug: str
+    note:          Optional[str] = None
+
+
+class CloseUncategorisedRequest(BaseModel):
+    admin_note: Optional[str] = None
+
+
+@router.get("/uncategorised")
+async def list_uncategorised_requests(
+    page:  int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    _:  User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List jobs currently sitting in the sentinel 'other-services' category and
+    still awaiting triage (status == 'open'). These need admin to either
+    classify them into a real trade or close them out.
+    """
+    sentinel = await get_sentinel_category(db)
+
+    filters = [Job.category_id == sentinel.id, Job.status == "open", Job.is_deleted == False]
+    count_r = await db.execute(select(func.count(Job.id)).where(*filters))
+    total = count_r.scalar() or 0
+
+    q = (
+        select(Job)
+        .where(*filters)
+        .order_by(Job.created_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    res = await db.execute(q)
+    items = [
+        {
+            "id":            j.id,
+            "title":         j.title,
+            "description":   j.description,
+            "homeowner_id":  j.homeowner_id,
+            "suburb":        j.suburb,
+            "state":         j.state,
+            "postcode":      j.postcode,
+            "contact_name":  j.contact_name,
+            "contact_phone": j.contact_phone,
+            "contact_email": j.contact_email,
+            "created_at":    j.created_at,
+        }
+        for j in res.scalars().all()
+    ]
+    return {"total": total, "page": page, "limit": limit, "items": items}
+
+
+@router.post("/uncategorised/{job_id}/classify")
+async def classify_uncategorised_request(
+    job_id: str,
+    body:   ClassifyUncategorisedRequest,
+    background_tasks: BackgroundTasks,
+    admin:  User = Depends(require_admin),
+    db:     AsyncSession = Depends(get_db),
+):
+    """
+    Admin assigns a real category to an uncategorised request. The job's
+    category_id is updated to the resolved trade and lead distribution is
+    re-triggered immediately so it joins the normal matching flow.
+    """
+    job_res = await db.execute(select(Job).where(Job.id == job_id, Job.is_deleted == False))
+    job = job_res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    sentinel = await get_sentinel_category(db)
+    if job.category_id != sentinel.id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job is not in the uncategorised bucket (current category != '{SENTINEL_OTHER_SLUG}').",
+        )
+
+    target = await resolve_trade_category(db, body.category_slug)
+    if not target:
+        raise HTTPException(status_code=400, detail=f"Unknown target category '{body.category_slug}'.")
+
+    old_cat_id = job.category_id
+    job.category_id = target.id
+    # Also reset match_intelligence so the distribute_leads idempotency guard
+    # doesn't refuse the retry.
+    job.match_intelligence = None
+    job.updated_at = datetime.utcnow()
+    db.add(job)
+
+    # Audit trail
+    from models.job_event import JobEvent
+    db.add(JobEvent(
+        job_id=job.id,
+        actor_id=admin.id,
+        actor_role="admin",
+        action="uncategorised_classified",
+        old_value={"category_id": old_cat_id},
+        new_value={"category_id": target.id, "category_slug": target.slug},
+        note=(body.note or f"Admin classified uncategorised request into '{target.name}'."),
+    ))
+    await db.commit()
+
+    # Trigger lead distribution (Celery preferred, in-process fallback).
+    celery_queued = False
+    try:
+        from tasks.lead_tasks import distribute_leads
+        import asyncio
+        task = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: distribute_leads.apply_async(args=[job.id], queue="critical"),
+        )
+        job.lead_task_id = task.id
+        db.add(job)
+        await db.commit()
+        celery_queued = True
+    except Exception:
+        pass
+
+    if not celery_queued:
+        from routers.jobs import _distribute_leads_background
+        background_tasks.add_task(_distribute_leads_background, job.id)
+
+    return {
+        "message": f"Job classified into '{target.name}' and lead distribution queued.",
+        "job_id":  job.id,
+        "category_id": target.id,
+        "category_slug": target.slug,
+    }
+
+
+@router.post("/uncategorised/{job_id}/close")
+async def close_uncategorised_request(
+    job_id: str,
+    body:   CloseUncategorisedRequest,
+    admin:  User = Depends(require_admin),
+    db:     AsyncSession = Depends(get_db),
+):
+    """
+    Admin closes an uncategorised request as not supported. Sets status to
+    'cancelled' (terminal), writes an audit event with the admin's note, and
+    sends the homeowner a polite "we can't help with this one" email.
+    """
+    job_res = await db.execute(select(Job).where(Job.id == job_id, Job.is_deleted == False))
+    job = job_res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    sentinel = await get_sentinel_category(db)
+    if job.category_id != sentinel.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Job is not in the uncategorised bucket.",
+        )
+    if job.status not in ("open", "quoted"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot close a job in '{job.status}' status.",
+        )
+
+    # Use the state machine to keep the audit trail consistent. open -> cancelled
+    # is already allowed for admin.
+    try:
+        from services.job_state_machine import JobStateMachine, InvalidTransitionError
+        await JobStateMachine.admin_transition(
+            job=job,
+            new_status="cancelled",
+            admin_user_id=admin.id,
+            db=db,
+            note=(
+                (body.admin_note or "")
+                + (" -- " if body.admin_note else "")
+                + "Closed by admin from uncategorised triage."
+            ),
+        )
+    except InvalidTransitionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Additional explicit triage audit row so the admin tab can filter on it.
+    from models.job_event import JobEvent
+    db.add(JobEvent(
+        job_id=job.id,
+        actor_id=admin.id,
+        actor_role="admin",
+        action="uncategorised_closed",
+        old_value={"status": "open"},
+        new_value={"status": "cancelled"},
+        note=body.admin_note or "Closed as not supported.",
+    ))
+    await db.commit()
+
+    # Polite email to the homeowner. Best-effort.
+    try:
+        homeowner_res = await db.execute(select(User).where(User.id == job.homeowner_id))
+        homeowner = homeowner_res.scalar_one_or_none()
+        if homeowner:
+            from services.resend_service import send_uncategorised_not_supported_email
+            await send_uncategorised_not_supported_email(
+                to_email=homeowner.email,
+                full_name=homeowner.full_name or "",
+                description_excerpt=job.description or job.title,
+                admin_note=body.admin_note,
+            )
+    except Exception:
+        pass
+
+    return {"message": "Uncategorised request closed.", "job_id": job.id}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DISPUTE RESOLUTION
+#
+# Four resolution paths. Each picks the right end-state, notifies both parties
+# via tailored emails, and writes a clear audit row so the timeline reflects
+# the decision -- not just a generic "closed".
+#
+#   refund_homeowner -> closed       (full refund issued)
+#   partial_refund   -> closed       (partial refund issued; remainder paid out)
+#   side_tradie      -> confirmed    (work accepted)
+#   redo_work        -> in_progress  (tradie returns; lifecycle re-enters active)
+# ═══════════════════════════════════════════════════════════════════════════
+
+RESOLUTION_TO_STATUS = {
+    "refund_homeowner": "closed",
+    "partial_refund":   "closed",
+    "side_tradie":      "confirmed",
+    "redo_work":        "in_progress",
+}
+
+
+class ResolveDisputeRequest(BaseModel):
+    resolution: str   # one of RESOLUTION_TO_STATUS keys
+    note:       Optional[str] = None
+    refund_amount: Optional[float] = None  # only meaningful for partial_refund
+
+
+@router.post("/disputes/{job_id}/resolve")
+async def resolve_dispute(
+    job_id: str,
+    body:   ResolveDisputeRequest,
+    admin:  User = Depends(require_admin),
+    db:     AsyncSession = Depends(get_db),
+):
+    """
+    Admin resolves a dispute. Picks the new status from RESOLUTION_TO_STATUS,
+    writes the audit row, transitions the job, and emails both parties with
+    the decision. The frontend Disputes tab refreshes via the existing
+    job:status_changed WebSocket broadcast.
+    """
+    from models.job_event import JobEvent
+    from services.job_state_machine import JobStateMachine, InvalidTransitionError
+
+    if body.resolution not in RESOLUTION_TO_STATUS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown resolution '{body.resolution}'. Valid: {list(RESOLUTION_TO_STATUS)}",
+        )
+    if body.resolution == "partial_refund" and (body.refund_amount is None or body.refund_amount <= 0):
+        raise HTTPException(status_code=400, detail="partial_refund requires a positive refund_amount.")
+
+    job_res = await db.execute(select(Job).where(Job.id == job_id))
+    job = job_res.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if job.status != "disputed":
+        raise HTTPException(status_code=400, detail=f"Job is not disputed (status={job.status}).")
+
+    target_status = RESOLUTION_TO_STATUS[body.resolution]
+    audit_note = (body.note or "").strip() or f"Resolution: {body.resolution}"
+    if body.resolution == "partial_refund":
+        audit_note = f"{audit_note} (refund: ${body.refund_amount:.2f})"
+
+    # Transition via state machine -- this also broadcasts job:status_changed.
+    try:
+        await JobStateMachine.admin_transition(
+            job=job,
+            new_status=target_status,
+            admin_user_id=admin.id,
+            db=db,
+            note=audit_note,
+        )
+    except InvalidTransitionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Detailed audit row carrying the structured resolution payload so the
+    # admin Disputes view + post-mortem analytics can read the decision later.
+    db.add(JobEvent(
+        job_id=job.id,
+        actor_id=admin.id,
+        actor_role="admin",
+        action="dispute_resolved",
+        old_value={"status": "disputed"},
+        new_value={
+            "status":        target_status,
+            "resolution":    body.resolution,
+            "refund_amount": body.refund_amount,
+        },
+        note=body.note or None,
+    ))
+    await db.commit()
+
+    # ── Notify both parties. Best-effort -- never raise. ────────────────────
+    try:
+        from models.user import User as UserModel
+        from models.quote import Quote
+        from models.lead import Lead
+        from models.tradie_profile import TradieProfile as TP
+        from services.resend_service import (
+            send_dispute_resolved_to_homeowner_email,
+            send_dispute_resolved_to_tradie_email,
+        )
+
+        hw_res = await db.execute(select(UserModel).where(UserModel.id == job.homeowner_id))
+        homeowner = hw_res.scalar_one_or_none()
+        if homeowner and homeowner.email:
+            await send_dispute_resolved_to_homeowner_email(
+                to_email=homeowner.email,
+                full_name=homeowner.full_name or "",
+                job_title=job.title,
+                resolution=body.resolution,
+                admin_note=body.note,
+                refund_amount=body.refund_amount,
+            )
+
+        # Tradie via accepted quote, fallback to any lead.
+        accepted_res = await db.execute(
+            select(Quote, TP, UserModel)
+            .join(TP,        TP.id == Quote.tradie_id)
+            .join(UserModel, UserModel.id == TP.user_id)
+            .join(Lead,      Lead.id == Quote.lead_id)
+            .where(Lead.job_id == job.id, Quote.status == "accepted").limit(1)
+        )
+        accepted = accepted_res.first()
+        tradie_user = tradie_profile = None
+        if accepted:
+            _q, tradie_profile, tradie_user = accepted
+        else:
+            lead_res = await db.execute(
+                select(TP, UserModel)
+                .join(UserModel, UserModel.id == TP.user_id)
+                .join(Lead,      Lead.tradie_id == TP.id)
+                .where(Lead.job_id == job.id).limit(1)
+            )
+            lead_row = lead_res.first()
+            if lead_row:
+                tradie_profile, tradie_user = lead_row
+
+        if tradie_user and tradie_user.email:
+            await send_dispute_resolved_to_tradie_email(
+                to_email=tradie_user.email,
+                full_name=tradie_user.full_name or "",
+                business_name=(tradie_profile.business_name if tradie_profile else ""),
+                job_title=job.title,
+                resolution=body.resolution,
+                admin_note=body.note,
+                refund_amount=body.refund_amount,
+            )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Resolution notification failed for job %s: %s", job.id, exc,
+        )
+
+    return {
+        "message":     f"Dispute resolved -- {body.resolution}.",
+        "job_id":      job.id,
+        "new_status":  target_status,
+        "resolution":  body.resolution,
+    }

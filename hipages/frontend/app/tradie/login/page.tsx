@@ -70,7 +70,7 @@ function TradieLoginForm() {
             minHeight: '100vh', background: C.paper, fontFamily: UI, color: C.ink,
             display: 'flex', flexDirection: 'column',
         }}>
-            {/* Header — navy, matches site-wide navbar */}
+            {/* Header  -  navy, matches site-wide navbar */}
             <header style={{
                 padding: '16px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)',
                 background: '#071D36', backdropFilter: 'blur(10px)',
@@ -217,7 +217,7 @@ function TradieLoginForm() {
                             onMouseLeave={e => { if (!submitting) e.currentTarget.style.background = C.ink; }}
                         >
                             {submitting ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
-                            {submitting ? 'Signing in…' : 'Sign in'}
+                            {submitting ? 'Signing in...' : 'Sign in'}
                         </button>
                     </form>
 

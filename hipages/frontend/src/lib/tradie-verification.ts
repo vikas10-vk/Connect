@@ -114,7 +114,7 @@ const RULES_BY_SLUG: Record<string, ServiceVerificationRule> = {
     documents: HIGH_RISK_DOCUMENTS,
     reason: "Roofing is high-risk work and may require trade or height-safety evidence.",
   },
-  // ── Electrical — both slug variants so DB naming doesn't matter ──────────
+  // ── Electrical  -  both slug variants so DB naming doesn't matter ──────────
   electrical: {
     level: "strict",
     group: "Licensed & High Risk",
@@ -256,7 +256,7 @@ export function getServiceRule(category: Pick<ServiceCategory, "name" | "slug">)
   const nameAsSlug = category.name.toLowerCase().trim().replace(/\s+/g, "-");
   if (RULES_BY_SLUG[nameAsSlug]) return RULES_BY_SLUG[nameAsSlug];
 
-  // 3. Substring name matching — use broad prefixes so "electrician", "electrical",
+  // 3. Substring name matching  -  use broad prefixes so "electrician", "electrical",
   //    "plumber", "plumbing", "gas fitter", "gas fitting" etc. all match.
   const name = category.name.toLowerCase();
 

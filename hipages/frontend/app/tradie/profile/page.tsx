@@ -86,7 +86,7 @@ const INSURANCE_LABELS: Record<string, string> = {
   professional_indemnity: 'Professional Indemnity',
 };
 const fmtDate = (d?: string) => {
-  if (!d) return '—';
+  if (!d) return ' - ';
   try { return new Date(d).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }); }
   catch { return d; }
 };
@@ -155,9 +155,9 @@ export default function TradieProfile() {
           setServiceAreas(prefs.service_suburbs || []);
         }
         if (catIds.length) {
-          // Resolve UUIDs → human-readable names using the flat canonical category list.
+          // Resolve UUIDs human-readable names using the flat canonical category list.
           // /categories is a public endpoint returning [{id, name, slug, parent_id}].
-          // Never show raw UUIDs to tradies — fall back to a generic label if resolution fails.
+          // Never show raw UUIDs to tradies  -  fall back to a generic label if resolution fails.
           try {
             const catsRes = await api.get('/categories');
             const allCats: ServiceCategory[] = catsRes.data || [];
@@ -244,7 +244,7 @@ export default function TradieProfile() {
           <button onClick={handleSave} disabled={saving}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 9, border: `1px solid ${C.ink}`, background: C.ink, color: C.card, fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: UI }}>
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving ? 'Saving...' : 'Save changes'}
           </button>
         </div>
 
@@ -295,7 +295,7 @@ export default function TradieProfile() {
                     background: isApproved ? C.sageL : verificationStatus === 'rejected' ? C.roseL : C.amberL,
                     color: isApproved ? C.sage : verificationStatus === 'rejected' ? C.rose : C.amber,
                     border: `1px solid ${isApproved ? C.sage : verificationStatus === 'rejected' ? C.rose : C.brassB}25` }}>
-                    {isApproved ? '✓ Verified' : verificationStatus === 'rejected' ? '✗ Rejected' : '⏳ Pending'}
+                    {isApproved ? 'Verified' : verificationStatus === 'rejected' ? 'Rejected' : 'Pending'}
                   </span>
                 </div>
               </div>
@@ -335,7 +335,7 @@ export default function TradieProfile() {
               <div>
                 <label style={{ ...secLabel, display: 'block', marginBottom: 6 }}>Bio</label>
                 <textarea value={profile.bio} onChange={e => field('bio', e.target.value)} rows={4}
-                  placeholder="Tell homeowners about your experience, what you specialise in, and why they should choose you…"
+                  placeholder="Tell homeowners about your experience, what you specialise in, and why they should choose you..."
                   style={{ ...inputStyle, resize: 'none', lineHeight: 1.6 }}
                   onFocus={e => { e.target.style.borderColor = C.brass; e.target.style.background = C.card; }}
                   onBlur={e => { e.target.style.borderColor = C.line; e.target.style.background = C.paper; }} />
@@ -352,8 +352,7 @@ export default function TradieProfile() {
                 <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0 }}>Services you offer</p>
               </div>
               <a href="/tradie/preferences" style={{ fontSize: 11, fontWeight: 700, color: C.brass, textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Edit in Preferences →
-              </a>
+                Edit in Preferences              </a>
             </div>
             <div style={{ padding: '16px 24px' }}>
               {myServices.length === 0 ? (
@@ -383,8 +382,7 @@ export default function TradieProfile() {
                 <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0 }}>Service areas</p>
               </div>
               <a href="/tradie/preferences" style={{ fontSize: 11, fontWeight: 700, color: C.brass, textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Edit in Preferences →
-              </a>
+                Edit in Preferences              </a>
             </div>
             <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Base location (editable here) */}
@@ -407,7 +405,7 @@ export default function TradieProfile() {
                   <label style={{ ...secLabel, display: 'block', marginBottom: 6 }}>State</label>
                   <select value={profile.state} onChange={e => field('state', e.target.value)}
                     style={{ ...inputStyle, cursor: 'pointer', appearance: 'none' as any }}>
-                    <option value="">—</option>
+                    <option value=""> - </option>
                     {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
@@ -436,8 +434,7 @@ export default function TradieProfile() {
                 <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0 }}>Licences &amp; certifications</p>
               </div>
               <a href="/tradie/licences" style={{ fontSize: 11, fontWeight: 700, color: C.brass, textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Manage →
-              </a>
+                Manage              </a>
             </div>
             <div style={{ padding: '0' }}>
               {certs.length === 0 ? (
@@ -453,11 +450,11 @@ export default function TradieProfile() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {cert.category_name || 'Licence'} — {cert.licence_number}
+                        {cert.category_name || 'Licence'}  -  {cert.licence_number}
                       </p>
                       <p style={{ fontSize: 12, color: C.ink3, margin: 0 }}>
-                        {cert.issuing_state} · Holder: {cert.holder_name}
-                        {cert.expires_at && ` · Exp: ${fmtDate(cert.expires_at)}`}
+                        {cert.issuing_state}  |  Holder: {cert.holder_name}
+                        {cert.expires_at && `  |  Exp: ${fmtDate(cert.expires_at)}`}
                       </p>
                     </div>
                     <StatusBadge status={cert.status} />
@@ -475,8 +472,7 @@ export default function TradieProfile() {
                 <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0 }}>Insurance</p>
               </div>
               <a href="/tradie/licences" style={{ fontSize: 11, fontWeight: 700, color: C.brass, textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Manage →
-              </a>
+                Manage              </a>
             </div>
             <div style={{ padding: '0' }}>
               {insurance.length === 0 ? (
@@ -492,11 +488,11 @@ export default function TradieProfile() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: '0 0 2px' }}>
-                        {INSURANCE_LABELS[pol.insurance_type] || pol.insurance_type} — {pol.insurer_name}
+                        {INSURANCE_LABELS[pol.insurance_type] || pol.insurance_type}  -  {pol.insurer_name}
                       </p>
                       <p style={{ fontSize: 12, color: C.ink3, margin: 0 }}>
-                        Policy {pol.policy_number} · Cover: {fmtCoverage(pol.coverage_amount_cents)}
-                        {pol.expires_at && ` · Exp: ${fmtDate(pol.expires_at)}`}
+                        Policy {pol.policy_number}  |  Cover: {fmtCoverage(pol.coverage_amount_cents)}
+                        {pol.expires_at && `  |  Exp: ${fmtDate(pol.expires_at)}`}
                       </p>
                     </div>
                     <StatusBadge status={pol.status} />
@@ -510,7 +506,7 @@ export default function TradieProfile() {
           <button onClick={handleSave} disabled={saving}
             style={{ alignSelf: 'flex-start', padding: '11px 22px', borderRadius: 10, background: C.ink, color: C.card, border: 'none', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, fontFamily: UI }}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saving ? 'Saving…' : 'Save profile'}
+            {saving ? 'Saving...' : 'Save profile'}
           </button>
 
         </div>

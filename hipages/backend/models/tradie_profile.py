@@ -6,7 +6,6 @@ treated as a business of one for code uniformity (same code path).
 
 UPDATED — adds:
   - rating_avg / rating_count          : aggregate rating cache, updated on review approval
-  - stripe_account_id / platform_fee_pct : Stripe Connect payout target + commission %
   - verified_at                         : first time the business was approved (separate from reviewed_at)
   - logo_url / selfie_url               : business logo + owner's verified selfie (face-match check-in)
   - team_members                        : workers in the business (and the owner row for solo if created)
@@ -61,10 +60,6 @@ class TradieProfile(Base):
     # ── NEW: aggregated ratings (cached; recomputed on review approval) ─
     rating_avg   : Mapped[float] = mapped_column(Numeric(3, 2), nullable=True)
     rating_count : Mapped[int]   = mapped_column(Integer,       default=0,    nullable=False)
-
-    # ── NEW: payments (Stripe Connect) ──────────────────────────────
-    stripe_account_id : Mapped[str]   = mapped_column(String(255),   unique=True, nullable=True)
-    platform_fee_pct  : Mapped[float] = mapped_column(Numeric(4, 2), default=15.00, nullable=False)
 
     # ── NEW: verification + branding ────────────────────────────────
     verified_at : Mapped[datetime] = mapped_column(DateTime,    nullable=True)   # first approval timestamp

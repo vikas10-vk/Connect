@@ -175,6 +175,17 @@ class JobWithDetailsResponse(BaseModel):
     has_review:    bool          = False
     review_status: Optional[str] = None  # 'pending' | 'approved' | 'rejected'
 
+    # Redo flag — True when this job returned to in_progress after a dispute
+    # resolution (redo_work). Drives the contextual 'tradie is redoing' banner
+    # on both homeowner and tradie dashboards.
+    is_redo_job:   bool          = False
+
+    # Dispute window — how many hours the homeowner has to raise a dispute.
+    # 48 h on first completion; 10 h after a resolved re-dispute.
+    # None when no window is active (job not in completed/confirmed state).
+    dispute_window_hours:      Optional[int]      = None
+    dispute_window_expires_at: Optional[datetime] = None
+
     created_at:    datetime
 
     class Config:

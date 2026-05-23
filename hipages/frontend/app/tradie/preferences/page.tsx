@@ -16,7 +16,7 @@ import {
 } from "@/src/lib/tradie-verification";
 import TradieStudioLayout from "@/src/components/tradie/TradieStudioLayout";
 
-// ─── Design tokens — exact match with TradieDashboard ────────────────────────
+// ─── Design tokens  -  exact match with TradieDashboard ────────────────────────
 const C = {
   bg: '#FFF8E7', paper: '#FFF8E7', panel: '#F5EDD0', card: '#FFFFFF',
   line: '#E8D9B0', lineSoft: '#F5EDD0',
@@ -176,7 +176,7 @@ export default function Preferences() {
         const onboardingData = onboardingRes.status === 'fulfilled' ? onboardingRes.value.data : null;
         const passData = passRes.status === 'fulfilled' ? passRes.value.data || {} : {};
 
-        // Verified cert IDs and insurance — used for missing-doc gap warnings
+        // Verified cert IDs and insurance  -  used for missing-doc gap warnings
         const verifiedCerts = (onboardingData?.certifications || [])
           .filter((c: { status: string }) => c.status === 'verified');
         const verifiedCertCategoryIds: string[] = verifiedCerts.map((c: { category_id: string }) => c.category_id);
@@ -372,7 +372,7 @@ export default function Preferences() {
         setSaving(false);
         return;
       }
-      // All succeeded — update local state baseline
+      // All succeeded  -  update local state baseline
       setInitialCatIds([...selectedCatIds]);
       setInitialSettings({ ...settings });
       setInitialAreas([...serviceAreas]);
@@ -381,7 +381,7 @@ export default function Preferences() {
       // Everything failed
       toast.error('Could not save preferences. Please check your connection and try again.');
     } else {
-      // Partial failure — tell the user exactly what failed
+      // Partial failure  -  tell the user exactly what failed
       const parts: string[] = [];
       if (addFailures.length)    parts.push(`${addFailures.length} service${addFailures.length > 1 ? 's' : ''} could not be added`);
       if (removeFailures.length) parts.push(`${removeFailures.length} service${removeFailures.length > 1 ? 's' : ''} could not be removed`);
@@ -397,13 +397,13 @@ export default function Preferences() {
       setInitialCatIds(newCatIds);
       if (!prefFailure) { setInitialSettings({ ...settings }); setInitialAreas([...serviceAreas]); }
 
-      toast.warning(`Partially saved — ${parts.join('; ')}. Please retry.`);
+      toast.warning(`Partially saved  -  ${parts.join('; ')}. Please retry.`);
     }
 
     setSaving(false);
   };
 
-  // ── Left panel — computed variable, never IIFEs ───────────────────────────
+  // ── Left panel  -  computed variable, never IIFEs ───────────────────────────
   let leftContent: React.ReactNode;
 
   if (confirmAddCat) {
@@ -454,7 +454,7 @@ export default function Preferences() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: badgeBg, color: badgeColor, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{getLevelLabel(rule.level)}</span>
-            {isSelected && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: C.sageL, color: C.sage }}>✓ Selected</span>}
+            {isSelected && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: C.sageL, color: C.sage }}>Selected</span>}
           </div>
           <div>
             <p style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 500, color: C.ink, margin: '0 0 5px', letterSpacing: '-0.01em' }}>{cat.name}</p>
@@ -495,7 +495,7 @@ export default function Preferences() {
                   <p style={{ fontSize: 13, fontWeight: 600, color: C.ink, margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</p>
                   <p style={{ fontSize: 11, color: rule.level === 'strict' ? C.amber : C.ink3, margin: 0, fontWeight: 600 }}>{getLevelLabel(rule.level)}</p>
                 </div>
-                <button onClick={() => { toast('Removing won\'t affect your verified licence data', { icon: '⚠️' }); setSelectedCatIds(prev => prev.filter(id => id !== cat.id)); }}
+                <button onClick={() => { toast('Removing won\'t affect your verified licence data', { icon: undefined }); setSelectedCatIds(prev => prev.filter(id => id !== cat.id)); }}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.ink4, padding: 2, display: 'flex' }}>
                   <X size={13} />
                 </button>
@@ -514,7 +514,7 @@ export default function Preferences() {
               ))}
             </div>
             <Link href="/tradie/licences" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 10, fontSize: 11, fontWeight: 700, color: C.brass, textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              View in Licences &amp; Docs →
+              View in Licences &amp; Docs
             </Link>
           </div>
         )}
@@ -542,7 +542,7 @@ export default function Preferences() {
           <button onClick={saveChanges} disabled={!hasChanges || saving}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 9, border: `1px solid ${hasChanges ? C.ink : C.line}`, background: hasChanges ? C.ink : C.panel, color: hasChanges ? C.card : C.ink3, fontWeight: 600, fontSize: 12, cursor: hasChanges ? 'pointer' : 'not-allowed', fontFamily: UI, transition: 'all 0.15s' }}>
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving ? 'Saving...' : 'Save changes'}
           </button>
         </div>
 
@@ -567,7 +567,7 @@ export default function Preferences() {
             <div style={{ padding: '12px 24px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', gap: 10 }}>
               <MapPin size={13} color={C.brass} />
               <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0 }}>1. Service areas &amp; states</p>
-              <span style={{ fontSize: 11.5, color: C.ink3 }}>— determines which state licences are required</span>
+              <span style={{ fontSize: 11.5, color: C.ink3 }}> -  determines which state licences are required</span>
             </div>
             <div style={{ padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 14, overflow: 'visible' }}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -590,7 +590,7 @@ export default function Preferences() {
                     onChange={e => { setAreaSuburb(e.target.value); fetchSuburbSuggestions(e.target.value); }}
                     onFocus={e => { e.target.style.borderColor = C.brass; e.target.style.background = C.card; if (areaSuburb.trim().length >= 2) setSuburbSuggestionsOpen(suburbSuggestions.length > 0); }}
                     onBlur={e => { e.target.style.borderColor = C.line; e.target.style.background = C.paper; setTimeout(() => setSuburbSuggestionsOpen(false), 180); }}
-                    placeholder={activeState ? `Search suburb in ${activeState}…` : 'Search suburb…'}
+                    placeholder={activeState ? `Search suburb in ${activeState}...` : 'Search suburb...'}
                     style={inputStyle}
                     autoComplete="off"
                   />
@@ -625,7 +625,7 @@ export default function Preferences() {
                 <div>
                   <label style={{ ...secLabel, display: 'block', marginBottom: 6 }}>State</label>
                   <select value={areaState} onChange={e => setAreaState(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                    <option value="">—</option>
+                    <option value=""> - </option>
                     {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
@@ -648,7 +648,7 @@ export default function Preferences() {
           <div style={panelStyle}>
             <div style={{ padding: '12px 24px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: 0 }}>2. Services you offer</p>
-              <span style={{ fontSize: 11, color: C.ink3 }}>{selectedCatIds.length} selected · syncs to Licences &amp; Docs</span>
+              <span style={{ fontSize: 11, color: C.ink3 }}>{selectedCatIds.length} selected  |  syncs to Licences &amp; Docs</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', minHeight: 460 }}>
 
@@ -662,7 +662,7 @@ export default function Preferences() {
                 <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ position: 'relative' }}>
                     <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
-                    <input value={catSearch} onChange={e => setCatSearch(e.target.value)} placeholder="Search services…"
+                    <input value={catSearch} onChange={e => setCatSearch(e.target.value)} placeholder="Search services..."
                       style={{ ...inputStyle, paddingLeft: 32, padding: '9px 10px 9px 32px', fontSize: 13 }}
                       onFocus={e => { e.target.style.borderColor = C.brass; e.target.style.background = C.card; }}
                       onBlur={e => { e.target.style.borderColor = C.line; e.target.style.background = C.paper; }} />
@@ -779,16 +779,16 @@ export default function Preferences() {
           <button onClick={saveChanges} disabled={!hasChanges || saving}
             style={{ alignSelf: 'flex-start', padding: '11px 22px', borderRadius: 10, background: hasChanges ? C.ink : C.panel, color: hasChanges ? C.card : C.ink3, border: 'none', fontWeight: 600, fontSize: 13, cursor: hasChanges ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 8, fontFamily: UI }}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saving ? 'Saving…' : 'Save preferences'}
+            {saving ? 'Saving...' : 'Save preferences'}
           </button>
         </div>{/* end max-width wrapper */}
 
-        {/* Mobile save bar — shown below 768px, layout handles the nav drawer */}
+        {/* Mobile save bar  -  shown below 768px, layout handles the nav drawer */}
         <div className="pref-save-bar" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '12px 16px', background: `${C.bg}F0`, backdropFilter: 'blur(12px)', borderTop: `1px solid ${C.line}`, zIndex: 60 }}>
           <button onClick={saveChanges} disabled={!hasChanges || saving}
             style={{ width: '100%', padding: '13px', borderRadius: 10, background: hasChanges ? C.ink : C.panel, color: hasChanges ? C.card : C.ink3, border: 'none', fontWeight: 600, fontSize: 13, cursor: hasChanges ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontFamily: UI }}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saving ? 'Saving…' : hasChanges ? 'Save changes' : 'No changes'}
+            {saving ? 'Saving...' : hasChanges ? 'Save changes' : 'No changes'}
           </button>
         </div>
         <style>{`.pref-save-bar { display: none; } @media (max-width: 768px) { .pref-save-bar { display: block; } }`}</style>

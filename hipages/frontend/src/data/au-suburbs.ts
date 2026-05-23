@@ -1,6 +1,6 @@
-// Australian suburbs & postcodes — static dataset
+// Australian suburbs & postcodes  -  static dataset
 // Source: Australian locations directory (all states & territories)
-// Searched instantly client-side — no API call needed
+// Searched instantly client-side  -  no API call needed
 
 export interface AustralianSuburb {
     suburb: string;
@@ -228,7 +228,7 @@ export const AU_SUBURBS: AustralianSuburb[] = [
     { suburb: "Paraburdoo", postcode: "6754", state: "WA" },
 ];
 
-// ── Search function — used directly in the suburbs API route ──────────────────
+// ── Search function  -  used directly in the suburbs API route ──────────────────
 export function searchSuburbs(query: string, limit = 8) {
     if (!query || query.length < 2) return [];
     const q = query.toLowerCase().trim();

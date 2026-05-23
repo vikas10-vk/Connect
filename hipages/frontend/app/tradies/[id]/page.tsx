@@ -35,7 +35,7 @@ interface PublicProfile {
     full_name?: string | null;
     categories: Category[];
     // Note: ratings, review count, reviews list, solo/team are intentionally
-    // not part of the response — backend hides them on public profiles.
+    // not part of the response  -  backend hides them on public profiles.
 }
 
 const initials = (name?: string | null) =>

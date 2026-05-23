@@ -26,6 +26,7 @@ NEW METHOD:
 
 from datetime import datetime
 from typing import Optional
+import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,8 +80,26 @@ ALLOWED_TRANSITIONS: dict[tuple[str, str], list[str]] = {
     # Confirmed jobs auto-close after payment release (system) or admin can close manually.
     ("confirmed",  "closed"):   ["system", "admin"],
 
-    # Admin resolves dispute by closing the job.
-    ("disputed",   "closed"):   ["admin"],
+    # Safety valve: a homeowner who confirmed in good faith can still raise a dispute
+    # if they spot a problem before the 48-hour window closes. The endpoint enforces
+    # the time check; the state machine just permits the transition.
+    ("confirmed",  "disputed"): ["homeowner"],
+
+    # ── Dispute resolution — peer-to-peer (primary path) ────────────────────
+    # Tradie claims they fixed it (dispute-claim-resolved endpoint writes a
+    # JobEvent — no status change). Homeowner then accepts here → completed.
+    # The job re-enters the normal confirm flow: completed → confirmed → closed.
+    ("disputed",   "completed"):   ["homeowner"],
+
+    # ── Dispute escalation paths (admin-only, secondary path) ────────────────
+    # Only reached when homeowner keeps rejecting the tradie's resolution claim
+    # (2+ rejections trigger an admin escalation alert automatically).
+    # closed     -> admin sided with homeowner (refund) or no-action ruling.
+    # confirmed  -> admin sided with tradie; work accepted.
+    # in_progress-> admin ordered tradie to return and redo the work.
+    ("disputed",   "closed"):      ["admin"],
+    ("disputed",   "confirmed"):   ["admin"],
+    ("disputed",   "in_progress"): ["admin"],
 }
 
 # States from which no further transitions are allowed.
@@ -101,11 +120,15 @@ TRANSITION_NOTES: dict[tuple[str, str], str] = {
     ("awaiting_scope_approval", "partial_stop"): "Scope approval timed out — tradie stopped work.",
     ("partial_stop", "completed"):              "Partial stop resolved — job marked complete.",
     ("partial_stop", "disputed"):               "Homeowner raised a dispute on partial stop.",
-    ("completed",   "confirmed"):               "Homeowner confirmed job complete — payment released to tradie.",
+    ("completed",   "confirmed"):               "Homeowner confirmed job complete.",
     ("completed",   "disputed"):                "Homeowner raised a dispute within 48h of completion.",
     ("completed",   "closed"):                  "Job closed after 48h with no dispute.",
     ("confirmed",   "closed"):                  "Job closed after payment release.",
-    ("disputed",    "closed"):                  "Dispute resolved by admin.",
+    ("confirmed",   "disputed"):                "Homeowner raised a dispute after confirming — still within the 48h window.",
+    ("disputed",    "completed"):               "Homeowner accepted the tradie's resolution — dispute closed, job back to completed.",
+    ("disputed",    "closed"):                  "Dispute escalated to admin — job closed (refund or no-action ruling).",
+    ("disputed",    "confirmed"):               "Dispute escalated to admin — sided with tradie; work accepted as complete.",
+    ("disputed",    "in_progress"):             "Dispute escalated to admin — tradie ordered to return and finish/redo the work.",
 }
 
 
@@ -285,7 +308,7 @@ class JobStateMachine:
         db.add(job)
 
         # ── Write audit event ─────────────────────────────────────────────────
-        auto_note = TRANSITION_NOTES.get(key, f"{old_status} → {new_status}")
+        auto_note = TRANSITION_NOTES.get(key, f"{old_status} -> {new_status}")
         event = JobEvent(
             job_id     = job.id,
             actor_id   = actor_id,
@@ -297,7 +320,64 @@ class JobStateMachine:
         )
         db.add(event)
 
+        # ── Real-time broadcast (best-effort) ─────────────────────────────────
+        # Push a job:status_changed event so the homeowner dashboard and the
+        # tradie dashboard refresh in real-time without manual reload.
+        # NEVER raises -- a WebSocket failure must never break a transition.
+        try:
+            from routers.websocket import broadcast_job_status
+            from models.lead import Lead
+            from models.realtime_notification import RealtimeNotification
+            from models.tradie_profile import TradieProfile
+            from sqlalchemy import select
+
+            # Resolve tradie user_ids from any leads on this job. A job may have
+            # up to 3 leads (the matcher caps at 3 tradies); we notify all of
+            # them so their dashboards reflect terminal transitions too.
+            lead_res = await db.execute(
+                select(TradieProfile.user_id)
+                .join(Lead, Lead.tradie_id == TradieProfile.id)
+                .where(Lead.job_id == job.id)
+            )
+            tradie_user_ids = [row[0] for row in lead_res.all() if row[0]]
+            recipients = {job.homeowner_id, *tradie_user_ids}
+            notification_ids: dict[str, str] = {}
+            payload = {
+                "type": "job:status_changed",
+                "job_id": job.id,
+                "old_status": old_status,
+                "new_status": new_status,
+            }
+            for user_id in recipients:
+                if not user_id:
+                    continue
+                notification = RealtimeNotification(
+                    id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    event_type="job:status_changed",
+                    payload=payload,
+                )
+                db.add(notification)
+                notification_ids[user_id] = notification.id
+
+            await broadcast_job_status(
+                job_id=job.id,
+                old_status=old_status,
+                new_status=new_status,
+                homeowner_id=job.homeowner_id,
+                tradie_user_ids=tradie_user_ids,
+                notification_ids=notification_ids,
+            )
+        except Exception:
+            # Logging only; the transition is committed regardless.
+            import logging
+            logging.getLogger(__name__).debug(
+                "broadcast_job_status skipped for job %s", job.id, exc_info=True,
+            )
+
     # ── Convenience query helpers ─────────────────────────────────────────────
+
+    @staticmethod
 
     @staticmethod
     def assert_status(job: Job, *expected: str) -> None:

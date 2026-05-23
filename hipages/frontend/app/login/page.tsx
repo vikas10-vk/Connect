@@ -22,7 +22,7 @@ function LoginForm() {
     setError('');
     setSubmitting(true);
     try {
-      // No expected_role passed — the backend accepts any valid role.
+      // No expected_role passed  -  the backend accepts any valid role.
       // Role-based routing happens silently below; the login page itself
       // never mentions or exposes the existence of an admin panel.
       const user = await login(email.trim().toLowerCase(), password);
@@ -106,7 +106,7 @@ function LoginForm() {
           className="w-full bg-[#071D36] text-white py-4 rounded-2xl font-bold hover:scale-[1.02] hover:bg-[#0E2E55] transition-transform flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
         >
           {submitting
-            ? <><Loader2 className="w-5 h-5 animate-spin" /> Signing in…</>
+            ? <><Loader2 className="w-5 h-5 animate-spin" /> Signing in...</>
             : <><ArrowRight className="w-5 h-5" /> Sign In</>
           }
         </button>

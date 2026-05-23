@@ -52,7 +52,9 @@ from models.job_assignment import JobAssignment
 from models.job_event import JobEvent
 from models.job_photo import JobPhoto
 from models.lead import Lead
+from models.outbox_event import OutboxEvent
 from models.quote import Quote
+from models.realtime_notification import RealtimeNotification
 from models.review import Review
 from models.service_question import ServiceQuestion
 from models.suburb import Suburb

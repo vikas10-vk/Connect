@@ -32,9 +32,9 @@ const UI = "'Inter', 'DM Sans', -apple-system, system-ui, sans-serif";
 const AU_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'];
 
 const STATE_REGISTRY_NAMES: Record<string, string> = {
-    VIC: 'VBA — Victorian Building Authority',
+    VIC: 'VBA  -  Victorian Building Authority',
     NSW: 'NSW Fair Trading',
-    QLD: 'QBCC — Queensland Building & Construction Commission',
+    QLD: 'QBCC  -  Queensland Building & Construction Commission',
     WA: 'WA Building Commission',
     SA: 'Consumer & Business Services SA',
     TAS: 'Consumer, Building & Occupational Services TAS',
@@ -105,7 +105,7 @@ export default function TradieOnboardingPage() {
     const [step, setStep] = useState<StepId>(1);
     const [submitting, setSubmitting] = useState(false);
     const [submitPhase, setSubmitPhase] = useState<SubmitPhase>('idle');
-    // Resume detection — show a spinner while we work out where they left off
+    // Resume detection  -  show a spinner while we work out where they left off
     const [resumeChecking, setResumeChecking] = useState(true);
 
     // ── Step 1: Account ──────────────────────────────────────────────────────
@@ -180,12 +180,12 @@ export default function TradieOnboardingPage() {
 
     // ── Resume detection: fires once auth state settles ───────────────────────
     // If user already has a valid token (came back mid-flow or after OTP verify),
-    // skip the auth steps and land on the first incomplete step (3–7).
+    // skip the auth steps and land on the first incomplete step (3-7).
     useEffect(() => {
         if (authLoading) return; // wait for auth context to initialise
 
         if (!isAuthenticated || !user) {
-            // Not logged in — normal flow, start at step 1
+            // Not logged in  -  normal flow, start at step 1
             setResumeChecking(false);
             return;
         }
@@ -201,7 +201,7 @@ export default function TradieOnboardingPage() {
             return;
         }
 
-        // Email verified — find the first incomplete step (3–7)
+        // Email verified  -  find the first incomplete step (3-7)
         const detectStep = async () => {
             try {
                 // Does a tradie profile exist?
@@ -243,10 +243,10 @@ export default function TradieOnboardingPage() {
                 }
             } catch (err: any) {
                 if (err?.response?.status === 404) {
-                    // No profile yet — start at business details
+                    // No profile yet  -  start at business details
                     setStep(3);
                 } else {
-                    // Unknown error — start fresh
+                    // Unknown error  -  start fresh
                     setStep(3);
                 }
             } finally {
@@ -377,7 +377,7 @@ export default function TradieOnboardingPage() {
         try {
             // POST /auth/register is now idempotent for unverified emails.
             // It returns 200 whether creating a new user or resending OTP to an
-            // existing unverified account — so we never get a 400 for that case.
+            // existing unverified account  -  so we never get a 400 for that case.
             await api.post('/auth/register', {
                 email: email.trim().toLowerCase(), password,
                 full_name: fullName.trim(), phone: phone.replace(/\D/g, ''), role: 'tradie',
@@ -522,7 +522,7 @@ export default function TradieOnboardingPage() {
             return;
         }
 
-        // Phase 2: Submit certifications (non-fatal — user can add from dashboard)
+        // Phase 2: Submit certifications (non-fatal  -  user can add from dashboard)
         setSubmitPhase('certs');
         const certErrors: string[] = [];
         for (const entry of certEntries.filter(e => !e.skip && e.licence_number.trim())) {
@@ -576,13 +576,13 @@ export default function TradieOnboardingPage() {
         }
 
         setSubmitPhase('done');
-        toast.success('Profile submitted — our team will review within 1 business day.');
+        toast.success('Profile submitted  -  our team will review within 1 business day.');
         setTimeout(() => router.push('/tradie/dashboard'), 700);
     };
 
     const submitPhaseLabel = {
-        idle: '', profile: 'Creating your profile…',
-        certs: 'Submitting licences…', insurance: 'Submitting insurance…', done: 'Done!',
+        idle: '', profile: 'Creating your profile...',
+        certs: 'Submitting licences...', insurance: 'Submitting insurance...', done: 'Done!',
     }[submitPhase];
 
     // ── While checking where to resume, show a neutral loading screen ─────────
@@ -593,7 +593,7 @@ export default function TradieOnboardingPage() {
                     <Zap size={22} color={C.card} fill={C.card} />
                 </div>
                 <Loader2 size={20} color={C.brass} style={{ animation: 'spin 1s linear infinite' }} />
-                <p style={{ fontSize: 14, color: C.ink3, margin: 0 }}>Checking your progress…</p>
+                <p style={{ fontSize: 14, color: C.ink3, margin: 0 }}>Checking your progress...</p>
                 <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
             </div>
         );
@@ -605,7 +605,7 @@ export default function TradieOnboardingPage() {
             display: 'flex', flexDirection: 'column',
         }}>
 
-            {/* ── Header — navy, matches site-wide navbar ── */}
+            {/* ── Header  -  navy, matches site-wide navbar ── */}
             <header style={{
                 padding: '16px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)',
                 background: '#071D36', backdropFilter: 'blur(10px)',
@@ -663,14 +663,14 @@ export default function TradieOnboardingPage() {
                 <AnimatePresence mode="wait">
 
                     {/* ═══════════════════════════════════════════════════════════
-                        STEP 1 — Account (EXISTING, PRESERVED EXACTLY)
+                        STEP 1  -  Account (EXISTING, PRESERVED EXACTLY)
                     ═══════════════════════════════════════════════════════════ */}
                     {step === 1 && (
                         <motion.div key="s1" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
                             <div style={{ marginBottom: 28 }}>
                                 <p style={{ fontSize: 12, fontWeight: 600, color: C.brass, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Step 1 of 7</p>
                                 <h1 style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink, margin: '0 0 10px', letterSpacing: '-0.025em', lineHeight: 1.15 }}>Create your account</h1>
-                                <p style={{ fontSize: 14.5, color: C.ink2, margin: 0, lineHeight: 1.6, maxWidth: 480 }}>Quick details first — we'll send a verification code to your email next.</p>
+                                <p style={{ fontSize: 14.5, color: C.ink2, margin: 0, lineHeight: 1.6, maxWidth: 480 }}>Quick details first  -  we'll send a verification code to your email next.</p>
                             </div>
                             {step1Error && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, background: C.roseL, border: `1px solid ${C.rose}30`, color: C.rose, padding: '10px 14px', borderRadius: 10, fontSize: 13 }}>
@@ -707,10 +707,10 @@ export default function TradieOnboardingPage() {
                                                 { ok: password.length >= 8, label: '8+ characters' },
                                                 { ok: /[A-Z]/.test(password), label: 'Uppercase letter' },
                                                 { ok: /[a-z]/.test(password), label: 'Lowercase letter' },
-                                                { ok: /\d/.test(password), label: 'Number (0–9)' },
+                                                { ok: /\d/.test(password), label: 'Number (0-9)' },
                                             ].map(({ ok, label }) => (
                                                 <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: ok ? C.sage : C.ink3 }}>
-                                                    <span style={{ fontSize: 14, lineHeight: 1 }}>{ok ? '✓' : '·'}</span>
+                                                    <span style={{ fontSize: 14, lineHeight: 1 }}>{ok ? 'OK' : ' | '}</span>
                                                     {label}
                                                 </div>
                                             ))}
@@ -732,7 +732,7 @@ export default function TradieOnboardingPage() {
                                             onChange={e => { setSuburbInput(e.target.value); setSelectedSuburb(null); setShowSuburbDrop(true); }}
                                             onFocus={e => { inputFocusOn(e); setShowSuburbDrop(true); }}
                                             onBlur={e => { inputFocusOff(e); setTimeout(() => setShowSuburbDrop(false), 150); }}
-                                            placeholder="Start typing your suburb…"
+                                            placeholder="Start typing your suburb..."
                                             style={{ ...inputStyle, paddingLeft: 40 }} autoComplete="off" />
                                         {suburbSearching && <Loader2 size={13} className="animate-spin" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: C.ink3 }} />}
                                         {selectedSuburb && !suburbSearching && <CheckCircle2 size={15} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: C.sage }} />}
@@ -755,7 +755,7 @@ export default function TradieOnboardingPage() {
                                 <button onClick={handleStep1Submit} disabled={!step1Valid || submitting}
                                     style={{ marginTop: 8, padding: '15px 22px', borderRadius: 12, border: 'none', background: (!step1Valid || submitting) ? C.ink3 : C.ink, color: C.card, fontSize: 14, fontWeight: 600, cursor: (!step1Valid || submitting) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 0.15s' }}>
                                     {submitting ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
-                                    {submitting ? 'Creating account…' : 'Continue to email verification'}
+                                    {submitting ? 'Creating account...' : 'Continue to email verification'}
                                 </button>
                                 <p style={{ fontSize: 11.5, color: C.ink4, textAlign: 'center', margin: '4px 0 0', lineHeight: 1.6 }}>
                                     By continuing you agree to our <a href="/terms" style={{ color: C.ink3 }}>Terms</a> and <a href="/privacy" style={{ color: C.ink3 }}>Privacy Policy</a>.
@@ -765,7 +765,7 @@ export default function TradieOnboardingPage() {
                     )}
 
                     {/* ═══════════════════════════════════════════════════════════
-                        STEP 2 — Email OTP (EXISTING, PRESERVED EXACTLY)
+                        STEP 2  -  Email OTP (EXISTING, PRESERVED EXACTLY)
                     ═══════════════════════════════════════════════════════════ */}
                     {step === 2 && (
                         <motion.div key="s2" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
@@ -794,14 +794,14 @@ export default function TradieOnboardingPage() {
                             )}
                             {otpVerifying && (
                                 <p style={{ fontSize: 13, color: C.ink3, textAlign: 'center', margin: '0 0 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                                    <Loader2 size={13} className="animate-spin" />Verifying…
+                                    <Loader2 size={13} className="animate-spin" />Verifying...
                                 </p>
                             )}
                             <div style={{ textAlign: 'center', margin: '24px 0 8px' }}>
                                 <p style={{ fontSize: 13, color: C.ink3, margin: '0 0 6px' }}>Didn't receive the code?</p>
                                 <button onClick={handleResendOtp} disabled={resendCooldown > 0 || otpSending}
                                     style={{ background: 'none', border: 'none', color: resendCooldown > 0 ? C.ink4 : C.brass, fontSize: 13, fontWeight: 600, cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer', padding: '6px 12px', textDecoration: resendCooldown > 0 ? 'none' : 'underline' }}>
-                                    {otpSending ? 'Sending…' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                                    {otpSending ? 'Sending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
                                 </button>
                             </div>
                             <button onClick={() => setStep(1)} disabled={otpVerifying}
@@ -812,7 +812,7 @@ export default function TradieOnboardingPage() {
                     )}
 
                     {/* ═══════════════════════════════════════════════════════════
-                        STEP 3 — Business (EXISTING, PRESERVED EXACTLY)
+                        STEP 3  -  Business (EXISTING, PRESERVED EXACTLY)
                     ═══════════════════════════════════════════════════════════ */}
                     {step === 3 && (
                         <motion.div key="s3" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
@@ -836,7 +836,7 @@ export default function TradieOnboardingPage() {
                                         <Hash size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
                                         <input value={abn} onChange={e => setAbn(formatAbn(e.target.value))} placeholder="11 222 333 444" maxLength={14} style={{ ...inputStyle, paddingLeft: 40, fontVariantNumeric: 'tabular-nums', letterSpacing: '0.05em' }} onFocus={inputFocusOn} onBlur={inputFocusOff} inputMode="numeric" />
                                     </div>
-                                    <p style={{ fontSize: 11.5, color: C.ink4, margin: '6px 0 0' }}>11 digits — verified by our team against the Australian Business Register.</p>
+                                    <p style={{ fontSize: 11.5, color: C.ink4, margin: '6px 0 0' }}>11 digits  -  verified by our team against the Australian Business Register.</p>
                                 </div>
                                 <div>
                                     <label style={labelStyle}>Are you working solo, or with a team?</label>
@@ -884,7 +884,7 @@ export default function TradieOnboardingPage() {
                                 <div>
                                     <label style={labelStyle}>About your work <span style={{ color: C.ink4, textTransform: 'none', letterSpacing: 0 }}>(optional but recommended)</span></label>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                                        {['🔧 10+ years experience', '✅ Licensed & insured', '⚡ Same-day availability', '📸 Before & after photos', '🏆 5-star rated on Google', '🔒 Fixed-price quotes', '📞 Free on-site quotes', '🚐 Fully equipped van'].map(chip => (
+                                        {['10+ years experience', 'Licensed & insured', 'Same-day availability', 'Before & after photos', '5-star rated on Google', 'Fixed-price quotes', 'Free on-site quotes', 'Fully equipped van'].map(chip => (
                                             <button key={chip} type="button"
                                                 onClick={() => {
                                                     const text = chip.replace(/^\S+ /, '');
@@ -918,7 +918,7 @@ export default function TradieOnboardingPage() {
                     )}
 
                     {/* ═══════════════════════════════════════════════════════════
-                        STEP 4 — Services (EXISTING, PRESERVED EXACTLY)
+                        STEP 4  -  Services (EXISTING, PRESERVED EXACTLY)
                     ═══════════════════════════════════════════════════════════ */}
                     {step === 4 && (
                         <motion.div key="s4" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
@@ -929,7 +929,7 @@ export default function TradieOnboardingPage() {
                             </div>
                             <div style={{ position: 'relative', marginBottom: 14 }}>
                                 <Search size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
-                                <input value={catSearchQuery} onChange={e => setCatSearchQuery(e.target.value)} placeholder="Search services…" style={{ ...inputStyle, paddingLeft: 40 }} onFocus={inputFocusOn} onBlur={inputFocusOff} />
+                                <input value={catSearchQuery} onChange={e => setCatSearchQuery(e.target.value)} placeholder="Search services..." style={{ ...inputStyle, paddingLeft: 40 }} onFocus={inputFocusOn} onBlur={inputFocusOff} />
                                 {catSearchQuery && (
                                     <button onClick={() => setCatSearchQuery('')} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.ink3, padding: 4, display: 'flex' }}>
                                         <X size={14} />
@@ -949,7 +949,7 @@ export default function TradieOnboardingPage() {
                                     <div>
                                         <p style={{ fontSize: 13, fontWeight: 700, color: C.amber, margin: '0 0 4px' }}>Licence required for {licensedSelectedCats.length} of your selected trades</p>
                                         <p style={{ fontSize: 12.5, color: C.ink2, margin: 0, lineHeight: 1.55 }}>
-                                            You'll enter your licence details in the next step. Our admin team verifies manually — usually within 1 business day.
+                                            You'll enter your licence details in the next step. Our admin team verifies manually  -  usually within 1 business day.
                                         </p>
                                     </div>
                                 </motion.div>
@@ -957,7 +957,7 @@ export default function TradieOnboardingPage() {
                             {catLoading ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '32px 0', justifyContent: 'center', color: C.ink3 }}>
                                     <Loader2 size={16} className="animate-spin" />
-                                    <span style={{ fontSize: 13 }}>Loading services…</span>
+                                    <span style={{ fontSize: 13 }}>Loading services...</span>
                                 </div>
                             ) : (
                                 <>
@@ -983,7 +983,7 @@ export default function TradieOnboardingPage() {
                                     <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
                                         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.lineSoft}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                             <p style={{ fontSize: 11, fontWeight: 600, color: C.ink3, margin: 0 }}>
-                                                {catSearchQuery ? `${filteredCategories.filter(c => !selectedCatIds.includes(c.id)).length} matching` : `${allCategories.filter(c => !selectedCatIds.includes(c.id)).length} available`} — tap to add
+                                                {catSearchQuery ? `${filteredCategories.filter(c => !selectedCatIds.includes(c.id)).length} matching` : `${allCategories.filter(c => !selectedCatIds.includes(c.id)).length} available`}  -  tap to add
                                             </p>
                                             {selectedCatIds.length > 0 && (
                                                 <button onClick={() => setSelectedCatIds([])} style={{ fontSize: 11, color: C.rose, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Clear all</button>
@@ -1042,7 +1042,7 @@ export default function TradieOnboardingPage() {
                     )}
 
                     {/* ═══════════════════════════════════════════════════════════
-                        STEP 5 — Documents (Licences + Insurance + White Card combined)
+                        STEP 5  -  Documents (Licences + Insurance + White Card combined)
                     ═══════════════════════════════════════════════════════════ */}
                     {step === 5 && (
                         <motion.div key="s5" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
@@ -1050,7 +1050,7 @@ export default function TradieOnboardingPage() {
                                 <p style={{ fontSize: 12, fontWeight: 600, color: C.brass, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Step 5 of 6</p>
                                 <h1 style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink, margin: '0 0 10px', letterSpacing: '-0.025em', lineHeight: 1.15 }}>Licences &amp; documents</h1>
                                 <p style={{ fontSize: 14.5, color: C.ink2, margin: 0, lineHeight: 1.6, maxWidth: 480 }}>
-                                    Fill in each section — it collapses to a summary when done. You can skip sections and add them later from your dashboard.
+                                    Fill in each section  -  it collapses to a summary when done. You can skip sections and add them later from your dashboard.
                                 </p>
                             </div>
 
@@ -1080,7 +1080,7 @@ export default function TradieOnboardingPage() {
                                                     <div>
                                                         <span style={{ fontSize: 13.5, fontWeight: 700, color: entry.skip ? C.ink4 : isCollapsed ? C.sage : C.ink }}>{entry.category_name}</span>
                                                         {isCollapsed && !entry.skip && (
-                                                            <span style={{ display: 'block', fontSize: 11.5, color: C.ink3, fontVariantNumeric: 'tabular-nums' }}>{entry.licence_number} · {entry.issuing_state}</span>
+                                                            <span style={{ display: 'block', fontSize: 11.5, color: C.ink3, fontVariantNumeric: 'tabular-nums' }}>{entry.licence_number}  |  {entry.issuing_state}</span>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1113,8 +1113,8 @@ export default function TradieOnboardingPage() {
                                                                     <select value={entry.issuing_state} onChange={e => updateCert(idx, 'issuing_state', e.target.value)}
                                                                         style={{ ...inputStyle, paddingRight: 36, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}
                                                                         onFocus={inputFocusOn} onBlur={inputFocusOff}>
-                                                                        <option value="">Select state…</option>
-                                                                        {AU_STATES.map(s => <option key={s} value={s}>{s} — {STATE_REGISTRY_NAMES[s]}</option>)}
+                                                                        <option value="">Select state...</option>
+                                                                        {AU_STATES.map(s => <option key={s} value={s}>{s}  -  {STATE_REGISTRY_NAMES[s]}</option>)}
                                                                     </select>
                                                                     <ChevronDown size={14} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: C.ink3, pointerEvents: 'none' }} />
                                                                 </div>
@@ -1154,7 +1154,7 @@ export default function TradieOnboardingPage() {
                                                             {entryComplete && (
                                                                 <button onClick={() => toggleSection(`cert_${entry.category_id}`, true)}
                                                                     style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: C.sage, color: C.card, fontWeight: 600, fontSize: 13.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: UI }}>
-                                                                    <CheckCircle2 size={15} /> Looks good — save this licence
+                                                                    <CheckCircle2 size={15} /> Looks good  -  save this licence
                                                                 </button>
                                                             )}
                                                         </div>
@@ -1186,7 +1186,7 @@ export default function TradieOnboardingPage() {
                                                     <div>
                                                         <span style={{ fontSize: 13.5, fontWeight: 700, color: insurance.skip ? C.ink4 : isCollapsed ? C.sage : C.ink }}>Public Liability Insurance</span>
                                                         {isCollapsed && (
-                                                            <span style={{ display: 'block', fontSize: 11.5, color: C.ink3 }}>{insurance.insurer_name} · {insurance.policy_number}</span>
+                                                            <span style={{ display: 'block', fontSize: 11.5, color: C.ink3 }}>{insurance.insurer_name}  |  {insurance.policy_number}</span>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1253,7 +1253,7 @@ export default function TradieOnboardingPage() {
                                                             {insComplete && (
                                                                 <button onClick={() => toggleSection('insurance', true)}
                                                                     style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: C.sage, color: C.card, fontWeight: 600, fontSize: 13.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: UI }}>
-                                                                    <CheckCircle2 size={15} /> Looks good — save insurance details
+                                                                    <CheckCircle2 size={15} /> Looks good  -  save insurance details
                                                                 </button>
                                                             )}
                                                         </div>
@@ -1324,7 +1324,7 @@ export default function TradieOnboardingPage() {
                                                             {wcComplete && (
                                                                 <button onClick={() => toggleSection('whitecard', true)}
                                                                     style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', background: C.sage, color: C.card, fontWeight: 600, fontSize: 13.5, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: UI }}>
-                                                                    <CheckCircle2 size={15} /> Looks good — save White Card
+                                                                    <CheckCircle2 size={15} /> Looks good  -  save White Card
                                                                 </button>
                                                             )}
                                                         </div>
@@ -1357,13 +1357,13 @@ export default function TradieOnboardingPage() {
                     )}
 
                     {/* ═══════════════════════════════════════════════════════════
-                        STEP 6 — Review & Submit
+                        STEP 6  -  Review & Submit
                     ═══════════════════════════════════════════════════════════ */}
                     {step === 6 && (
                         <motion.div key="s6r" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
                             <div style={{ marginBottom: 28 }}>
                                 <p style={{ fontSize: 12, fontWeight: 600, color: C.brass, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.14em' }}>Step 6 of 6</p>
-                                <h1 style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink, margin: '0 0 10px', letterSpacing: '-0.025em', lineHeight: 1.15 }}>Almost done — quick review</h1>
+                                <h1 style={{ fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink, margin: '0 0 10px', letterSpacing: '-0.025em', lineHeight: 1.15 }}>Almost done  -  quick review</h1>
                                 <p style={{ fontSize: 14.5, color: C.ink2, margin: 0, lineHeight: 1.6, maxWidth: 480 }}>Take a look at your details, then submit for our team to verify.</p>
                             </div>
 
@@ -1391,7 +1391,7 @@ export default function TradieOnboardingPage() {
                                     <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '6px 14px', fontSize: 13 }}>
                                         <span style={{ color: C.ink3 }}>Business</span><span style={{ color: C.ink, fontWeight: 500 }}>{businessName}</span>
                                         <span style={{ color: C.ink3 }}>ABN</span><span style={{ color: C.ink, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{abn}</span>
-                                        <span style={{ color: C.ink3 }}>Structure</span><span style={{ color: C.ink, fontWeight: 500 }}>{soloOrTeam === 'solo' ? 'Sole trader' : `Team — ${teamSize} people`}</span>
+                                        <span style={{ color: C.ink3 }}>Structure</span><span style={{ color: C.ink, fontWeight: 500 }}>{soloOrTeam === 'solo' ? 'Sole trader' : `Team  -  ${teamSize} people`}</span>
                                     </div>
                                 </div>
 
@@ -1423,7 +1423,7 @@ export default function TradieOnboardingPage() {
                                                     {e.skip
                                                         ? <span style={{ fontSize: 11, color: C.ink4, background: C.panel, padding: '2px 8px', borderRadius: 10 }}>Add later</span>
                                                         : <span style={{ fontSize: 11, color: C.sage, background: C.sageL, padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
-                                                            {e.licence_number} · {e.issuing_state}
+                                                            {e.licence_number}  |  {e.issuing_state}
                                                         </span>
                                                     }
                                                 </div>
@@ -1466,7 +1466,7 @@ export default function TradieOnboardingPage() {
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: C.amberL, borderRadius: 10 }}>
                                             <AlertCircle size={14} color={C.amber} />
                                             <p style={{ fontSize: 12.5, color: C.ink2, margin: 0, lineHeight: 1.55 }}>
-                                                Insurance skipped — add from <strong>Licences &amp; Documents</strong> before you can receive paid leads.
+                                                Insurance skipped  -  add from <strong>Licences &amp; Documents</strong> before you can receive paid leads.
                                             </p>
                                         </div>
                                     </div>
@@ -1480,7 +1480,7 @@ export default function TradieOnboardingPage() {
                                     <p style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 500, color: C.ink, margin: 0, letterSpacing: '-0.01em' }}>What happens next</p>
                                 </div>
                                 <ol style={{ margin: 0, padding: '0 0 0 20px', fontSize: 13, color: C.ink2, lineHeight: 1.75 }}>
-                                    <li>Our team reviews your profile — usually within 1 business day.</li>
+                                    <li>Our team reviews your profile  -  usually within 1 business day.</li>
                                     <li>Any submitted licences are verified against the relevant state registry.</li>
                                     <li>Any submitted insurance policy is confirmed with your insurer.</li>
                                     <li>Once approved, you'll start receiving matched job leads automatically.</li>
@@ -1503,7 +1503,7 @@ export default function TradieOnboardingPage() {
                                 <button onClick={handleFinalSubmit} disabled={submitting}
                                     style={{ flex: 1, padding: '15px 22px', borderRadius: 12, border: 'none', background: submitting ? C.ink3 : C.ink, color: C.card, fontSize: 14, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 0.15s' }}>
                                     {submitting ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
-                                    {submitting ? (submitPhaseLabel || 'Submitting…') : 'Submit for review'}
+                                    {submitting ? (submitPhaseLabel || 'Submitting...') : 'Submit for review'}
                                 </button>
                             </div>
                         </motion.div>

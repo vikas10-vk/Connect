@@ -17,7 +17,7 @@ EXISTING STATUSES (unchanged):
 import uuid
 import enum
 from datetime import datetime
-from sqlalchemy import String, Float, Boolean, DateTime, Text, Integer, ForeignKey
+from sqlalchemy import CheckConstraint, String, Float, Boolean, DateTime, Text, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.session import Base
 
@@ -70,6 +70,14 @@ class JobStatus(str, enum.Enum):
 
 class Job(Base):
     __tablename__ = "jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('open', 'quoted', 'hired', 'in_progress', "
+            "'awaiting_scope_approval', 'partial_stop', 'disputed', "
+            "'completed', 'confirmed', 'closed', 'cancelled')",
+            name="ck_jobs_status_valid",
+        ),
+    )
 
     # ── Existing fields (UNCHANGED) ────────────────────────────────────────────
     id           : Mapped[str]      = mapped_column(String,      primary_key=True, default=lambda: str(uuid.uuid4()))

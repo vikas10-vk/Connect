@@ -140,7 +140,7 @@ export default function DraftBanner() {
                                                 'bg-gray-50 text-brand-gold/50'
                                         }`}
                                         style={current ? { background: stepColor } : {}}>
-                                        {done ? '✓' : label}
+                                        {done ? 'Done' : label}
                                     </span>
                                 </div>
                             );

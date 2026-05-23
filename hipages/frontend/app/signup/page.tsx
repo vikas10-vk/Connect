@@ -6,7 +6,7 @@ import { useAuth } from '@/src/contexts/AuthContext';
 import { Zap, Mail, Lock, ArrowRight, User, Shield, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 
-// ── Password rules — must match backend RegisterRequest validator exactly ──────
+// ── Password rules  -  must match backend RegisterRequest validator exactly ──────
 function validatePassword(password: string): string | null {
   if (password.length < 8) return 'Password must be at least 8 characters.'
   if (!password.split('').some(c => c >= 'A' && c <= 'Z' || c >= 'À' && c <= 'Ö'))
@@ -51,7 +51,7 @@ function SignupForm() {
     if (name.trim().length < 2) { setError('Please enter your full name.'); return; }
     if (!email.includes('@')) { setError('Please enter a valid email.'); return; }
 
-    // Client-side password check — same rules as backend
+    // Client-side password check  -  same rules as backend
     const pwdError = validatePassword(password)
     if (pwdError) { setError(pwdError); return; }
 
@@ -142,13 +142,13 @@ function SignupForm() {
             />
           </div>
 
-          {/* Live password rules — shown while typing */}
+          {/* Live password rules  -  shown while typing */}
           {showRules && (
             <div className="pt-1 pl-1 grid grid-cols-2 gap-1">
               <PwdRule ok={hasLength} label="8+ characters" />
               <PwdRule ok={hasUpper} label="Uppercase letter" />
               <PwdRule ok={hasLower} label="Lowercase letter" />
-              <PwdRule ok={hasDigit} label="Number (0–9)" />
+              <PwdRule ok={hasDigit} label="Number (0-9)" />
             </div>
           )}
         </div>
@@ -159,7 +159,7 @@ function SignupForm() {
           className="w-full bg-[#071D36] text-white py-4 rounded-2xl font-bold hover:bg-[#0E2E55] transition-colors flex items-center justify-center gap-2 shadow-lg shadow-[#071D36]/20 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {submitting
-            ? <><Loader2 className="w-5 h-5 animate-spin" /> Creating account…</>
+            ? <><Loader2 className="w-5 h-5 animate-spin" /> Creating account...</>
             : <><ArrowRight className="w-5 h-5" /> Create Account</>
           }
         </button>

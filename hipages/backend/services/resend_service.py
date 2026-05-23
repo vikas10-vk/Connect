@@ -264,6 +264,340 @@ async def send_no_tradies_email(to_email: str, full_name: str, job_title: str, s
     return await _send_raw_email(to_email, f"We're finding you a tradie for your {job_title} job", _base_html(body, "#0077AA"), text)
 
 
+async def send_uncategorised_received_email(
+    to_email: str, full_name: str, description_excerpt: str,
+) -> bool:
+    """
+    Sent to a homeowner immediately after they submit a 'service not listed'
+    request. Tells them honestly that a human will look at it within 24h.
+    """
+    name = _first(full_name)
+    url = f"{APP_BASE_URL}/dashboard"
+    snippet = (description_excerpt or "").strip().replace("\n", " ")
+    if len(snippet) > 220:
+        snippet = snippet[:220] + "..."
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">We've received your request</h1>
+      <p style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
+        G'day {name}, thanks for telling us what you need. Your request looks like
+        something outside our standard service list, so a real person on our team
+        will read it and get back to you within 24 hours.
+      </p>
+      {_box(snippet or "No description supplied.", "#0077AA", "#E0F4FF")}
+      <p style="margin:20px 0 0;font-size:13px;color:#8A8882;line-height:1.6;">
+        We'll either match you with a tradie who can help, or honestly let you know
+        if it's not something we cover yet.
+      </p>
+      {_btn("View Dashboard", url, "#0077AA")}"""
+    text = (
+        f"G'day {name},\n\n"
+        f"We've received your service request:\n\n  {snippet or '(no description supplied)'}\n\n"
+        f"This looks outside our standard service list, so a person on our team "
+        f"will read it and get back to you within 24 hours.\n\n"
+        f"Dashboard: {url}\n\n— The {APP_NAME} team"
+    )
+    return await _send_raw_email(
+        to_email,
+        f"We've received your service request — we'll respond within 24h",
+        _base_html(body, "#0077AA"),
+        text,
+    )
+
+
+async def send_uncategorised_not_supported_email(
+    to_email: str, full_name: str, description_excerpt: str,
+    admin_note: Optional[str] = None,
+) -> bool:
+    """
+    Sent when admin reviews an uncategorised request and decides the platform
+    can't help with it. Polite, honest, with optional admin context.
+    """
+    name = _first(full_name)
+    snippet = (description_excerpt or "").strip().replace("\n", " ")
+    if len(snippet) > 220:
+        snippet = snippet[:220] + "..."
+
+    note_block = ""
+    if admin_note:
+        safe_note = admin_note.strip().replace("\n", "<br>")
+        note_block = (
+            f'<div style="background:#F8F5EE;border:1px solid #E6D9B5;border-radius:12px;'
+            f'padding:14px 18px;margin:18px 0;font-size:13.5px;color:#1A1A1A;line-height:1.6;">'
+            f'<strong>From our team:</strong><br>{safe_note}</div>'
+        )
+
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">Sorry — we can't help with this one</h1>
+      <p style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
+        G'day {name}, thanks again for telling us what you needed. Unfortunately
+        this service is outside what {APP_NAME} currently covers in your area.
+      </p>
+      {_box(snippet or "No description supplied.", "#8A8882", "#F8F5EE")}
+      {note_block}
+      <p style="margin:20px 0 0;font-size:13px;color:#8A8882;line-height:1.6;">
+        We've logged your request so we know what services people are looking for.
+        If we add this service in future we'll let you know.
+      </p>"""
+    text_note = f"\n\nFrom our team: {admin_note}\n" if admin_note else "\n"
+    text = (
+        f"G'day {name},\n\n"
+        f"Thanks for telling us what you needed:\n\n  {snippet or '(no description supplied)'}\n\n"
+        f"Unfortunately this service is outside what {APP_NAME} currently covers in your area."
+        f"{text_note}"
+        f"We've logged your request so we know what services people are looking for. "
+        f"If we add this service in future we'll let you know.\n\n"
+        f"— The {APP_NAME} team"
+    )
+    return await _send_raw_email(
+        to_email,
+        f"About your {APP_NAME} service request",
+        _base_html(body, "#8A8882"),
+        text,
+    )
+
+
+async def send_job_disputed_to_tradie_email(
+    to_email: str, full_name: str, business_name: str,
+    job_title: str, suburb: str, dispute_reason: Optional[str] = None,
+) -> bool:
+    """
+    Sent the moment a homeowner raises a dispute. The tradie needs to know
+    immediately, see the exact reason, and know what action to take next.
+    """
+    name = _first(full_name)
+    url = f"{APP_BASE_URL}/tradie/dashboard"
+    reason_html = ""
+    reason_text = ""
+    if dispute_reason and dispute_reason.strip():
+        safe = dispute_reason.strip().replace("\n", "<br>")
+        reason_html = (
+            f'<div style="background:#FFF5F5;border:1px solid #A3303033;border-radius:12px;'
+            f'padding:14px 18px;margin:18px 0;font-size:14px;color:#1A1A1A;line-height:1.6;">'
+            f'<strong>Homeowner\'s reason:</strong><br>{safe}</div>'
+        )
+        reason_text = f"\n\nHomeowner's reason:\n  {dispute_reason.strip()}\n"
+
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">A homeowner has disputed your job</h1>
+      <p style="margin:0 0 16px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
+        G'day {name}, the homeowner has raised a dispute on <strong>"{job_title}"</strong>
+        in {suburb}. The job is now paused while our team reviews what happened.
+      </p>
+      {reason_html}
+      <div style="background:#FFF9F0;border:1px solid #B85C0033;border-radius:12px;padding:14px 18px;margin:18px 0;font-size:13.5px;color:#1A1A1A;line-height:1.6;">
+        <strong>What happens next</strong><br>
+        1. Our admin team will read the dispute and contact both of you within 2 business days.<br>
+        2. Upload any supporting photos, messages, or invoices via your dashboard now -- it strengthens your side.<br>
+        3. Payment release is paused until the dispute is resolved.
+      </div>
+      {_btn("View Job & Upload Evidence", url, "#A33030")}
+      <p style="margin:20px 0 0;font-size:12.5px;color:#8A8882;line-height:1.6;">
+        If you believe the dispute is unfair, you can also reply to this email with your side of the story.
+      </p>"""
+    text = (
+        f"G'day {name},\n\n"
+        f"The homeowner has disputed your job '{job_title}' in {suburb}. "
+        f"The job is now paused while our team reviews."
+        f"{reason_text}\n"
+        f"What to do:\n"
+        f"1. Admin will contact both parties within 2 business days.\n"
+        f"2. Upload supporting evidence via your dashboard: {url}\n"
+        f"3. Payment release is paused until resolved.\n\n"
+        f"-- The {APP_NAME} team"
+    )
+    return await _send_raw_email(
+        to_email,
+        f"Dispute raised on {job_title} -- {APP_NAME}",
+        _base_html(body, "#A33030"),
+        text,
+    )
+
+
+async def send_dispute_response_posted_email(
+    to_email: str, to_name: str, job_title: str,
+    poster_role: str,         # 'homeowner' or 'tradie' -- the role of who just posted
+    response_excerpt: str,
+) -> bool:
+    """
+    Sent to the OPPOSITE party whenever someone posts a dispute response, so
+    nobody is left in the dark during the mediation window.
+    """
+    name = _first(to_name)
+    url  = f"{APP_BASE_URL}/dashboard" if poster_role == "tradie" else f"{APP_BASE_URL}/tradie/dashboard"
+    poster_label = "the tradie" if poster_role == "tradie" else "the homeowner"
+    snippet = (response_excerpt or "").strip().replace("\n", " ")
+    if len(snippet) > 240:
+        snippet = snippet[:240] + "..."
+
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:24px;font-weight:500;color:#1A1A1A;">{poster_label.title()} has added to the dispute</h1>
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#4A4A48;">
+        G'day {name}, on your job <strong>"{job_title}"</strong>, {poster_label} has just posted a response to the dispute. Our admin team is reviewing both sides and will reach a decision shortly.
+      </p>
+      {_box(snippet or "(no message text)", "#0077AA", "#E0F4FF")}
+      <p style="margin:16px 0 0;font-size:13px;color:#4A4A48;line-height:1.6;">
+        You can read the full conversation and add anything you forgot to mention from your dashboard.
+      </p>
+      {_btn("View dashboard", url, "#0077AA")}"""
+    text = (
+        f"G'day {name},\n\n"
+        f"{poster_label.title()} has added to the dispute on '{job_title}':\n\n  {snippet or '(no message)'}\n\n"
+        f"Admin is reviewing both sides. You can add more context from your dashboard:\n{url}\n\n"
+        f"-- The {APP_NAME} team"
+    )
+    return await _send_raw_email(
+        to_email, f"New response on your dispute -- {APP_NAME}", _base_html(body, "#0077AA"), text,
+    )
+
+
+async def send_dispute_resolved_to_homeowner_email(
+    to_email: str, full_name: str, job_title: str,
+    resolution: str, admin_note: Optional[str] = None,
+    refund_amount: Optional[float] = None,
+) -> bool:
+    """
+    Sent when admin closes a dispute. The wording adapts to which of the four
+    resolution paths admin chose, so the homeowner gets a concrete answer rather
+    than a generic "resolved" message.
+    """
+    name = _first(full_name)
+    url  = f"{APP_BASE_URL}/dashboard"
+
+    if resolution == "refund_homeowner":
+        headline = "Your dispute has been resolved -- full refund"
+        accent   = "#2E7D5A"
+        summary  = "We sided with you. A full refund is being processed and you should see it in 3-5 business days."
+    elif resolution == "partial_refund":
+        amt = f"${refund_amount:,.2f}" if refund_amount else "a partial refund"
+        headline = f"Your dispute has been resolved -- {amt} refund"
+        accent   = "#2E7D5A"
+        summary  = f"We reviewed both sides and decided on {amt}. The refund is being processed and should land in 3-5 business days."
+    elif resolution == "side_tradie":
+        headline = "Your dispute has been resolved -- work accepted"
+        accent   = "#0077AA"
+        summary  = "After reviewing the evidence from both sides, our team determined the work was completed satisfactorily. No refund will be issued."
+    elif resolution == "redo_work":
+        headline = "Your dispute has been resolved -- tradie is returning to fix the work"
+        accent   = "#B85C00"
+        summary  = (
+            "We've reviewed both sides and instructed the tradie to return and redo the work. "
+            "Your job is now active again. The tradie will contact you to arrange a return visit. "
+            "Once they mark it complete, you'll be asked to confirm — and you can raise another "
+            "dispute at that point if you're still not satisfied."
+        )
+    else:
+        headline = "Your dispute has been resolved"
+        accent   = "#0077AA"
+        summary  = "Our team has reviewed your dispute and reached a decision."
+
+    note_block = ""
+    note_text  = ""
+    if admin_note and admin_note.strip():
+        safe = admin_note.strip().replace("\n", "<br>")
+        note_block = (
+            f'<div style="background:#F8F5EE;border:1px solid #E6D9B5;border-radius:12px;'
+            f'padding:14px 18px;margin:16px 0;font-size:13.5px;color:#1A1A1A;line-height:1.6;">'
+            f'<strong>Admin\'s decision note:</strong><br>{safe}</div>'
+        )
+        note_text = f"\n\nAdmin's decision note:\n  {admin_note.strip()}\n"
+
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">{headline}</h1>
+      <p style="margin:0 0 18px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
+        G'day {name}, regarding your job <strong>"{job_title}"</strong>:
+      </p>
+      {_box(summary, accent, "#F4F8F5" if accent == "#2E7D5A" else "#E0F4FF" if accent == "#0077AA" else "#FFF3E0")}
+      {note_block}
+      {_btn("View Job", url, accent)}
+      <p style="margin:24px 0 0;font-size:12px;color:#8A8882;line-height:1.6;">
+        If you have questions about this decision, reply to this email and our team will follow up.
+      </p>"""
+    text = (
+        f"G'day {name},\n\n"
+        f"{headline}\n\n"
+        f"Job: {job_title}\n"
+        f"Decision: {summary}"
+        f"{note_text}\n"
+        f"View your dashboard: {url}\n\n"
+        f"-- The {APP_NAME} team"
+    )
+    return await _send_raw_email(
+        to_email, f"{headline} -- {APP_NAME}", _base_html(body, accent), text,
+    )
+
+
+async def send_dispute_resolved_to_tradie_email(
+    to_email: str, full_name: str, business_name: str, job_title: str,
+    resolution: str, admin_note: Optional[str] = None,
+    refund_amount: Optional[float] = None,
+) -> bool:
+    """Same four resolution paths, framed from the tradie's perspective."""
+    name = _first(full_name)
+    url  = f"{APP_BASE_URL}/tradie/dashboard"
+
+    if resolution == "refund_homeowner":
+        headline = "Dispute resolved -- full refund issued to homeowner"
+        accent   = "#A33030"
+        summary  = ("After reviewing both sides, our team decided to refund the homeowner in full. "
+                    "Payment for this job will not be released. The job is now closed.")
+    elif resolution == "partial_refund":
+        amt = f"${refund_amount:,.2f}" if refund_amount else "a partial refund"
+        headline = f"Dispute resolved -- {amt} refund to homeowner"
+        accent   = "#B85C00"
+        summary  = (f"After reviewing both sides, our team decided on {amt} back to the homeowner. "
+                    f"The remainder of your payment will be released. The job is now closed.")
+    elif resolution == "side_tradie":
+        headline = "Dispute resolved -- in your favour"
+        accent   = "#2E7D5A"
+        summary  = ("We reviewed the evidence and determined your work was completed satisfactorily. "
+                    "Payment is being released to you in full.")
+    elif resolution == "redo_work":
+        headline = "Dispute resolved -- please return to finish the work"
+        accent   = "#B85C00"
+        summary  = ("The job has been re-opened. Please contact the homeowner to arrange a return visit "
+                    "and complete/redo the work as discussed. Payment will be released once the homeowner "
+                    "confirms the work is done.")
+    else:
+        headline = "Dispute resolved"
+        accent   = "#0077AA"
+        summary  = "Our team has reached a decision on this dispute."
+
+    note_block = ""
+    note_text  = ""
+    if admin_note and admin_note.strip():
+        safe = admin_note.strip().replace("\n", "<br>")
+        note_block = (
+            f'<div style="background:#F8F5EE;border:1px solid #E6D9B5;border-radius:12px;'
+            f'padding:14px 18px;margin:16px 0;font-size:13.5px;color:#1A1A1A;line-height:1.6;">'
+            f'<strong>Admin\'s decision note:</strong><br>{safe}</div>'
+        )
+        note_text = f"\n\nAdmin's decision note:\n  {admin_note.strip()}\n"
+
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">{headline}</h1>
+      <p style="margin:0 0 18px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
+        G'day {name}, regarding the dispute on <strong>"{job_title}"</strong>:
+      </p>
+      {_box(summary, accent, "#FFF5F5" if accent == "#A33030" else "#E8F5EE" if accent == "#2E7D5A" else "#FFF3E0" if accent == "#B85C00" else "#E0F4FF")}
+      {note_block}
+      {_btn("View Job", url, accent)}
+      <p style="margin:24px 0 0;font-size:12px;color:#8A8882;line-height:1.6;">
+        If you wish to appeal this decision, reply to this email within 7 days with any new evidence.
+      </p>"""
+    text = (
+        f"G'day {name},\n\n"
+        f"{headline}\n\n"
+        f"Job: {job_title}\n"
+        f"Decision: {summary}"
+        f"{note_text}\n"
+        f"Dashboard: {url}\n\n"
+        f"-- The {APP_NAME} team"
+    )
+    return await _send_raw_email(
+        to_email, f"{headline} -- {APP_NAME}", _base_html(body, accent), text,
+    )
+
+
 async def send_stale_job_email(to_email: str, full_name: str, job_title: str, lead_count: int) -> bool:
     name = _first(full_name)
     url = f"{APP_BASE_URL}/dashboard"
@@ -474,9 +808,9 @@ async def send_insurance_expiry_reminder_email(
         <strong>{business_name}</strong> expires on <strong>{expiry_str}</strong>.
       </p>
       {_box(
-          f"📋 Policy expiry: <strong>{expiry_str}</strong><br>"
-          f"⏱ Days remaining: <strong>{days_remaining}</strong><br><br>"
-          f"⚠️ {consequence}",
+          f"Policy expiry: <strong>{expiry_str}</strong><br>"
+          f"Days remaining: <strong>{days_remaining}</strong><br><br>"
+          f"{consequence}",
           box_color, box_bg
       )}
       <p style="margin:0 0 8px;font-size:14px;line-height:1.7;color:#4A4A48;">
@@ -493,17 +827,15 @@ async def send_insurance_expiry_reminder_email(
         f"Your {insurance_label} for '{business_name}' expires on {expiry_str} ({days_remaining} days).\n\n"
         f"{consequence}\n\n"
         f"Update your insurance details: {url}\n\n"
-        f"— The {APP_NAME} team"
+        f"-- The {APP_NAME} team"
     )
     return await _send_raw_email(
         to_email,
-        f"{subject_prefix}: your {insurance_label} expires {urgency_word} — {APP_NAME}",
+        f"{subject_prefix}: your {insurance_label} expires {urgency_word} -- {APP_NAME}",
         _base_html(body, accent),
         text,
     )
 
-
-# ── Insurance expired (day 0) ─────────────────────────────────────────────────
 
 async def send_insurance_expired_email(
     to_email: str,
@@ -511,27 +843,23 @@ async def send_insurance_expired_email(
     business_name: str,
     insurance_label: str,
 ) -> bool:
-    """
-    Sent when insurance reaches expiry and the business is auto-disabled.
-    Every worker in the business has been set to can_accept_jobs=False.
-    Clear, direct, tells them exactly what to do to get back online.
-    """
+    """Sent when insurance reaches expiry and the business is auto-disabled."""
     name = _first(full_name)
     url  = f"{APP_BASE_URL}/tradie/dashboard"
 
     body = f"""
       <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">
-        Your {insurance_label} has expired — business paused
+        Your {insurance_label} has expired -- business paused
       </h1>
       <p style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#4A4A48;">
         G'day {name}, the <strong>{insurance_label}</strong> registered to
         <strong>{business_name}</strong> expired today.
       </p>
       {_box(
-          "🔴 <strong>What this means</strong><br>"
-          "Your entire business has been paused. <strong>All workers have stopped receiving job assignments</strong> "
+          "<strong>What this means</strong><br>"
+          "Your entire business has been paused. All workers have stopped receiving job assignments "
           "until a valid insurance policy is verified.<br><br>"
-          "✅ <strong>How to get back online</strong><br>"
+          "<strong>How to get back online</strong><br>"
           "1. Renew your policy with your insurer<br>"
           "2. Submit your new policy number and certificate of currency via the dashboard<br>"
           "3. Our team will verify and re-activate your business within 1 business day",
@@ -546,17 +874,101 @@ async def send_insurance_expired_email(
     text = (
         f"G'day {name},\n\n"
         f"Your {insurance_label} for '{business_name}' expired today.\n\n"
-        f"Your entire business has been paused — all workers have stopped receiving job assignments.\n\n"
+        f"Your entire business has been paused -- all workers have stopped receiving job assignments.\n\n"
         f"To get back online:\n"
         f"1. Renew your policy with your insurer\n"
         f"2. Submit the new policy number at: {url}\n"
-        f"3. Our team will verify within 1 business day\n\n"
-        f"If this is an error, reply to this email immediately.\n\n"
-        f"— The {APP_NAME} team"
+        f"3. Our team will verify and re-activate your account within 1 business day.\n\n"
+        f"Log in to submit: {url}"
+    )
+
+    return await _send_raw_email(
+        to_email=to_email,
+        subject=f"Action required: {insurance_label} expired for {business_name}",
+        html=html,
+        text=text,
+    )
+
+
+async def send_dispute_resolution_claimed_email(
+    to_email: str, full_name: str, job_title: str, tradie_business_name: str,
+) -> bool:
+    """
+    Sent to the homeowner when the tradie claims they have resolved the dispute.
+    Prompts them to log in and either accept or reject the resolution.
+    """
+    name = _first(full_name)
+    url  = f"{APP_BASE_URL}/dashboard"
+    headline = "The tradie says they\'ve fixed it — your response needed"
+    accent   = "#2E7D5A"
+    summary  = (
+        f"<strong>{tradie_business_name}</strong> has marked the dispute on "
+        f"<strong>\"{job_title}\"</strong> as resolved from their side. "
+        "Please log in and let us know whether you agree."
+    )
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">{headline}</h1>
+      <p style="margin:0 0 18px;font-size:14.5px;line-height:1.7;color:#4A4A48;">G\'day {name},</p>
+      {_box(summary, accent, "#E8F5EE")}
+      <p style="margin:16px 0;font-size:14px;line-height:1.7;color:#4A4A48;">
+        On your dashboard you\'ll see two options:<br>
+        <strong>✅ Accept</strong> — the issue is fixed, job moves back to completed and you can confirm it.<br>
+        <strong>❌ Still not right</strong> — you\'re not satisfied; the dispute stays open for further review.
+      </p>
+      {_btn("Go to Dashboard", url, accent)}
+      <p style="margin:24px 0 0;font-size:12px;color:#8A8882;line-height:1.6;">
+        If you have questions, reply to this email and our team will follow up.
+      </p>"""
+    text = (
+        f"G\'day {name},\n\n"
+        f"{tradie_business_name} says they\'ve resolved the dispute on \"{job_title}\".\n\n"
+        f"Log in to accept (job moves back to completed) or reject (dispute stays open):\n"
+        f"{url}\n\n"
+        f"-- The {APP_NAME} team"
     )
     return await _send_raw_email(
-        to_email,
-        f"Your {insurance_label} has expired — {business_name} paused on {APP_NAME}",
-        _base_html(body, "#A33030"),
-        text,
+        to_email, f"Action needed: tradie says dispute resolved — {APP_NAME}", _base_html(body, accent), text,
     )
+
+
+async def send_dispute_escalated_to_admin_email(
+    to_email: str, admin_name: str, job_id: str, job_title: str,
+    homeowner_name: str, tradie_business_name: str, rejection_count: int,
+) -> bool:
+    """
+    Sent to admin when homeowner rejects the tradie\'s resolution claim for the
+    2nd time — signals that peer-to-peer resolution has failed and admin must step in.
+    """
+    name = _first(admin_name)
+    url  = f"{APP_BASE_URL}/admin"
+    headline = f"Dispute escalated — {rejection_count} homeowner rejection(s)"
+    accent   = "#A33030"
+    summary  = (
+        f"The homeowner <strong>{homeowner_name}</strong> has rejected the tradie "
+        f"(<strong>{tradie_business_name}</strong>) claim that the dispute on "
+        f"<strong>\"{job_title}\"</strong> is resolved. "
+        f"This is rejection #{rejection_count}. Admin action is needed."
+    )
+    body = f"""
+      <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;font-weight:500;color:#1A1A1A;">{headline}</h1>
+      <p style="margin:0 0 18px;font-size:14.5px;line-height:1.7;color:#4A4A48;">G\'day {name},</p>
+      {_box(summary, accent, "#FFF5F5")}
+      <p style="margin:16px 0;font-size:14px;line-height:1.6;color:#4A4A48;">
+        Job ID: <code>{job_id}</code><br>
+        Please review the conversation thread and use the Admin Disputes tab to resolve this.
+      </p>
+      {_btn("Open Admin Panel", url, accent)}"""
+    text = (
+        f"G\'day {name},\n\n"
+        f"Dispute escalation — rejection #{rejection_count}\n\n"
+        f"Job: \"{job_title}\" (ID: {job_id})\n"
+        f"Homeowner: {homeowner_name}\n"
+        f"Tradie: {tradie_business_name}\n\n"
+        f"The homeowner has rejected the tradie\'s resolution claim {rejection_count} time(s).\n"
+        f"Admin action needed: {url}\n\n"
+        f"-- {APP_NAME} system"
+    )
+    return await _send_raw_email(
+        to_email, f"[Admin] Dispute escalated — {job_title}", _base_html(body, accent), text,
+    )
+

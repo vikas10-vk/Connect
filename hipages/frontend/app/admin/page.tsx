@@ -95,13 +95,13 @@ function RejectModal({ onReject, onClose }: { onReject: (reason: string, note: s
       style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(10,15,25,0.55)", backdropFilter: "blur(4px)",
         display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: C.card, borderRadius: 16, padding: 24, width: "100%", maxWidth: 400, boxShadow: SHADOW_MD }}>
-        <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 16px" }}>Reject — reason</p>
+        <p style={{ fontSize: 15, fontWeight: 700, color: C.ink, margin: "0 0 16px" }}>Reject  -  reason</p>
         <select value={reason} onChange={e => setReason(e.target.value)}
           style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`,
             fontSize: 13, color: C.ink, background: C.bg, marginBottom: 12, fontFamily: UI }}>
           {reasons.map(r => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}
         </select>
-        <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="Optional note to tradie…"
+        <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="Optional note to tradie..."
           style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`,
             fontSize: 13, color: C.ink, background: C.bg, resize: "vertical", fontFamily: UI, boxSizing: "border-box" }} />
         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
@@ -421,7 +421,7 @@ export default function AdminPanel() {
         ].map((s, i) => (
           <div key={i} style={{ ...panelS, padding: "16px 18px" }}>
             <p style={{ fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 8px" }}>{s.label}</p>
-            <p style={{ fontSize: 30, fontWeight: 800, color: s.color, margin: 0, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{s.value ?? "—"}</p>
+            <p style={{ fontSize: 30, fontWeight: 800, color: s.color, margin: 0, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{s.value ?? " - "}</p>
           </div>
         ))}
       </div>
@@ -431,7 +431,7 @@ export default function AdminPanel() {
         <div style={panelS}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>Recent tradies</p>
-            <button onClick={() => switchTab("tradies")} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: UI }}>See all →</button>
+            <button onClick={() => switchTab("tradies")} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: UI }}>See all</button>
           </div>
           {(overview?.recent_tradies || []).map((t: any) => (
             <div key={t.id} style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 10 }}>
@@ -450,14 +450,14 @@ export default function AdminPanel() {
         <div style={panelS}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>Recent jobs</p>
-            <button onClick={() => switchTab("jobs")} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: UI }}>See all →</button>
+            <button onClick={() => switchTab("jobs")} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: UI }}>See all</button>
           </div>
           {(overview?.recent_jobs || []).map((j: any) => (
             <div key={j.id} style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 10 }}>
               <Briefcase size={14} color={C.ink4} style={{ flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.title || "Untitled"}</p>
-                <p style={{ fontSize: 11, color: C.ink4, margin: 0 }}>{j.suburb}, {j.state} · {timeAgo(j.created_at)}</p>
+                <p style={{ fontSize: 11, color: C.ink4, margin: 0 }}>{j.suburb}, {j.state}  |  {timeAgo(j.created_at)}</p>
               </div>
               <StatusPill status={j.status} />
             </div>
@@ -467,15 +467,15 @@ export default function AdminPanel() {
         {(overview?.recent_disputes?.length > 0) && (
           <div style={panelS}>
             <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: C.red, margin: 0 }}>⚠️ Open disputes</p>
-              <button onClick={() => switchTab("disputes")} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: UI }}>See all →</button>
+              <p style={{ fontSize: 13, fontWeight: 700, color: C.red, margin: 0 }}>Open disputes</p>
+              <button onClick={() => switchTab("disputes")} style={{ fontSize: 11, color: C.blue, background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: UI }}>See all</button>
             </div>
             {(overview?.recent_disputes || []).map((d: any) => (
               <div key={d.id} style={{ padding: "10px 16px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 10 }}>
                 <AlertTriangle size={14} color={C.red} style={{ flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.title || "Untitled"}</p>
-                  <p style={{ fontSize: 11, color: C.ink4, margin: 0 }}>{d.suburb}, {d.state} · {timeAgo(d.updated_at)}</p>
+                  <p style={{ fontSize: 11, color: C.ink4, margin: 0 }}>{d.suburb}, {d.state}  |  {timeAgo(d.updated_at)}</p>
                 </div>
               </div>
             ))}
@@ -509,7 +509,7 @@ export default function AdminPanel() {
           <Search size={13} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: C.ink4 }} />
           <input value={tradieSearch} onChange={e => setTradieSearch(e.target.value)}
             onKeyDown={e => e.key === "Enter" && load("tradies")}
-            placeholder="Search name, email…"
+            placeholder="Search name, email..."
             style={{ width: "100%", padding: "9px 10px 9px 32px", borderRadius: 9, border: `1px solid ${C.line}`, fontSize: 13, color: C.ink, fontFamily: UI, boxSizing: "border-box", background: C.card }} />
         </div>
         <select value={tradieFilter} onChange={e => { setTradieFilter(e.target.value); }}
@@ -533,12 +533,12 @@ export default function AdminPanel() {
             )}
             {tradies.map(t => (
               <tr key={t.id}>
-                <td style={{ ...tdS, fontWeight: 600 }}>{t.business_name || "—"}</td>
+                <td style={{ ...tdS, fontWeight: 600 }}>{t.business_name || " - "}</td>
                 <td style={tdS}>{t.email}</td>
-                <td style={tdS}>{t.suburb || "—"}, {t.state || "—"}</td>
-                <td style={{ ...tdS, fontVariantNumeric: "tabular-nums", fontSize: 11.5 }}>{t.abn || "—"}</td>
+                <td style={tdS}>{t.suburb || " - "}, {t.state || " - "}</td>
+                <td style={{ ...tdS, fontVariantNumeric: "tabular-nums", fontSize: 11.5 }}>{t.abn || " - "}</td>
                 <td style={tdS}><StatusPill status={t.verification_status || "pending"} /></td>
-                <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{t.created_at ? timeAgo(t.created_at) : "—"}</td>
+                <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{t.created_at ? timeAgo(t.created_at) : " - "}</td>
                 <td style={tdS}>
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                     {t.verification_status !== "verified" && (
@@ -589,7 +589,7 @@ export default function AdminPanel() {
           <Search size={13} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: C.ink4 }} />
           <input value={hwSearch} onChange={e => setHwSearch(e.target.value)}
             onKeyDown={e => e.key === "Enter" && load("homeowners")}
-            placeholder="Search name, email…"
+            placeholder="Search name, email..."
             style={{ width: "100%", padding: "9px 10px 9px 32px", borderRadius: 9, border: `1px solid ${C.line}`, fontSize: 13, color: C.ink, fontFamily: UI, boxSizing: "border-box", background: C.card }} />
         </div>
         <button onClick={() => load("homeowners")} style={btnS(C.primary, "#fff")}><Search size={13} /> Search</button>
@@ -608,10 +608,10 @@ export default function AdminPanel() {
               <tr key={h.id}>
                 <td style={{ ...tdS, fontWeight: 600 }}>{h.full_name}</td>
                 <td style={tdS}>{h.email}</td>
-                <td style={tdS}>{h.phone || "—"}</td>
+                <td style={tdS}>{h.phone || " - "}</td>
                 <td style={tdS}><StatusPill status={h.email_verified ? "verified" : "pending"} /></td>
                 <td style={tdS}><StatusPill status={h.is_active ? "active" : "suspended"} /></td>
-                <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{h.created_at ? timeAgo(h.created_at) : "—"}</td>
+                <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{h.created_at ? timeAgo(h.created_at) : " - "}</td>
               </tr>
             ))}
           </tbody>
@@ -690,7 +690,7 @@ export default function AdminPanel() {
           <button onClick={() => load("verification")} style={btnS(C.panel, C.ink3)}>Refresh</button>
         </div>
 
-        {/* One card per tradie — all their pending docs together */}
+        {/* One card per tradie  -  all their pending docs together */}
         {tradieGroups.map(group => (
           <div key={group.tradie_id} style={{ ...panelS, overflow: "visible" }}>
 
@@ -705,13 +705,13 @@ export default function AdminPanel() {
                 </p>
                 <p style={{ fontSize: 11.5, color: C.ink4, margin: "0 0 1px" }}>
                   {group.tradie_email}
-                  {group.phone ? ` · 📞 ${group.phone}` : ""}
+                  {group.phone ? ` | ${group.phone}` : ""}
                 </p>
                 <p style={{ fontSize: 11.5, color: C.ink4, margin: 0 }}>
-                  {[group.suburb && group.state ? `${group.suburb}, ${group.state}` : null, group.abn ? `ABN: ${group.abn}` : null].filter(Boolean).join(" · ")}
+                  {[group.suburb && group.state ? `${group.suburb}, ${group.state}` : null, group.abn ? `ABN: ${group.abn}` : null].filter(Boolean).join("  |  ")}
                 </p>
               </div>
-              {/* Summary pills — all amber (pending), never green (green = verified in this app) */}
+              {/* Summary pills  -  all amber (pending), never green (green = verified in this app) */}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {group.profiles.length > 0 && (
                   <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 9px", borderRadius: 20, background: C.amberL, color: C.amber, border: `1px solid ${C.amber}30` }}>
@@ -766,7 +766,7 @@ export default function AdminPanel() {
                   </div>
                   <div style={{ flex: 1, minWidth: 160 }}>
                     <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: "0 0 2px" }}>
-                      Licence — {c.category_name || "Unknown category"}
+                      Licence  -  {c.category_name || "Unknown category"}
                     </p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px" }}>
                       {[
@@ -780,7 +780,7 @@ export default function AdminPanel() {
                     </div>
                     {c.edit_request_note && (
                       <div style={{ marginTop: 7, padding: "6px 10px", background: C.amberL, borderRadius: 7, border: `1px solid ${C.amber}30` }}>
-                        <p style={{ fontSize: 11.5, color: C.amber, margin: 0, fontWeight: 600 }}>✏️ Edit request: {c.edit_request_note}</p>
+                        <p style={{ fontSize: 11.5, color: C.amber, margin: 0, fontWeight: 600 }}>Edit request: {c.edit_request_note}</p>
                       </div>
                     )}
                     <p style={{ fontSize: 11, color: C.ink4, margin: "5px 0 0" }}>Submitted {timeAgo(c.created_at)}</p>
@@ -810,7 +810,7 @@ export default function AdminPanel() {
                   </div>
                   <div style={{ flex: 1, minWidth: 160 }}>
                     <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: "0 0 2px" }}>
-                      Insurance — {p.insurance_type?.replace(/_/g, " ") || "Policy"}
+                      Insurance  -  {p.insurance_type?.replace(/_/g, " ") || "Policy"}
                     </p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px" }}>
                       {[
@@ -825,7 +825,7 @@ export default function AdminPanel() {
                     </div>
                     {p.edit_request_note && (
                       <div style={{ marginTop: 7, padding: "6px 10px", background: C.amberL, borderRadius: 7, border: `1px solid ${C.amber}30` }}>
-                        <p style={{ fontSize: 11.5, color: C.amber, margin: 0, fontWeight: 600 }}>✏️ Edit request: {p.edit_request_note}</p>
+                        <p style={{ fontSize: 11.5, color: C.amber, margin: 0, fontWeight: 600 }}>Edit request: {p.edit_request_note}</p>
                       </div>
                     )}
                     <p style={{ fontSize: 11, color: C.ink4, margin: "5px 0 0" }}>Submitted {timeAgo(p.created_at)}</p>
@@ -855,7 +855,7 @@ export default function AdminPanel() {
                   </div>
                   <div style={{ flex: 1, minWidth: 220 }}>
                     <p style={{ fontSize: 12.5, fontWeight: 700, color: C.ink, margin: "0 0 2px" }}>
-                      Change request — {req.request_type?.replace(/_/g, " ") || ""}
+                      Change request  -  {req.request_type?.replace(/_/g, " ") || ""}
                     </p>
                     <pre style={{ whiteSpace: "pre-wrap", margin: "6px 0 0", padding: "8px 10px", background: C.bg, border: `1px solid ${C.line}`, borderRadius: 7, fontSize: 11, color: C.ink2, fontFamily: UI, lineHeight: 1.5 }}>
                       {JSON.stringify(req.payload, null, 2)}
@@ -873,7 +873,7 @@ export default function AdminPanel() {
               </div>
             ))}
 
-            {/* ── Card footer — Redistribute Leads ── */}
+            {/* ── Card footer  -  Redistribute Leads ── */}
             <div style={{ padding: "10px 18px", background: C.bg, borderTop: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
               <p style={{ fontSize: 11.5, color: C.ink4, margin: 0 }}>
                 Force-push waiting open jobs to this tradie's lead queue
@@ -914,7 +914,7 @@ export default function AdminPanel() {
           <Search size={13} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: C.ink4 }} />
           <input value={jobSearch} onChange={e => setJobSearch(e.target.value)}
             onKeyDown={e => e.key === "Enter" && load("jobs")}
-            placeholder="Search job title…"
+            placeholder="Search job title..."
             style={{ width: "100%", padding: "9px 10px 9px 32px", borderRadius: 9, border: `1px solid ${C.line}`, fontSize: 13, color: C.ink, fontFamily: UI, boxSizing: "border-box", background: C.card }} />
         </div>
         <select value={jobStatusFilter} onChange={e => setJobStatusFilter(e.target.value)}
@@ -949,15 +949,15 @@ export default function AdminPanel() {
                   style={{ cursor: "pointer", background: expandedJobId === j.id ? C.bg : "transparent" }}
                 >
                   <td style={{ ...tdS, fontWeight: 600 }}>{j.title || "Untitled"}</td>
-                  <td style={tdS}>{j.suburb || "—"}, {j.state || "—"}</td>
+                  <td style={tdS}>{j.suburb || " - "}, {j.state || " - "}</td>
                   <td style={tdS}><StatusPill status={j.status} /></td>
-                  <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{j.created_at ? timeAgo(j.created_at) : "—"}</td>
+                  <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{j.created_at ? timeAgo(j.created_at) : " - "}</td>
                   <td style={tdS}>
                     {(j.after_photos?.length > 0 || j.photo_before_url) ? (
                       <span style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: C.blueL, color: C.blue }}>
                         {(j.after_photos?.length || 0) + (j.photo_before_url ? 1 : 0)} photo{((j.after_photos?.length || 0) + (j.photo_before_url ? 1 : 0)) !== 1 ? "s" : ""}
                       </span>
-                    ) : <span style={{ color: C.ink4, fontSize: 12 }}>—</span>}
+                    ) : <span style={{ color: C.ink4, fontSize: 12 }}> - </span>}
                   </td>
                 </tr>
                 {expandedJobId === j.id && (
@@ -1186,9 +1186,9 @@ export default function AdminPanel() {
             )}
             {reviews.map(r => (
               <tr key={r.id}>
-                <td style={tdS}><span style={{ fontWeight: 700, color: C.amber }}>{"★".repeat(r.rating)}</span><span style={{ color: C.line }}>{"★".repeat(5 - r.rating)}</span></td>
+                <td style={tdS}><span style={{ fontWeight: 700, color: C.amber }}>{r.rating}/5</span></td>
                 <td style={{ ...tdS, maxWidth: 300 }}>{r.comment || <span style={{ color: C.ink4 }}>No comment</span>}</td>
-                <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{r.created_at ? timeAgo(r.created_at) : "—"}</td>
+                <td style={{ ...tdS, fontSize: 11.5, color: C.ink4 }}>{r.created_at ? timeAgo(r.created_at) : " - "}</td>
                 <td style={tdS}>
                   <button onClick={() => messageReviewer(r.id)} disabled={actionLoading === r.id}
                     style={{ ...btnS(C.greenL, C.green), marginRight: 6 }}>
@@ -1207,7 +1207,7 @@ export default function AdminPanel() {
     </div>
   );
 
-  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleString("en-AU", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : " - ";
 
   const renderCompleted = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1217,7 +1217,7 @@ export default function AdminPanel() {
           <Search size={13} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: C.ink4 }} />
           <input value={completedSearch} onChange={e => setCompletedSearch(e.target.value)}
             onKeyDown={e => e.key === "Enter" && load("completed")}
-            placeholder="Search job title…"
+            placeholder="Search job title..."
             style={{ width: "100%", padding: "9px 10px 9px 32px", borderRadius: 9, border: `1px solid ${C.line}`, fontSize: 13, color: C.ink, fontFamily: UI, boxSizing: "border-box", background: C.card }} />
         </div>
         <select value={completedStatusFilter} onChange={e => setCompletedStatusFilter(e.target.value)}
@@ -1256,8 +1256,8 @@ export default function AdminPanel() {
                 {j.title || "Untitled job"}
               </p>
               <p style={{ margin: "2px 0 0", fontSize: 12, color: C.ink4 }}>
-                {j.category || "—"} · {j.suburb || "—"}, {j.state || "—"}
-                {j.tradie ? ` · ${j.tradie.business_name}` : ""}
+                {j.category || " - "}  |  {j.suburb || " - "}, {j.state || " - "}
+                {j.tradie ? `  |  ${j.tradie.business_name}` : ""}
               </p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
@@ -1267,7 +1267,7 @@ export default function AdminPanel() {
               <StatusPill status={j.status} />
               {j.review && (
                 <span style={{ fontSize: 11, background: C.amberL, color: C.amber, borderRadius: 20, padding: "3px 8px", fontWeight: 700 }}>
-                  {"★".repeat(j.review.rating)}
+                  {j.review.rating}/5
                 </span>
               )}
               {(j.after_photos?.length > 0 || j.photo_before_url) && (
@@ -1280,7 +1280,7 @@ export default function AdminPanel() {
             </div>
           </div>
 
-          {/* — Expanded detail panel — */}
+          {/*  -  Expanded detail panel  -  */}
           {expandedCompletedId === j.id && (
             <div style={{ borderTop: `1px solid ${C.line}`, padding: "18px 18px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
 
@@ -1290,9 +1290,9 @@ export default function AdminPanel() {
                   <p style={{ margin: "0 0 8px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Job Details</p>
                   <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: C.ink }}>{j.title}</p>
                   {j.description && <p style={{ margin: "0 0 8px", fontSize: 12.5, color: C.ink3, lineHeight: 1.55 }}>{j.description}</p>}
-                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}><strong>Category:</strong> {j.category || "—"}</p>
+                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}><strong>Category:</strong> {j.category || " - "}</p>
                   <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}><strong>Location:</strong> {j.suburb}, {j.state} {j.postcode}</p>
-                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}><strong>Urgency:</strong> {j.urgency || "—"}</p>
+                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}><strong>Urgency:</strong> {j.urgency || " - "}</p>
                   <p style={{ margin: 0, fontSize: 12, color: C.ink3 }}><strong>Job ID:</strong> <span style={{ fontFamily: "monospace", fontSize: 11 }}>{j.id}</span></p>
                 </div>
                 <div style={{ flex: "1 1 220px", background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
@@ -1315,8 +1315,8 @@ export default function AdminPanel() {
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <div style={{ flex: "1 1 200px", background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
                   <p style={{ margin: "0 0 8px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Homeowner</p>
-                  <p style={{ margin: "0 0 3px", fontSize: 13, fontWeight: 700, color: C.ink }}>{j.homeowner?.name || "—"}</p>
-                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}>{j.homeowner?.email || "—"}</p>
+                  <p style={{ margin: "0 0 3px", fontSize: 13, fontWeight: 700, color: C.ink }}>{j.homeowner?.name || " - "}</p>
+                  <p style={{ margin: "0 0 3px", fontSize: 12, color: C.ink3 }}>{j.homeowner?.email || " - "}</p>
                   <p style={{ margin: 0, fontSize: 12, color: C.ink3 }}>{j.homeowner?.phone || "No phone"}</p>
                 </div>
                 <div style={{ flex: "1 1 200px", background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
@@ -1387,7 +1387,7 @@ export default function AdminPanel() {
                   <p style={{ margin: "0 0 6px", fontSize: 10, fontWeight: 700, color: C.ink4, textTransform: "uppercase", letterSpacing: "0.08em" }}>Homeowner Review</p>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 18, color: C.amber, letterSpacing: 2 }}>
-                      {"★".repeat(j.review.rating)}{"☆".repeat(5 - j.review.rating)}
+                      {j.review.rating}/5 stars
                     </span>
                     <span style={{ fontSize: 12, color: C.ink4 }}>{fmtDate(j.review.created_at)}</span>
                     <StatusPill status={j.review.status} />
@@ -1424,7 +1424,7 @@ export default function AdminPanel() {
 
       {uncatItems.length === 0 ? (
         <div style={{ padding: "40px 20px", textAlign: "center", color: C.ink3, fontSize: 13, background: C.card, borderRadius: 12, boxShadow: SHADOW }}>
-          Nothing in the queue — the picker has covered every recent request.
+          Nothing in the queue  -  the picker has covered every recent request.
         </div>
       ) : uncatItems.map(j => (
         <div key={j.id} style={{ background: C.card, borderRadius: 12, padding: 16, boxShadow: SHADOW }}>
@@ -1432,7 +1432,7 @@ export default function AdminPanel() {
             <div style={{ flex: 1, minWidth: 240 }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0 }}>{j.title || "(no title)"}</p>
               <p style={{ fontSize: 11, color: C.ink3, margin: "3px 0 8px" }}>
-                {j.suburb ? `${j.suburb}${j.state ? `, ${j.state}` : ""} · ` : ""}
+                {j.suburb ? `${j.suburb}${j.state ? `, ${j.state}` : ""}  |  ` : ""}
                 {timeAgo(j.created_at)}
               </p>
               <p style={{ fontSize: 12.5, color: C.ink, margin: 0, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
@@ -1697,7 +1697,7 @@ export default function AdminPanel() {
           {loading ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, gap: 10 }}>
               <Loader2 size={20} color={C.primary} className="animate-spin" />
-              <span style={{ fontSize: 13, color: C.ink3, fontWeight: 600 }}>Loading…</span>
+              <span style={{ fontSize: 13, color: C.ink3, fontWeight: 600 }}>Loading...</span>
             </div>
           ) : (
             tabContent[tab]?.()

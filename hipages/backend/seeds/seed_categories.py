@@ -62,7 +62,16 @@ LEVEL1_TRADES = [
     ("air-conditioning",      "Air Conditioning",            "hvac",           "Split system, ducted and portable air conditioning installation and repair"),
     ("bathroom-renovation",   "Bathroom Renovation",         "bathroom",       "Full bathroom and ensuite renovations"),
     ("kitchen-renovation",    "Kitchen Renovation",          "kitchen",        "Full kitchen renovations and cabinet installation"),
+    # ── Sentinel ────────────────────────────────────────────────────────────────
+    # Catch-all bucket for homeowner requests that don't fit any of the 24 trades.
+    # is_active = False so it never appears in the public picker, but admin can
+    # still see, classify, and either retag into a real trade (-> lead distribution)
+    # or politely close the request. See routers/admin.py uncategorised triage.
+    ("other-services",        "Other / Not Listed",          "other",          "Catch-all for service requests that need human triage by an admin."),
 ]
+
+# Slug used everywhere in code to find the sentinel row above.
+SENTINEL_OTHER_SLUG = "other-services"
 
 # ── Level 2: subcategories per Level 1 ───────────────────────────────────────
 # Format: { level1_slug: [(slug, name, description), ...] }
@@ -198,6 +207,9 @@ LEVEL2_SUBCATEGORIES = {
         ("cleaning-windows",         "Window Cleaning",           "Internal and external window cleaning"),
         ("cleaning-pressure",        "Pressure Washing",          "Driveway, deck, roof and wall pressure washing"),
         ("cleaning-carpet",          "Carpet Steam Cleaning",     "Professional carpet steam clean and stain treatment"),
+        ("cleaning-pool",            "Pool Cleaning",             "Swimming pool cleaning, chemical balancing and maintenance"),
+        ("cleaning-oven",            "Oven & BBQ Cleaning",       "Professional oven, range hood and BBQ degreasing"),
+        ("cleaning-commercial",      "Commercial Cleaning",       "Office, retail and commercial premises cleaning"),
     ],
     "bathroom-renovation": [
         ("bathroom-full-reno",       "Full Bathroom Renovation",  "Complete bathroom strip-out and rebuild"),
@@ -485,13 +497,17 @@ async def seed() -> None:
                 print(f"  [SKIP] L1 {name}")
                 continue
 
+            # Sentinel 'other-services' must stay hidden from the public picker
+            # but available to the admin triage flow.
+            is_active = slug != SENTINEL_OTHER_SLUG
+
             cat = Category(
                 id=str(uuid.uuid4()),
                 name=name,
                 slug=slug,
                 parent_id=None,
                 level=CategoryLevel.TRADE,
-                is_active=True,
+                is_active=is_active,
                 icon_slug=icon_slug,
                 description=description,
             )

@@ -45,33 +45,33 @@ export default function MessageRenderer({ component }: MessageRendererProps) {
         case "QuoteComparison":
             return (
                 <div className="mt-3 p-4 bg-brand-ivory rounded-2xl text-sm text-gray-500 border border-gray-100">
-                    📋 Quote comparison coming soon
+                    Quote comparison coming soon
                 </div>
             );
 
         case "HomeHealthChart":
             return (
                 <div className="mt-3 p-4 bg-brand-ivory rounded-2xl text-sm text-gray-500 border border-gray-100">
-                    🏠 Home health chart coming soon
+                    Home health chart coming soon
                 </div>
             );
 
         case "EarningsSummary":
             return (
                 <div className="mt-3 p-4 bg-brand-ivory rounded-2xl text-sm text-gray-500 border border-gray-100">
-                    💰 Earnings summary coming soon
+                    Earnings summary coming soon
                 </div>
             );
 
         case "LeadGrid":
             return (
                 <div className="mt-3 p-4 bg-brand-ivory rounded-2xl text-sm text-gray-500 border border-gray-100">
-                    📬 Lead cards coming soon
+                    Lead cards coming soon
                 </div>
             );
 
         default:
-            // Unknown component — fail silently, don't break chat
+            // Unknown component  -  fail silently, don't break chat
             console.warn(`[MessageRenderer] Unknown component type: ${type}`);
             return null;
     }

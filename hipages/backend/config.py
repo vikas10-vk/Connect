@@ -1,5 +1,5 @@
 # =============================================================================
-# config.py — Application settings
+# config.py Ã¢â‚¬â€ Application settings
 # Tradie Platform
 # =============================================================================
 
@@ -56,17 +56,17 @@ class Settings(BaseSettings):
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
 
     # =========================================================================
-    # SECURITY — JWT
+    # SECURITY Ã¢â‚¬â€ JWT
     #
     # FIX: Changed from plain str to SecretStr.
     # Before: SECRET_KEY appeared in plain text in any debug output, log dump,
-    #         or str(settings) call — e.g. in Sentry breadcrumbs.
+    #         or str(settings) call Ã¢â‚¬â€ e.g. in Sentry breadcrumbs.
     # After:  SECRET_KEY.get_secret_value() to read. Appears as ***** everywhere else.
     # =========================================================================
 
     SECRET_KEY: SecretStr = Field(
         description=(
-            "JWT signing key. Same env var name as auth_service.py — must match. "
+            "JWT signing key. Same env var name as auth_service.py Ã¢â‚¬â€ must match. "
             "Min 32 characters. Generate: openssl rand -base64 48"
         )
     )
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # FIELD ENCRYPTION
     #
     # FIX: Changed from plain str to SecretStr.
-    # The Fernet key is a cryptographic secret — same sensitivity as the JWT key.
+    # The Fernet key is a cryptographic secret Ã¢â‚¬â€ same sensitivity as the JWT key.
     # =========================================================================
 
     FIELD_ENCRYPTION_KEY: SecretStr = Field(
@@ -101,14 +101,6 @@ class Settings(BaseSettings):
     def ALLOWED_ORIGINS_LIST(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",")]
 
-    # =========================================================================
-    # STRIPE
-    # =========================================================================
-
-    STRIPE_SECRET_KEY: SecretStr = Field(default=SecretStr(""))
-    STRIPE_PUBLISHABLE_KEY: str = Field(default="")
-    STRIPE_WEBHOOK_SECRET: SecretStr = Field(default=SecretStr(""))
-    STRIPE_PLATFORM_FEE_PERCENT: int = Field(default=15)
 
     # =========================================================================
     # CLOUDFLARE R2 / AWS S3
@@ -177,18 +169,15 @@ class Settings(BaseSettings):
         clear message instead of silently behaving like development or crashing
         later in a confusing place.
 
-        These checks are deliberately universal — they apply to every backend
-        process (API and Celery workers). Service-specific requirements (e.g.
-        Stripe keys, which only the payments API needs) are validated at the
-        API layer instead, so a notification worker is not forced to carry
-        payment secrets it never uses.
+        These checks are deliberately universal Ã¢â‚¬â€ they apply to every backend
+        process (API and Celery workers).
         """
         if not self.IS_PRODUCTION:
             return self
 
         errors: list[str] = []
 
-        # ── JWT signing key ──────────────────────────────────────────────
+        # Ã¢â€â‚¬Ã¢â€â‚¬ JWT signing key Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         key = self.SECRET_KEY.get_secret_value()
         if len(key) < 32:
             errors.append(
@@ -196,36 +185,37 @@ class Settings(BaseSettings):
                 f"Generate one with: openssl rand -base64 48"
             )
 
-        # ── Error monitoring — mandatory in production ───────────────────
+        # Ã¢â€â‚¬Ã¢â€â‚¬ Error monitoring Ã¢â‚¬â€ mandatory in production Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if not self.SENTRY_BACKEND_DSN:
             errors.append(
                 "SENTRY_BACKEND_DSN is required in production "
                 "(without it, production errors are invisible)."
             )
 
-        # ── CORS allow-list ──────────────────────────────────────────────
+        # Ã¢â€â‚¬Ã¢â€â‚¬ CORS allow-list Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if "localhost" in self.ALLOWED_ORIGINS or "127.0.0.1" in self.ALLOWED_ORIGINS:
             errors.append(
                 "ALLOWED_ORIGINS must not contain localhost/127.0.0.1 in production. "
                 "Set it to your real frontend origin, e.g. https://app.yourdomain.com"
             )
 
-        # ── Debug output must be off ─────────────────────────────────────
+
+        # Ã¢â€â‚¬Ã¢â€â‚¬ Debug output must be off Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if self.DEBUG:
             errors.append(
-                "DEBUG must be false in production — it exposes internal error detail."
+                "DEBUG must be false in production Ã¢â‚¬â€ it exposes internal error detail."
             )
 
-        # ── Database must be a real, non-local DSN ───────────────────────
+        # Ã¢â€â‚¬Ã¢â€â‚¬ Database must be a real, non-local DSN Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
         if "localhost" in self.DATABASE_URL or "127.0.0.1" in self.DATABASE_URL:
             errors.append(
-                "DATABASE_URL points at localhost/127.0.0.1 — not valid for a "
+                "DATABASE_URL points at localhost/127.0.0.1 Ã¢â‚¬â€ not valid for a "
                 "production deployment."
             )
 
         if errors:
             raise ValueError(
-                "Production configuration is invalid — refusing to start:\n  - "
+                "Production configuration is invalid Ã¢â‚¬â€ refusing to start:\n  - "
                 + "\n  - ".join(errors)
             )
 

@@ -37,7 +37,7 @@ export default function PhotoAnalysisCard({ data, props }: PhotoAnalysisCardProp
             {data.safety_risk && (
                 <div className="bg-red-500 text-white px-4 py-2 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <p className="text-xs font-bold">{data.safety_note || "Safety risk detected — act promptly"}</p>
+                    <p className="text-xs font-bold">{data.safety_note || "Safety risk detected  -  act promptly"}</p>
                 </div>
             )}
 
@@ -46,7 +46,7 @@ export default function PhotoAnalysisCard({ data, props }: PhotoAnalysisCardProp
                 <div className={`border-b px-4 py-2 flex items-center gap-2 ${urgency.bg}`}>
                     <Clock className={`w-4 h-4 shrink-0 ${urgency.color}`} />
                     <p className={`text-xs font-bold ${urgency.color}`}>
-                        {urgency.label} — {data.urgency_reason}
+                        {urgency.label}  -  {data.urgency_reason}
                     </p>
                 </div>
             )}
@@ -59,7 +59,7 @@ export default function PhotoAnalysisCard({ data, props }: PhotoAnalysisCardProp
                     </div>
                     <div>
                         <p className="font-bold text-gray-900 text-sm leading-tight">{data.problem_title}</p>
-                        <span className="text-xs text-gray-500">{data.trade_required} · {data.estimated_job_type}</span>
+                        <span className="text-xs text-gray-500">{data.trade_required}  |  {data.estimated_job_type}</span>
                     </div>
                 </div>
 

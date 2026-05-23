@@ -98,7 +98,7 @@ export default function AIChatInterface() {
             const userMessage: Message = {
                 id: `msg-${Date.now()}`,
                 role: "user",
-                content: messageText || "📷 Photo uploaded",
+                content: messageText || "Photo uploaded",
                 image_preview: imagePreview || undefined,
                 timestamp: new Date(),
             };
@@ -186,12 +186,12 @@ export default function AIChatInterface() {
                             <Sparkles className="w-8 h-8 text-white fill-current" />
                         </div>
                         <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
-                            Hi {user?.name?.split(" ")[0] || "there"} 👋
+                            Hi {user?.name?.split(" ")[0] || "there"}
                         </h2>
                         <p className="text-gray-500 text-center max-w-sm mb-8 leading-relaxed">
                             {user?.role === "tradie"
                                 ? "I can help you find leads, check compliance, generate SWMS docs, and track your earnings."
-                                : "Tell me what needs fixing — I'll find the right tradie for you. You can also upload a photo of the problem."}
+                                : "Tell me what needs fixing  -  I'll find the right tradie for you. You can also upload a photo of the problem."}
                         </p>
 
                         {/* Quick action chips */}
@@ -313,7 +313,7 @@ export default function AIChatInterface() {
                                 <X className="w-3 h-3" />
                             </button>
                         </div>
-                        <p className="text-xs text-gray-500">Photo ready — add a message or send now</p>
+                        <p className="text-xs text-gray-500">Photo ready  -  add a message or send now</p>
                     </div>
                 )}
 
@@ -368,7 +368,7 @@ export default function AIChatInterface() {
                 </div>
 
                 <p className="text-xs text-center text-gray-400 mt-2">
-                    ProConnect AI · powered by Groq
+                    ProConnect AI  |  powered by Groq
                 </p>
             </div>
         </div>

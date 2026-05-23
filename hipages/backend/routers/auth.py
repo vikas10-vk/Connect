@@ -398,4 +398,4 @@ async def resend_email_otp(
     success, err = await generate_and_send(db, current_user)
     if not success:
         raise HTTPException(status_code=500, detail=err or "Could not send code. Try again.")
-    return {"sent": True, "message": "New verification code sent."} 
+    return {"sent": True, "message": "New verification code sent."}

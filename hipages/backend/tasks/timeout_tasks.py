@@ -107,15 +107,20 @@ async def _check_stale_jobs():
 @shared_task(bind=True, max_retries=1)
 def redistribute_stale_jobs(self):
     """
-    Runs every 6 hours.
-    Finds jobs where:
-      - status == 'open'
-      - created_at > 48h ago
-      - fewer than 3 leads
-      - no quotes received
+    Runs every 6 hours (beat schedule).
 
-    Re-triggers lead distribution with a wider radius multiplier.
-    This catches jobs that were posted when no tradies were available.
+    Two-pass strategy for un-matched open jobs:
+
+    Pass A — Classic stale jobs (> 48h old, < 3 leads, no quotes):
+      Re-triggers distribute_leads with a wider radius so jobs get coverage
+      even if no tradies were in the original radius.
+
+    Pass B — Zero-lead safety net (last 30 days, < 48h old):
+      Catches open jobs where match_intelligence.matched == 0, meaning
+      distribution ran but found nobody. Primary coverage comes from the
+      event-driven redistribute_open_jobs_for_tradie task fired when a
+      tradie gets verified. This pass is the fallback for anything that
+      slipped through (Celery downtime, bulk verification imports, etc.).
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -137,21 +142,25 @@ async def _redistribute_stale_jobs():
     from models.quote import Quote
 
     now = datetime.utcnow()
-    cutoff = now - timedelta(hours=48)  # only jobs older than 48h
+    cutoff_48h   = now - timedelta(hours=48)   # stale: older than 48h
+    lookback_30d = now - timedelta(days=30)    # zero-lead safety net: last 30 days
 
     async with AsyncSessionLocal() as db:
+
+        # ── Pass A: Classic stale jobs (> 48h old, < 3 leads, no quotes) ──
         result = await db.execute(
             select(Job)
             .where(
                 Job.status == 'open',
                 Job.is_deleted == False,
-                Job.created_at < cutoff,
+                Job.created_at < cutoff_48h,
             )
         )
-        jobs = result.scalars().all()
-        print(f"[timeout] Checking {len(jobs)} jobs older than 48h for re-distribution...")
+        stale_jobs = result.scalars().all()
+        print(f"[timeout] Pass A — {len(stale_jobs)} jobs older than 48h for re-distribution...")
 
-        for job in jobs:
+        requeued_a = 0
+        for job in stale_jobs:
             leads_result = await db.execute(
                 select(Lead).where(Lead.job_id == job.id)
             )
@@ -165,20 +174,81 @@ async def _redistribute_stale_jobs():
                     select(Quote).where(Quote.lead_id.in_(lead_ids))
                 )
                 if quotes_result.scalars().all():
-                    continue  # has quotes — fine
+                    continue  # has quotes — homeowner is being served
 
             # Reset match_intelligence so idempotency guard doesn't block re-run
             job.match_intelligence = None
             db.add(job)
             await db.flush()
 
-            # Re-queue distribution
             try:
                 from tasks.lead_tasks import distribute_leads
                 jitter = random.uniform(5, 30)
                 distribute_leads.apply_async(args=[job.id], countdown=jitter)
-                print(f"[timeout]   → Re-queued distribution for '{job.title}' (job {job.id})")
+                print(f"[timeout]   → Re-queued '{job.title}' ({job.id})")
+                requeued_a += 1
             except Exception as e:
                 print(f"[timeout]   Warning: could not re-queue {job.id}: {e}")
 
+        # ── Pass B: Zero-lead safety net (last 30 days, < 48h old) ────────
+        # Targets ONLY jobs where distribution already ran (match_intelligence
+        # is not NULL) but returned 0 matches. This avoids interfering with
+        # jobs that simply haven't been distributed yet.
+        #
+        # The primary handler for this scenario is the event-driven task
+        # redistribute_open_jobs_for_tradie (fired on tradie verification).
+        # This pass is the safety net for edge cases: Celery downtime,
+        # bulk admin verification imports, etc.
+        result_b = await db.execute(
+            select(Job)
+            .where(
+                Job.status == 'open',
+                Job.is_deleted == False,
+                Job.created_at >= lookback_30d,
+                Job.created_at >= cutoff_48h,         # < 48h — Pass A handles older
+                Job.match_intelligence.isnot(None),   # must have been attempted
+            )
+        )
+        recent_candidates = result_b.scalars().all()
+
+        zero_lead_jobs = []
+        for job in recent_candidates:
+            try:
+                mi = json.loads(job.match_intelligence)
+                if mi.get("matched", 0) == 0:
+                    zero_lead_jobs.append(job)
+            except Exception:
+                pass
+
+        print(
+            f"[timeout] Pass B — {len(zero_lead_jobs)} recent 0-lead open jobs "
+            f"(late-subscriber safety net)"
+        )
+
+        requeued_b = 0
+        for job in zero_lead_jobs:
+            # Double-check: no actual leads in DB either
+            leads_check = await db.execute(
+                select(Lead).where(Lead.job_id == job.id)
+            )
+            if leads_check.scalars().all():
+                continue  # leads exist despite mi saying 0 — stale intelligence, skip
+
+            job.match_intelligence = None
+            db.add(job)
+            await db.flush()
+
+            try:
+                from tasks.lead_tasks import distribute_leads
+                jitter = random.uniform(30, 90)  # longer jitter — less urgent than Pass A
+                distribute_leads.apply_async(args=[job.id], countdown=jitter)
+                print(f"[timeout]   → (B) Re-queued '{job.title}' ({job.id})")
+                requeued_b += 1
+            except Exception as e:
+                print(f"[timeout]   Warning (B): could not re-queue {job.id}: {e}")
+
         await db.commit()
+        print(
+            f"[timeout] redistribute_stale_jobs complete — "
+            f"Pass A: {requeued_a} re-queued, Pass B: {requeued_b} re-queued"
+        )

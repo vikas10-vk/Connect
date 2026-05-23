@@ -73,7 +73,7 @@ export default function TradieeGrid({ data, props }: TradieeGridProps) {
                                 </span>
                                 {tradie.radius_km && (
                                     <span className="text-xs text-gray-400">
-                                        · serves {tradie.radius_km}km radius
+                                         |  serves {tradie.radius_km}km radius
                                     </span>
                                 )}
                                 {tradie.rating && (
