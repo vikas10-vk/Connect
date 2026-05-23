@@ -80,12 +80,9 @@ export default function ReviewSubmissionModal({
                     }}>
                         <Check size={32} color={GREEN} strokeWidth={2.5} />
                     </div>
-                    <h3 style={{ fontSize: 18, fontWeight: 800, color: INK, marginBottom: 6 }}>
-                        Review submitted
+                    <h3 style={{ fontSize: 18, fontWeight: 800, color: INK, margin: 0 }}>
+                        Thank you for your review
                     </h3>
-                    <p style={{ fontSize: 13, color: INK4, lineHeight: 1.5 }}>
-                        Thanks! Your review will appear publicly once an admin approves it.
-                    </p>
                 </div>
             </div>
         );
@@ -218,16 +215,6 @@ export default function ReviewSubmissionModal({
                     </p>
                 </div>
 
-                {/* ── Notice ────────────────────────────────────────────────────── */}
-                <div style={{
-                    margin: '0 22px 16px', padding: 12,
-                    background: CREAM2, borderRadius: 10, border: `1px solid ${BORDER}`,
-                }}>
-                    <p style={{ fontSize: 11, color: INK3, lineHeight: 1.5 }}>
-                        Your review will be checked by our team before it appears publicly.
-                    </p>
-                </div>
-
                 {/* ── Error ─────────────────────────────────────────────────────── */}
                 {error && (
                     <div style={{
@@ -266,7 +253,7 @@ export default function ReviewSubmissionModal({
                         transition: 'all .15s',
                     }}>
                         {submitting
-                            ? <><Loader2 size={16} className="animate-spin" /> Submitting…</>
+                            ? <><Loader2 size={16} className="animate-spin" /> Submitting...</>
                             : 'Submit review'}
                     </button>
                 </div>

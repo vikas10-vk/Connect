@@ -11,7 +11,7 @@ UPDATED — all existing endpoints preserved exactly. New endpoints added:
   POST /{job_id}/scope-change/respond Homeowner approves or rejects the scope change.
                                        Approve → in_progress (new scope).
                                        Reject → in_progress (original scope continues).
-  POST /{job_id}/complete             Tradie marks job complete. Requires after-photo URL.
+  POST /{job_id}/complete             Tradie marks job complete. Requires after-photo(s) OR a completion note.
   POST /{job_id}/confirm-complete     Homeowner confirms completion (starts 48h dispute window).
   POST /{job_id}/partial-stop        Tradie stops mid-job. Requires reason + photo.
   POST /{job_id}/dispute              Homeowner raises a dispute (in completed or partial_stop).
@@ -26,6 +26,7 @@ from models.job import Job
 from models.user import User
 from models.category import Category, CategoryLevel
 from models.lead import Lead
+from models.outbox_event import OutboxEvent
 from models.quote import Quote
 from models.tradie_certification import TradieCertification, CertificationStatus
 from models.tradie_profile import TradieProfile
@@ -34,11 +35,12 @@ from services.auth_service import get_current_user
 from services.category_resolver import resolve_trade_category
 from services.job_state_machine import JobStateMachine, InvalidTransitionError
 from services.geocoding_service import geocode_suburb
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from datetime import datetime, date, timedelta
 from typing import Optional
 import asyncio
 import json
+import os
 import uuid
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["Jobs"])
@@ -183,6 +185,13 @@ async def create_job(
         **data
     )
     db.add(job)
+    outbox_event = OutboxEvent(
+        id=str(uuid.uuid4()),
+        event_type="job.created",
+        payload={"job_id": job.id},
+        status="pending",
+    )
+    db.add(outbox_event)
     await db.commit()
     await db.refresh(job)
 
@@ -193,17 +202,29 @@ async def create_job(
             None, lambda: distribute_leads.apply_async(args=[job.id], queue="critical")
         )
         job.lead_task_id = task.id
+        outbox_event.status = "queued"
+        outbox_event.processed_at = datetime.utcnow()
+        outbox_event.payload = {"job_id": job.id, "lead_task_id": task.id}
+        db.add(outbox_event)
         db.add(job)
         await db.commit()
         celery_queued = True
         print(f"[leads] Queued via Celery for job {job.id}, task_id={task.id}")
     except Exception as e:
-        print(f"[leads] Celery unavailable ({e}) — falling back to in-process background task")
+        outbox_event.attempts = (outbox_event.attempts or 0) + 1
+        outbox_event.last_error = str(e)[:2000]
+        db.add(outbox_event)
+        await db.commit()
+        print(f"[leads] Celery unavailable ({e}); durable outbox event left pending")
 
     if not celery_queued:
-        # Celery not running — distribute leads immediately in a FastAPI background task
-        background_tasks.add_task(_distribute_leads_background, job.id)
-        print(f"[leads] Background fallback scheduled for job {job.id}")
+        allow_api_fallback = (
+            os.getenv("ALLOW_IN_API_LEAD_FALLBACK", "").lower() in ("1", "true", "yes")
+            or os.getenv("ENVIRONMENT", "development") != "production"
+        )
+        if allow_api_fallback:
+            background_tasks.add_task(_distribute_leads_background, job.id)
+            print(f"[leads] Development fallback scheduled for job {job.id}")
 
     return job
 
@@ -909,15 +930,26 @@ class ScopeChangeRespondRequest(BaseModel):
 
 
 class CompleteJobRequest(BaseModel):
-    # Accepts 1–3 after-photo URLs. At least one is required.
-    # Stored as a JSON array in the photo_after_url column (TEXT).
+    # Practice mode: completion note only (photos disabled until storage keys are configured).
     photo_after_urls: list[str] = Field(
-        ...,
-        min_length=1,
+        default_factory=list,
         max_length=3,
-        description="1–3 S3 URLs of completion photos (at least one required, max 3)",
+        description="Ignored while photo upload is disabled",
     )
-    completion_note:  Optional[str] = Field(None, max_length=1000)
+    completion_note: Optional[str] = Field(None, max_length=1000)
+
+    @model_validator(mode="after")
+    def require_completion_note_only(self) -> "CompleteJobRequest":
+        note = (self.completion_note or "").strip()
+        if len(note) < 5:
+            raise ValueError("A completion note of at least 5 characters is required.")
+        if len(self.photo_after_urls) >= 1:
+            raise ValueError(
+                "Photo upload is not enabled yet. Mark complete using a completion note only."
+            )
+        self.completion_note = note
+        self.photo_after_urls = []
+        return self
 
 
 class PartialStopRequest(BaseModel):
@@ -1225,7 +1257,7 @@ async def complete_job(
 ):
     """
     Tradie marks the job as complete.
-    After photo is MANDATORY — this is the second half of the dispute evidence bundle.
+    Requires at least one after-photo URL OR a completion note (≥10 characters).
     Homeowner has 48 hours to confirm or dispute. After 48h, a Celery beat task
     auto-closes the job and releases payment.
     """
@@ -1235,6 +1267,19 @@ async def complete_job(
     job = await _load_job_or_404(job_id, db)
     await _require_tradie_with_lead(job_id, current_user, db)
 
+    has_photos = len(body.photo_after_urls) >= 1
+    extra_job_fields: dict = {"completion_note": body.completion_note}
+    if has_photos:
+        extra_job_fields["photo_after_url"] = json.dumps(body.photo_after_urls)
+    else:
+        extra_job_fields["photo_after_url"] = None
+
+    transition_note = (
+        "Tradie marked job complete and uploaded after photo."
+        if has_photos
+        else "Tradie marked job complete with a completion note (no after photos)."
+    )
+
     try:
         JobStateMachine.assert_status(job, "in_progress")
         await JobStateMachine.transition(
@@ -1242,12 +1287,8 @@ async def complete_job(
             new_status="completed",
             current_user=current_user,
             db=db,
-            note="Tradie marked job complete and uploaded after photo.",
-            extra_job_fields={
-                # Store all URLs as a JSON array; first URL is the primary for display.
-                "photo_after_url": json.dumps(body.photo_after_urls),
-                "completion_note": body.completion_note,
-            },
+            note=transition_note,
+            extra_job_fields=extra_job_fields,
         )
     except InvalidTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1256,6 +1297,7 @@ async def complete_job(
     return {
         "status": job.status,
         "photo_after_urls": body.photo_after_urls,
+        "completion_note": body.completion_note,
         "message": "Job marked as complete. The homeowner has 48 hours to confirm or raise a dispute.",
         "dispute_window_hours": 48,
     }
@@ -1293,17 +1335,29 @@ async def confirm_complete(
         # have been persisted if that request's second commit failed (partial write).
         # Repair the status now so the UI can reflect the correct state.
         if job.status != "confirmed":
-            job.status     = "confirmed"
-            job.updated_at = datetime.utcnow()
-            db.add(job)
+            try:
+                await JobStateMachine.transition(
+                    job=job,
+                    new_status="confirmed",
+                    current_user=current_user,
+                    db=db,
+                )
+            except InvalidTransitionError as e:
+                raise HTTPException(status_code=400, detail=str(e))
             await db.commit()
         return {"message": "Job already confirmed.", "confirmed_at": job.confirmed_by_user_at, "status": "confirmed"}
 
     now = datetime.utcnow()
-    job.confirmed_by_user_at = now
-    job.status               = "confirmed"
-    job.updated_at           = now
-    db.add(job)
+    try:
+        await JobStateMachine.transition(
+            job=job,
+            new_status="confirmed",
+            current_user=current_user,
+            db=db,
+            extra_job_fields={"confirmed_by_user_at": now},
+        )
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     await db.commit()
 
     return {
