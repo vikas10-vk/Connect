@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/vikas10-vk/Connect/actions/workflows/test.yml/badge.svg)](https://github.com/vikas10-vk/Connect/actions/workflows/test.yml)
 [![Deployment Status](https://github.com/vikas10-vk/Connect/actions/workflows/deploy.yml/badge.svg)](https://github.com/vikas10-vk/Connect/actions/workflows/deploy.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](https://opensource.org/licenses)
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)](https://nextjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-cyan.svg)](https://www.docker.com/)
@@ -105,4 +105,4 @@ To continue configuring, operating, or developing the platform, consult our comp
 
 ## 🛡️ License
 
-This project is distributed under the MIT License. See [SECURITY.md](file:///c:/Users/Capstone/Intership_main/SECURITY.md) for vulnerability disclosure procedures.
+This project is proprietary and confidential. All rights reserved. See [SECURITY.md](file:///c:/Users/Capstone/Intership_main/SECURITY.md) for vulnerability disclosure procedures.
