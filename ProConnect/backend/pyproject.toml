@@ -36,7 +36,7 @@ dependencies = [
     "cryptography==46.0.5",
 
     # Redis & Celery
-    "redis[hiredis]==7.3.0",
+    "redis[hiredis]==6.4.2",
     "celery[redis]==5.6.2",
     "flower==2.0.1",
 
