@@ -105,6 +105,8 @@ def _fmt_tradie(profile: TradieProfile) -> dict:
         "verification_status":  profile.verification_status,
         "is_available":         profile.is_available,
         "abn":                  profile.abn,
+        "solo_or_team":         profile.solo_or_team,
+        "team_size":            profile.team_size,
         "created_at":           profile.created_at,
     }
 
@@ -129,6 +131,8 @@ def _fmt_change_request(req: TradieChangeRequest) -> dict:
         "payload": _payload(req),
         "note": req.note,
         "admin_note": req.admin_note,
+        "solo_or_team": req.tradie.solo_or_team if req.tradie else "solo",
+        "team_size": req.tradie.team_size if req.tradie else None,
         "created_at": req.created_at,
         "reviewed_at": req.reviewed_at,
     }
@@ -238,6 +242,8 @@ def _fmt_cert(cert: TradieCertification) -> dict:
         "rejection_reason": cert.rejection_reason,
         "rejection_note":   cert.rejection_note,
         "edit_request_note": cert.edit_request_note,
+        "solo_or_team":     profile.solo_or_team if profile else "solo",
+        "team_size":        profile.team_size if profile else None,
         "created_at":       cert.created_at,
     }
 
@@ -262,6 +268,8 @@ def _fmt_insurance(policy: InsurancePolicy) -> dict:
         "rejection_reason":       policy.rejection_reason,
         "rejection_note":         policy.rejection_note,
         "edit_request_note":      policy.edit_request_note,
+        "solo_or_team":           profile.solo_or_team if profile else "solo",
+        "team_size":              profile.team_size if profile else None,
         "created_at":             policy.created_at,
     }
 
@@ -796,7 +804,10 @@ async def get_pending_verifications(
             "full_name": p.user.full_name if p.user else None,
             "phone": p.user.phone if p.user else None,
             "suburb": p.suburb, "state": p.state,
-            "abn": p.abn, "created_at": p.created_at,
+            "abn": p.abn,
+            "solo_or_team": p.solo_or_team,
+            "team_size": p.team_size,
+            "created_at": p.created_at,
             "verification_status": p.verification_status,
         }
         for p in profiles_r.scalars().all()

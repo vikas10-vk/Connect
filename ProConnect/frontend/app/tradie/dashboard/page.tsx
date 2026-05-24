@@ -427,8 +427,8 @@ function JobDetailModal({ lead, onClose, onQuote }: { lead: LeadCard; onClose: (
               <span style={{ fontSize: 11, fontWeight: 600, color: C.ink2 }}>{urg.label}</span>
             </div>
             {lead.is_urgent && <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: C.roseL, color: C.rose, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Urgent</span>}
-            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: newLead ? C.brassL : C.sageL, color: newLead ? C.brass : C.sage, border: `1px solid ${newLead ? C.brassB : C.sage + '30'}`, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {newLead ? 'New' : lead.status === 'accepted' ? 'Won' : 'Quoted'}
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: newLead ? C.brassL : lead.status === 'accepted' ? C.sageL : lead.status === 'rejected' ? C.roseL : C.brassL, color: newLead ? C.brass : lead.status === 'accepted' ? C.sage : lead.status === 'rejected' ? C.rose : C.brass, border: `1px solid ${newLead ? C.brassB : lead.status === 'accepted' ? C.sage + '30' : lead.status === 'rejected' ? C.rose + '30' : C.brassB}`, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {newLead ? 'New' : lead.status === 'accepted' ? 'Won' : lead.status === 'rejected' ? 'Declined' : 'Quoted'}
             </span>
           </div>
           <h2 style={{ fontFamily: DISPLAY, fontSize: 26, fontWeight: 500, color: C.ink, margin: '0 0 10px', lineHeight: 1.15, letterSpacing: '-0.02em', paddingRight: 32 }}>{lead.job_title || 'Untitled job'}</h2>
@@ -705,7 +705,7 @@ function LeadRow({ lead, onQuote, onView, onMarkComplete, selected, onClick }: {
               <span style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 6, background: C.brassL, color: C.brass, border: `1px solid ${C.brassB}`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
                 Scope pending
               </span>
-            ) : (lead.job_status === 'in_progress' || lead.job_status === 'hired') ? (
+            ) : (lead.job_status === 'in_progress' || lead.job_status === 'hired') && lead.status === 'accepted' ? (
               <button
                 onClick={e => { e.stopPropagation(); onMarkComplete?.(lead); }}
                 style={{ padding: '7px 13px', borderRadius: 8, border: `1px solid ${C.sage}50`, background: C.sageL, color: C.sage, fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', transition: 'all 0.15s' }}
@@ -721,8 +721,8 @@ function LeadRow({ lead, onQuote, onView, onMarkComplete, selected, onClick }: {
                 Quote<ArrowUpRight size={12} />
               </button>
             ) : (
-              <span style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, background: lead.status === 'accepted' ? C.sageL : C.brassL, color: lead.status === 'accepted' ? C.sage : C.brass, border: `1px solid ${lead.status === 'accepted' ? C.sage + '30' : C.brassB}`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
-                {lead.status === 'accepted' ? 'Won' : 'Quoted'}
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '5px 10px', borderRadius: 6, background: lead.status === 'accepted' ? C.sageL : lead.status === 'rejected' ? C.roseL : C.brassL, color: lead.status === 'accepted' ? C.sage : lead.status === 'rejected' ? C.rose : C.brass, border: `1px solid ${lead.status === 'accepted' ? C.sage + '30' : lead.status === 'rejected' ? C.rose + '30' : C.brassB}`, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                {lead.status === 'accepted' ? 'Won' : lead.status === 'rejected' ? 'Declined' : 'Quoted'}
               </span>
             )}
           </div>
@@ -800,6 +800,9 @@ function LeadMap({ leads, selectedId, onSelect }: { leads: LeadCard[]; selectedI
 // now redirects to /tradie/licences for read-only viewing and edit requests.
 
 // ═══ MAIN COMPONENT ═══════════════════════════════════════════════════════════
+const ACTIVE_JOB_STATUSES = new Set(['hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'completed', 'disputed']);
+const DONE_JOB_STATUSES = new Set(['confirmed', 'closed']);
+
 type TabId = 'overview' | 'leads' | 'active' | 'licences' | 'preferences' | 'profile';
 
 function TradieDashboardContent() {
@@ -1059,12 +1062,31 @@ function TradieDashboardContent() {
   const newLeads = useMemo(() => leads.filter(l => isNew(l.status)), [leads]);
   // "Active" = any lead where the tradie is still engaged (working, awaiting something, or awaiting homeowner confirmation).
   // hired / in_progress / awaiting_scope_approval / partial_stop / completed all count  -  only confirmed/closed/cancelled/disputed are "done".
-  const ACTIVE_JOB_STATUSES = new Set(['hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'completed', 'disputed']);
-  const DONE_JOB_STATUSES = new Set(['confirmed', 'closed']);
-  const activeLeads = useMemo(() => leads.filter(l =>
-    l.job_status != null ? ACTIVE_JOB_STATUSES.has(l.job_status) : (l.status === 'quoted' || l.status === 'accepted')
-  ), [leads]);
-  const completedJobsCount = useMemo(() => leads.filter(l => l.job_status != null && DONE_JOB_STATUSES.has(l.job_status)).length, [leads]);
+  const activeLeads = useMemo(() => leads.filter(l => {
+    // If they lost the job, it's never active
+    if (l.status === 'rejected') return false;
+
+    // If they won the job, it's active as long as it's not fully done (confirmed or closed)
+    if (l.status === 'accepted') {
+      return l.job_status == null || !DONE_JOB_STATUSES.has(l.job_status);
+    }
+
+    // If they have quoted and it's pending (no one accepted yet)
+    if (l.status === 'quoted') {
+      // If the job itself has moved into an active or done state for someone else,
+      // then since l.status is not 'accepted', this tradie was not the one chosen.
+      const SOMEONE_ELSE_HIRED = new Set(['hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'completed', 'disputed', 'confirmed', 'closed']);
+      if (l.job_status != null && SOMEONE_ELSE_HIRED.has(l.job_status)) {
+        return false;
+      }
+      return true;
+    }
+
+    return false;
+  }), [leads]);
+  const completedJobsCount = useMemo(() => leads.filter(l =>
+    l.status === 'accepted' && l.job_status != null && DONE_JOB_STATUSES.has(l.job_status)
+  ).length, [leads]);
   const firstName = user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
   const selectedCategories = useMemo(() => allCategories.filter(c => selectedCatIds.includes(c.id)), [allCategories, selectedCatIds]);
   const requiredDocuments = useMemo(() => getRequiredDocuments(selectedCategories), [selectedCategories]);

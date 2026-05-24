@@ -101,11 +101,24 @@ function TradieStudioLayoutInner({ children }: Props) {
       // "Leads" badge: only unquoted leads the tradie hasn't acted on yet
       setNewLeadCount(leads.filter(l => l.status === 'sent').length);
 
-      // "Active jobs" badge: leads whose job is in progress
-      // (accept goes directly to in_progress  -  no separate "hired" step)
-      setActiveJobCount(
-        leads.filter(l => l.job_status === 'in_progress').length
-      );
+      // "Active jobs" badge: leads whose job is active and won by this tradie (or quoted pending a decision)
+      const activeCount = leads.filter(l => {
+        if (l.status === 'rejected') return false;
+        if (l.status === 'accepted') {
+          const DONE_JOB_STATUSES = new Set(['confirmed', 'closed']);
+          return l.job_status == null || !DONE_JOB_STATUSES.has(l.job_status);
+        }
+        if (l.status === 'quoted') {
+          const SOMEONE_ELSE_HIRED = new Set(['hired', 'in_progress', 'awaiting_scope_approval', 'partial_stop', 'completed', 'disputed', 'confirmed', 'closed']);
+          if (l.job_status != null && SOMEONE_ELSE_HIRED.has(l.job_status)) {
+            return false;
+          }
+          return true;
+        }
+        return false;
+      }).length;
+
+      setActiveJobCount(activeCount);
     } catch { /* ignore */ }
   }, [isApproved]);
 

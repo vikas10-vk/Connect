@@ -252,9 +252,14 @@ async def update_quote_status(
     quote.status = new_status
     db.add(quote)
 
-    # Fetch all lead ids for this job
+    if new_status == "rejected":
+        lead.status = "rejected"
+        db.add(lead)
+
+    # Fetch all lead ids and objects for this job
     all_leads_result = await db.execute(select(Lead).where(Lead.job_id == job_id_val))
-    all_lead_ids = [l.id for l in all_leads_result.scalars().all()]
+    all_leads = all_leads_result.scalars().all()
+    all_lead_ids = [l.id for l in all_leads]
 
     if new_status == "accepted":
         accepted_result = await db.execute(
@@ -278,6 +283,14 @@ async def update_quote_status(
         for other in others_result.scalars().all():
             other.status = "rejected"
             db.add(other)
+
+        # Update all lead statuses for the job
+        for l in all_leads:
+            if l.id == lead.id:
+                l.status = "accepted"
+            else:
+                l.status = "rejected"
+            db.add(l)
 
         # Move job through the state machine while the job row is locked.
         TERMINAL = {"in_progress", "completed", "closed", "cancelled"}

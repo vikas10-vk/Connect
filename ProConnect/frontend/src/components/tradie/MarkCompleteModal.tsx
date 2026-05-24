@@ -64,7 +64,7 @@ export default function MarkCompleteModal({
         typeof raw === "string"
           ? raw
           : Array.isArray(raw)
-            ? raw.map((x: { msg?: string }) => x?.msg).filter(Boolean).join(". ")
+            ? (raw as any[]).map((x: { msg?: string }) => x?.msg).filter(Boolean).join(". ")
             : "Something went wrong. Please try again.";
       setError(msg || "Something went wrong. Please try again.");
     }

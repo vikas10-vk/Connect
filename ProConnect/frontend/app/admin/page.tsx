@@ -533,7 +533,14 @@ export default function AdminPanel() {
             )}
             {tradies.map(t => (
               <tr key={t.id}>
-                <td style={{ ...tdS, fontWeight: 600 }}>{t.business_name || " - "}</td>
+                <td style={{ ...tdS, fontWeight: 600 }}>
+                  <div>{t.business_name || " - "}</div>
+                  <div style={{ marginTop: 4 }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, padding: "1px 5px", borderRadius: 6, background: t.solo_or_team === "team" ? "#E0F2FE" : "#F3F4F6", color: t.solo_or_team === "team" ? "#0369A1" : "#4B5563", border: `1px solid ${t.solo_or_team === "team" ? "#bae6fd" : "#e5e7eb"}`, textTransform: "uppercase", letterSpacing: "0.02em" }}>
+                      {t.solo_or_team === "team" ? `👥 Team (${t.team_size || "2-5"})` : "👤 Solo"}
+                    </span>
+                  </div>
+                </td>
                 <td style={tdS}>{t.email}</td>
                 <td style={tdS}>{t.suburb || " - "}, {t.state || " - "}</td>
                 <td style={{ ...tdS, fontVariantNumeric: "tabular-nums", fontSize: 11.5 }}>{t.abn || " - "}</td>
@@ -635,6 +642,8 @@ export default function AdminPanel() {
       suburb?: string;
       state?: string;
       abn?: string;
+      solo_or_team?: string;
+      team_size?: string;
       profiles: VerificationItem[];
       certifications: VerificationItem[];
       insurance: VerificationItem[];
@@ -654,12 +663,20 @@ export default function AdminPanel() {
           suburb: (item as any).suburb,
           state: (item as any).state,
           abn: (item as any).abn,
+          solo_or_team: (item as any).solo_or_team || "solo",
+          team_size: (item as any).team_size || null,
           profiles: [], certifications: [], insurance: [], change_requests: [],
         };
       }
       // Merge phone if we get it from any item (e.g. cert/insurance item carries it)
       if (item.phone && !grouped[tradieId].phone) {
         grouped[tradieId].phone = item.phone;
+      }
+      if ((item as any).solo_or_team && !grouped[tradieId].solo_or_team) {
+        grouped[tradieId].solo_or_team = (item as any).solo_or_team;
+      }
+      if ((item as any).team_size && !grouped[tradieId].team_size) {
+        grouped[tradieId].team_size = (item as any).team_size;
       }
       return grouped[tradieId];
     };
@@ -700,10 +717,15 @@ export default function AdminPanel() {
                 <User size={20} color={C.amber} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: "0 0 3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {group.business_name}
-                </p>
-                <p style={{ fontSize: 11.5, color: C.ink4, margin: "0 0 1px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: C.ink, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {group.business_name}
+                  </p>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 8, background: group.solo_or_team === "team" ? "#E0F2FE" : "#F3F4F6", color: group.solo_or_team === "team" ? "#0369A1" : "#4B5563", border: `1px solid ${group.solo_or_team === "team" ? "#bae6fd" : "#e5e7eb"}`, textTransform: "uppercase", letterSpacing: "0.02em" }}>
+                    {group.solo_or_team === "team" ? `👥 Team (${group.team_size || "2-5"})` : "👤 Solo"}
+                  </span>
+                </div>
+                <p style={{ fontSize: 11.5, color: C.ink4, margin: "2px 0 1px" }}>
                   {group.tradie_email}
                   {group.phone ? ` | ${group.phone}` : ""}
                 </p>

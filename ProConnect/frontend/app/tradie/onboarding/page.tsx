@@ -1174,17 +1174,17 @@ export default function TradieOnboardingPage() {
                                 })}
 
                                 {/* ── INSURANCE SECTION ── */}
-                                {(() => {
+                                {insuranceRequired && (() => {
                                     const isCollapsed = !!collapsedSections['insurance'];
-                                    const insComplete = insuranceValid && !insurance.skip;
+                                    const insComplete = insuranceValid;
                                     return (
-                                        <div style={{ background: insurance.skip ? C.panel : C.card, border: `1.5px solid ${insurance.skip ? C.line : isCollapsed ? C.sage : C.brassB}`, borderRadius: 16, overflow: 'hidden', transition: 'all 0.2s' }}>
+                                        <div style={{ background: C.card, border: `1.5px solid ${isCollapsed ? C.sage : C.brassB}`, borderRadius: 16, overflow: 'hidden', transition: 'all 0.2s' }}>
                                             {/* Header */}
-                                            <div style={{ padding: '14px 18px', borderBottom: isCollapsed || insurance.skip ? 'none' : `1px solid ${C.brassB}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: insurance.skip ? 'transparent' : isCollapsed ? C.sageL : C.brassL }}>
+                                            <div style={{ padding: '14px 18px', borderBottom: isCollapsed ? 'none' : `1px solid ${C.brassB}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: isCollapsed ? C.sageL : C.brassL }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    {isCollapsed ? <CheckCircle2 size={16} color={C.sage} /> : <Shield size={16} color={insurance.skip ? C.ink4 : C.brass} />}
+                                                    {isCollapsed ? <CheckCircle2 size={16} color={C.sage} /> : <Shield size={16} color={C.brass} />}
                                                     <div>
-                                                        <span style={{ fontSize: 13.5, fontWeight: 700, color: insurance.skip ? C.ink4 : isCollapsed ? C.sage : C.ink }}>Public Liability Insurance</span>
+                                                        <span style={{ fontSize: 13.5, fontWeight: 700, color: isCollapsed ? C.sage : C.ink }}>Public Liability Insurance</span>
                                                         {isCollapsed && (
                                                             <span style={{ display: 'block', fontSize: 11.5, color: C.ink3 }}>{insurance.insurer_name}  |  {insurance.policy_number}</span>
                                                         )}
@@ -1196,17 +1196,15 @@ export default function TradieOnboardingPage() {
                                                             style={{ fontSize: 11.5, fontWeight: 600, color: C.brass, background: 'none', border: `1px solid ${C.brassB}`, borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>Edit</button>
                                                     )}
                                                     {!isCollapsed && (
-                                                        <button
-                                                            onClick={() => { if (!insuranceRequired) setInsurance(p => ({ ...p, skip: !p.skip })); }}
-                                                            disabled={insuranceRequired}
-                                                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, border: `1px solid ${insuranceRequired ? C.brassB : insurance.skip ? C.sage : C.line}`, background: insuranceRequired ? C.amberL : insurance.skip ? C.sageL : 'transparent', color: insuranceRequired ? C.amber : insurance.skip ? C.sage : C.ink3, fontSize: 11.5, fontWeight: 600, cursor: insuranceRequired ? 'not-allowed' : 'pointer', transition: 'all 0.15s' }}>
-                                                            {insuranceRequired ? <><ShieldCheck size={11} /> Required</> : insurance.skip ? <><CheckCircle2 size={11} /> Skipped</> : <><SkipForward size={11} /> Skip</>}
-                                                        </button>
+                                                        <span
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, border: `1px solid ${C.brassB}`, background: C.amberL, color: C.amber, fontSize: 11.5, fontWeight: 600 }}>
+                                                            <ShieldCheck size={11} /> Required
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
                                             <AnimatePresence>
-                                                {!isCollapsed && !insurance.skip && (
+                                                {!isCollapsed && (
                                                     <motion.div key="ins-form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} style={{ overflow: 'hidden' }}>
                                                         <div style={{ padding: '18px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                                                             <div style={{ padding: '10px 14px', background: C.amberL, borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -1260,29 +1258,21 @@ export default function TradieOnboardingPage() {
                                                     </motion.div>
                                                 )}
                                             </AnimatePresence>
-                                            {insurance.skip && (
-                                                <div style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    <Info size={13} color={C.ink4} style={{ flexShrink: 0 }} />
-                                                    <p style={{ fontSize: 12.5, color: C.ink4, margin: 0, lineHeight: 1.5 }}>
-                                                        You won't receive paid job leads until insurance is verified. Add from <strong>Licences &amp; Documents</strong> later.
-                                                    </p>
-                                                </div>
-                                            )}
                                         </div>
                                     );
                                 })()}
 
                                 {/* ── WHITE CARD SECTION ── */}
-                                {(() => {
+                                {whiteCardRequired && (() => {
                                     const isCollapsed = !!collapsedSections['whitecard'];
-                                    const wcComplete = !whiteCardSkip && whiteCardNumber.trim().length >= 5;
+                                    const wcComplete = whiteCardNumber.trim().length >= 5;
                                     return (
-                                        <div style={{ background: whiteCardSkip ? C.panel : C.card, border: `1.5px solid ${whiteCardSkip ? C.line : isCollapsed ? C.sage : C.brassB}`, borderRadius: 16, overflow: 'hidden', transition: 'all 0.2s' }}>
-                                            <div style={{ padding: '14px 18px', borderBottom: isCollapsed || whiteCardSkip ? 'none' : `1px solid ${C.brassB}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: whiteCardSkip ? 'transparent' : isCollapsed ? C.sageL : C.brassL }}>
+                                        <div style={{ background: C.card, border: `1.5px solid ${isCollapsed ? C.sage : C.brassB}`, borderRadius: 16, overflow: 'hidden', transition: 'all 0.2s' }}>
+                                            <div style={{ padding: '14px 18px', borderBottom: isCollapsed ? 'none' : `1px solid ${C.brassB}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: isCollapsed ? C.sageL : C.brassL }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    {isCollapsed ? <CheckCircle2 size={16} color={C.sage} /> : <FileText size={16} color={whiteCardSkip ? C.ink4 : C.brass} />}
+                                                    {isCollapsed ? <CheckCircle2 size={16} color={C.sage} /> : <FileText size={16} color={C.brass} />}
                                                     <div>
-                                                        <span style={{ fontSize: 13.5, fontWeight: 700, color: whiteCardSkip ? C.ink4 : isCollapsed ? C.sage : C.ink }}>White Card (Construction Induction)</span>
+                                                        <span style={{ fontSize: 13.5, fontWeight: 700, color: isCollapsed ? C.sage : C.ink }}>White Card (Construction Induction)</span>
                                                         {isCollapsed && (
                                                             <span style={{ display: 'block', fontSize: 11.5, color: C.ink3, fontVariantNumeric: 'tabular-nums' }}>{whiteCardNumber}</span>
                                                         )}
@@ -1294,22 +1284,20 @@ export default function TradieOnboardingPage() {
                                                             style={{ fontSize: 11.5, fontWeight: 600, color: C.brass, background: 'none', border: `1px solid ${C.brassB}`, borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>Edit</button>
                                                     )}
                                                     {!isCollapsed && (
-                                                        <button
-                                                            onClick={() => { if (!whiteCardRequired) setWhiteCardSkip(s => !s); }}
-                                                            disabled={whiteCardRequired}
-                                                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, border: `1px solid ${whiteCardRequired ? C.brassB : whiteCardSkip ? C.sage : C.line}`, background: whiteCardRequired ? C.amberL : whiteCardSkip ? C.sageL : 'transparent', color: whiteCardRequired ? C.amber : whiteCardSkip ? C.sage : C.ink3, fontSize: 11.5, fontWeight: 600, cursor: whiteCardRequired ? 'not-allowed' : 'pointer', transition: 'all 0.15s' }}>
-                                                            {whiteCardRequired ? <><ShieldCheck size={11} /> Required</> : whiteCardSkip ? <><CheckCircle2 size={11} /> Skipped</> : <><SkipForward size={11} /> Skip</>}
-                                                        </button>
+                                                        <span
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20, border: `1px solid ${C.brassB}`, background: C.amberL, color: C.amber, fontSize: 11.5, fontWeight: 600 }}>
+                                                            <ShieldCheck size={11} /> Required
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
                                             <AnimatePresence>
-                                                {!isCollapsed && !whiteCardSkip && (
+                                                {!isCollapsed && (
                                                     <motion.div key="wc-form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} style={{ overflow: 'hidden' }}>
                                                         <div style={{ padding: '18px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                                                             <div style={{ padding: '10px 14px', background: C.panel, borderRadius: 10, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                                                <Info size={13} color={C.ink3} style={{ flexShrink: 0, marginTop: 1 }} />
-                                                                <p style={{ fontSize: 12, color: C.ink2, margin: 0, lineHeight: 1.55 }}>
+                                                                <Info size={13} color="#FFFFFF" style={{ flexShrink: 0, marginTop: 1 }} />
+                                                                <p style={{ fontSize: 12, color: '#FFFFFF', margin: 0, lineHeight: 1.55 }}>
                                                                     The General Construction Induction (White Card) is required for most on-site construction work in Australia.
                                                                 </p>
                                                             </div>
@@ -1331,14 +1319,6 @@ export default function TradieOnboardingPage() {
                                                     </motion.div>
                                                 )}
                                             </AnimatePresence>
-                                            {whiteCardSkip && (
-                                                <div style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    <Info size={13} color={C.ink4} style={{ flexShrink: 0 }} />
-                                                    <p style={{ fontSize: 12.5, color: C.ink4, margin: 0, lineHeight: 1.5 }}>
-                                                        You can add your White Card later from <strong>Licences &amp; Documents</strong> in your dashboard.
-                                                    </p>
-                                                </div>
-                                            )}
                                         </div>
                                     );
                                 })()}
@@ -1492,7 +1472,7 @@ export default function TradieOnboardingPage() {
                                 <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                                     style={{ padding: '12px 18px', marginBottom: 14, background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
                                     <Loader2 size={14} className="animate-spin" color={C.brass} />
-                                    <span style={{ fontSize: 13, color: C.ink2, fontWeight: 500 }}>{submitPhaseLabel}</span>
+                                    <span style={{ fontSize: 13, color: '#FFFFFF', fontWeight: 500 }}>{submitPhaseLabel}</span>
                                 </motion.div>
                             )}
 

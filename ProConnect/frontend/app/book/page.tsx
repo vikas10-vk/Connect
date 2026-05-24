@@ -1697,19 +1697,21 @@ function BookingContent() {
                           )} />
                         {fieldErrors.email && <p className="text-xs text-red-500 font-medium mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {fieldErrors.email}</p>}
                       </div>
-                      <div className="relative">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <button type="button" onClick={() => setShowPassword(p => !p)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-gold transition-colors">
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                        <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password}
-                          onChange={e => { setPassword(e.target.value); setFieldErrors(er => ({ ...er, password: '' })); }}
-                          onFocus={() => setPwdFocused(true)}
-                          onBlur={() => setPwdFocused(false)}
-                          className={cn("w-full bg-brand-ivory/50 border rounded-xl pl-11 pr-12 py-3.5 text-sm font-medium focus:outline-none focus:ring-2 transition-all",
-                            fieldErrors.password ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-brand-gold/50 focus:ring-brand-gold/10"
-                          )} />
+                      <div className="space-y-1.5">
+                        <div className="relative">
+                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <button type="button" onClick={() => setShowPassword(p => !p)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-gold transition-colors">
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                          <input type={showPassword ? 'text' : 'password'} placeholder="Password" value={password}
+                            onChange={e => { setPassword(e.target.value); setFieldErrors(er => ({ ...er, password: '' })); }}
+                            onFocus={() => setPwdFocused(true)}
+                            onBlur={() => setPwdFocused(false)}
+                            className={cn("w-full bg-brand-ivory/50 border rounded-xl pl-11 pr-12 py-3.5 text-sm font-medium focus:outline-none focus:ring-2 transition-all",
+                              fieldErrors.password ? "border-red-300 focus:border-red-400 focus:ring-red-100" : "border-gray-200 focus:border-brand-gold/50 focus:ring-brand-gold/10"
+                            )} />
+                        </div>
                         {/* Live password rules  -  register mode only */}
                         {authMode === 'register' && pwdFocused && password.length > 0 && (
                           <div className="mt-2 px-1 grid grid-cols-2 gap-1">
