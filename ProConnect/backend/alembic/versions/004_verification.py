@@ -9,8 +9,9 @@ Adds:
   - tradie_profiles.verification_status, verification_notes, reviewed_at, reviewed_by
   - tradie_profiles.solo_or_team, team_size
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision      = "004_verification"
 down_revision = "003_add_service_suburbs"

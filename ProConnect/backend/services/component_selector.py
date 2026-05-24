@@ -16,8 +16,6 @@ No extra AI call needed — this is deterministic rule-based selection.
 The AI already knows which tool it called; we just map the result.
 """
 
-from typing import Optional
-
 
 # ── Component type constants ─────────────────────────────────────────────────
 TRADIE_GRID          = "TradieeGrid"
@@ -38,8 +36,8 @@ CATEGORY_GRID        = "CategoryGrid"
 def select_component(
     tool_name: str,
     tool_result: dict,
-    vision_analysis: Optional[dict] = None,
-) -> Optional[dict]:
+    vision_analysis: dict | None = None,
+) -> dict | None:
     """
     Given a tool name and its result, return a UI component spec or None.
 
@@ -212,7 +210,7 @@ def select_component(
     return None
 
 
-def select_vision_component(vision_analysis: dict) -> Optional[dict]:
+def select_vision_component(vision_analysis: dict) -> dict | None:
     """
     When a photo is uploaded and analysed, always render a PhotoAnalysisCard
     regardless of which tool (if any) was also called.

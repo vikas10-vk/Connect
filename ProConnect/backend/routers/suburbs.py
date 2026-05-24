@@ -5,10 +5,10 @@ GET /suburbs/search?q=mel&limit=8            — autocomplete (booking page)
 GET /suburbs/postcode/{postcode}              — all suburbs for a postcode
 GET /suburbs/state/{state_code}              — all suburbs in a state (for filtering)
 """
-from fastapi import APIRouter, Depends, Query, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
-from typing import List, Optional
 
 from db.session import get_db
 from models.suburb import Suburb
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/suburbs", tags=["suburbs"])
 async def search_suburbs(
     q:     str           = Query(..., min_length=2, description="Suburb name prefix"),
     limit: int           = Query(8,  ge=1, le=20),
-    state: Optional[str] = Query(None, description="Filter by state_code e.g. VIC"),
+    state: str | None = Query(None, description="Filter by state_code e.g. VIC"),
     db:    AsyncSession  = Depends(get_db),
 ):
     """

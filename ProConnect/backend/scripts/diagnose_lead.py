@@ -12,17 +12,18 @@ tells you exactly what is blocking the lead from reaching this tradie.
 """
 
 import asyncio
+import json
 import os
 import sys
-import json
 from pathlib import Path
 
 # ── Load .env so DATABASE_URL etc. are available ─────────────────────────────
 from dotenv import load_dotenv
+
 load_dotenv(dotenv_path=Path(__file__).parent.parent.parent / ".env", override=True)
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import select, text
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 IS_DEV = os.getenv("ENVIRONMENT", "development") == "development"
@@ -133,7 +134,7 @@ async def main():
 
             # Check category match
             if cat_ids and job['category_id'] in cat_ids:
-                ok(f"  Category MATCHES tradie's registered category ✓")
+                ok("  Category MATCHES tradie's registered category ✓")
             else:
                 # Get the job's category name for better error message
                 cat_result = await db.execute(
@@ -195,7 +196,7 @@ async def main():
         # ── 7. Force re-distribute command ────────────────────────────────────
         if jobs:
             latest_job_id = jobs[0]['id']
-            print(f"  To force re-distribute leads for the latest job, run:")
+            print("  To force re-distribute leads for the latest job, run:")
             print(f"\n    python scripts/force_distribute.py {latest_job_id}\n")
 
     await engine.dispose()

@@ -1,6 +1,7 @@
 import asyncio
-import asyncpg
 import os
+
+import asyncpg
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=r"C:\Users\Capstone\Intership_main\ProConnect\.env")

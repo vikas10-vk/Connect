@@ -21,7 +21,6 @@ CORE RULES (from the PDF, non-negotiable):
 """
 import uuid
 from datetime import date, datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -31,10 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.session import get_db
 from models.insurance_policy import InsurancePolicy, InsuranceStatus, InsuranceType
 from models.job import Job
-from models.job_assignment import JobAssignment, AssignmentType
+from models.job_assignment import AssignmentType, JobAssignment
 from models.job_event import JobEvent
 from models.team_member import TeamMember, TeamMemberRole
-from models.tradie_certification import TradieCertification, CertificationStatus
+from models.tradie_certification import CertificationStatus, TradieCertification
 from models.tradie_profile import TradieProfile
 from models.user import User
 from services.auth_service import get_current_user

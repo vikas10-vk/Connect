@@ -1,7 +1,10 @@
 import asyncio
 import uuid
-from db.session import AsyncSessionLocal
+
 from sqlalchemy import text
+
+from db.session import AsyncSessionLocal
+
 
 async def main():
     async with AsyncSessionLocal() as db:
@@ -12,15 +15,15 @@ async def main():
             print("Tradie user not found!")
             return
         user_id = user.id
-        
+
         # Verify user
         await db.execute(text(f"UPDATE users SET is_verified = true WHERE id = '{user_id}'"))
         await db.commit()
-        
+
         # 2. Check or create Profile
         res = await db.execute(text(f"SELECT id FROM tradie_profiles WHERE user_id = '{user_id}'"))
         profile = res.fetchone()
-        
+
         if not profile:
             profile_id = str(uuid.uuid4())
             await db.execute(text(f"""
@@ -34,7 +37,7 @@ async def main():
             await db.execute(text(f"UPDATE tradie_profiles SET verification_status = 'approved', is_available = true, lat = -33.8688, lng = 151.2093, radius_km = 50 WHERE id = '{profile_id}'"))
             await db.commit()
             print(f"Updated profile {profile_id}")
-            
+
         # 3. Check or create category link for Carpenter
         res = await db.execute(text("SELECT id, name FROM categories WHERE name ILIKE '%Carpenter%' OR name ILIKE '%Carpentry%' LIMIT 1"))
         cat = res.fetchone()
@@ -49,7 +52,7 @@ async def main():
                 print(f"Added category {cat.name} to tradie")
             else:
                 print(f"Tradie already has category {cat.name}")
-                
+
         print("Done fixing tradie@gmail.com")
 
 asyncio.run(main())

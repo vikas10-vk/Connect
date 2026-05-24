@@ -16,13 +16,16 @@ nothing" report:
 """
 
 from datetime import datetime, timedelta
+
 import pytest
 from pydantic import ValidationError
-from services.job_state_machine import (
-    ALLOWED_TRANSITIONS, TRANSITION_NOTES, TERMINAL_STATES,
-)
-from routers.jobs import CompleteJobRequest
 
+from routers.jobs import CompleteJobRequest
+from services.job_state_machine import (
+    ALLOWED_TRANSITIONS,
+    TERMINAL_STATES,
+    TRANSITION_NOTES,
+)
 
 # ---- Complete job request validation -------------------------------------
 

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from db.session import get_db
 from models.lead import Lead
-from models.job import Job
 from models.tradie_profile import TradieProfile
 from models.user import User
 from schemas.lead_schema import LeadResponse

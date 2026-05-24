@@ -24,8 +24,10 @@ EXISTING FIELDS: id, name, slug, parent_id — kept exactly as-is.
 NEW FIELDS: level, is_active, icon_slug, description.
 """
 import uuid
-from sqlalchemy import String, SmallInteger, Boolean, Text, ForeignKey, text
+
+from sqlalchemy import Boolean, ForeignKey, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from db.session import Base
 
 

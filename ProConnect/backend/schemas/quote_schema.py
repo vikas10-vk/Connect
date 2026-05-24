@@ -1,12 +1,12 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
+
+from pydantic import BaseModel
 
 
 class QuoteCreate(BaseModel):
     lead_id: str
     amount: float
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class QuoteResponse(BaseModel):
@@ -14,16 +14,16 @@ class QuoteResponse(BaseModel):
     lead_id: str
     tradie_id: str
     amount: float
-    message: Optional[str]
+    message: str | None
     status: str
     created_at: datetime
 
     # Tradie info — populated by get_quotes_for_job so homeowner knows who quoted
-    tradie_name: Optional[str] = None          # business_name or full_name
-    tradie_business: Optional[str] = None      # business_name if set
-    tradie_avatar_url: Optional[str] = None    # profile photo URL
-    tradie_phone: Optional[str] = None         # contact phone (only after acceptance)
-    tradie_suburb: Optional[str] = None        # tradie's service suburb
+    tradie_name: str | None = None          # business_name or full_name
+    tradie_business: str | None = None      # business_name if set
+    tradie_avatar_url: str | None = None    # profile photo URL
+    tradie_phone: str | None = None         # contact phone (only after acceptance)
+    tradie_suburb: str | None = None        # tradie's service suburb
 
     class Config:
         from_attributes = True

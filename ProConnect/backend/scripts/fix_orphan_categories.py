@@ -41,6 +41,7 @@ import re
 import sys
 from pathlib import Path
 
+
 # ── Load .env before importing any project modules ───────────────────────────
 # The .env lives at ProConnect/.env (one level above ProConnect/backend/).
 # Walk up from this script's location until we find it so the script works
@@ -63,10 +64,11 @@ _find_and_load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from sqlalchemy import select
+
 from db.session import AsyncSessionLocal
 from models.category import Category, CategoryLevel
 from models.tradie_category import TradieCategory
-from sqlalchemy import select, update, delete
 
 
 def _normalise(value: str) -> str:
@@ -132,7 +134,7 @@ async def fix_orphan_categories():
             if tc_rows:
                 print(f"    TradieCategory rows to remap: {len(tc_rows)}")
             else:
-                print(f"    TradieCategory rows to remap: 0")
+                print("    TradieCategory rows to remap: 0")
 
             for tc in tc_rows:
                 # Check if this tradie already has the canonical category
@@ -167,7 +169,7 @@ async def fix_orphan_categories():
         await db.commit()
 
         print(f"{'='*60}")
-        print(f"  DONE")
+        print("  DONE")
         print(f"  TradieCategory rows remapped: {total_remapped}")
         print(f"  Orphan categories deactivated: {total_deactivated}")
         print(f"{'='*60}\n")

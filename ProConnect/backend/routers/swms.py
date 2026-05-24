@@ -1,15 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from db.session import get_db
-from models.user import User
-from models.tradie_profile import TradieProfile
-from models.swms_document import SWMSDocument
-from services.auth_service import get_current_user
-from services.swms_service import generate_swms_with_ai, generate_swms_text
-from pydantic import BaseModel
-from typing import Optional
 import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import get_db
+from models.swms_document import SWMSDocument
+from models.tradie_profile import TradieProfile
+from models.user import User
+from services.auth_service import get_current_user
+from services.swms_service import generate_swms_text, generate_swms_with_ai
 
 router = APIRouter(prefix="/api/v1/swms", tags=["SWMS"])
 
@@ -17,9 +18,9 @@ router = APIRouter(prefix="/api/v1/swms", tags=["SWMS"])
 class SWMSRequest(BaseModel):
     job_type:        str
     state:           str
-    job_description: Optional[str] = ""
-    job_id:          Optional[str] = None
-    use_ai:          Optional[bool] = True
+    job_description: str | None = ""
+    job_id:          str | None = None
+    use_ai:          bool | None = True
 
 
 @router.post("/generate")

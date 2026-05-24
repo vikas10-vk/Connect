@@ -1,5 +1,5 @@
+
 import httpx
-from typing import Optional
 
 
 async def lookup_abn(abn: str) -> dict:
@@ -42,7 +42,7 @@ async def lookup_abn(abn: str) -> dict:
                     "name":   "",
                     "abn":    clean_abn,
                 }
-    except Exception as e:
+    except Exception:
         # Fallback — format check only
         return _validate_abn_format(clean_abn)
 
@@ -59,7 +59,7 @@ def _validate_abn_format(abn: str) -> dict:
     weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
     d = [int(c) for c in digits]
     d[0] -= 1
-    total = sum(w * v for w, v in zip(weights, d))
+    total = sum(w * v for w, v in zip(weights, d, strict=False))
 
     if total % 89 == 0:
         return {"valid": True, "status": "Format valid (unverified)", "name": "", "abn": abn}

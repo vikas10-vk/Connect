@@ -10,7 +10,6 @@ Locks in the open 3-way dispute conversation:
 """
 import inspect
 
-
 # ---- Endpoint accepts both roles -----------------------------------------
 
 def test_dispute_response_accepts_homeowner_and_tradie():

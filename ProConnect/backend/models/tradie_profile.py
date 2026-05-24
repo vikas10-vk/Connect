@@ -17,8 +17,10 @@ NOTE: existing fields are kept exactly as-is so nothing breaks.
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, Boolean, DateTime, Integer, Numeric, ForeignKey, Text
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from db.session import Base
 
 

@@ -24,11 +24,10 @@ ENDPOINTS:
 import json
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,19 +35,19 @@ from db.session import get_db
 from models.category import Category
 from models.insurance_policy import InsurancePolicy, InsuranceStatus
 from models.job import Job
-from models.lead import Lead
 from models.job_photo import JobPhoto
+from models.lead import Lead
 from models.review import Review
 from models.tradie_category import TradieCategory
+from models.tradie_certification import CertificationStatus, TradieCertification
 from models.tradie_change_request import (
     TradieChangeRequest,
     TradieChangeRequestStatus,
     TradieChangeRequestType,
 )
-from models.tradie_certification import TradieCertification, CertificationStatus
 from models.tradie_pass import TradiePass
-from models.tradie_profile import TradieProfile
 from models.tradie_preference import TradiePreference
+from models.tradie_profile import TradieProfile
 from models.user import User
 from services.auth_service import get_current_user
 from services.category_resolver import canonical_trade_category
@@ -69,11 +68,11 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 class RejectBody(BaseModel):
     reason: str = "other"
-    note:   Optional[str] = None
+    note:   str | None = None
 
 class VerificationStatusBody(BaseModel):
     verification_status: str  # "pending" | "in_review" | "verified" | "rejected" | "suspended"
-    note: Optional[str] = None
+    note: str | None = None
 
 
 class SuspendTradieBody(BaseModel):
@@ -87,7 +86,7 @@ class AdminMessageBody(BaseModel):
 
 
 class ChangeRequestReviewBody(BaseModel):
-    admin_note: Optional[str] = None
+    admin_note: str | None = None
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -371,8 +370,8 @@ async def get_overview(
 async def list_tradies(
     page:                  int           = Query(1, ge=1),
     limit:                 int           = Query(20, ge=1, le=100),
-    verification_status:   Optional[str] = Query(None),
-    search:                Optional[str] = Query(None),
+    verification_status:   str | None = Query(None),
+    search:                str | None = Query(None),
     _:  User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -530,6 +529,7 @@ async def seed_cleaning_subcategories(
     into the live database. Safe to call multiple times — skips existing slugs.
     """
     import uuid as _uuid
+
     from models.category import Category, CategoryLevel
 
     NEW_SUBCATS = [
@@ -734,7 +734,7 @@ async def reject_change_request(
 async def list_homeowners(
     page:   int           = Query(1, ge=1),
     limit:  int           = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None),
+    search: str | None = Query(None),
     _:  User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -926,8 +926,8 @@ async def reject_insurance(
 async def list_jobs(
     page:   int           = Query(1, ge=1),
     limit:  int           = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    search: str | None = Query(None),
     _:  User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -977,13 +977,12 @@ async def _build_dispute_payload(j: Job, db: AsyncSession) -> dict:
       * full job description + category + location
       * recent timeline events (so admin sees the whole story without leaving the page)
     """
-    from models.job_event import JobEvent
-    from models.quote import Quote
-    from models.lead import Lead
-    from models.job_photo import JobPhoto
-    from models.user import User as UserModel
-    from models.tradie_profile import TradieProfile as TP
     from models.category import Category as Cat
+    from models.job_event import JobEvent
+    from models.lead import Lead
+    from models.quote import Quote
+    from models.tradie_profile import TradieProfile as TP
+    from models.user import User as UserModel
 
     # Dispute reason from the JobEvent that flipped the job to 'disputed'.
     dispute_event_res = await db.execute(
@@ -1226,8 +1225,8 @@ async def delete_review(
 async def list_completed_jobs(
     page:   int           = Query(1, ge=1),
     limit:  int           = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
+    status: str | None = Query(None),
+    search: str | None = Query(None),
     _:  User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1352,11 +1351,11 @@ from services.uncategorised_service import SENTINEL_OTHER_SLUG, get_sentinel_cat
 
 class ClassifyUncategorisedRequest(BaseModel):
     category_slug: str
-    note:          Optional[str] = None
+    note:          str | None = None
 
 
 class CloseUncategorisedRequest(BaseModel):
-    admin_note: Optional[str] = None
+    admin_note: str | None = None
 
 
 @router.get("/uncategorised")
@@ -1457,8 +1456,9 @@ async def classify_uncategorised_request(
     # Trigger lead distribution (Celery preferred, in-process fallback).
     celery_queued = False
     try:
-        from tasks.lead_tasks import distribute_leads
         import asyncio
+
+        from tasks.lead_tasks import distribute_leads
         task = await asyncio.get_event_loop().run_in_executor(
             None, lambda: distribute_leads.apply_async(args=[job.id], queue="critical"),
         )
@@ -1513,7 +1513,7 @@ async def close_uncategorised_request(
     # Use the state machine to keep the audit trail consistent. open -> cancelled
     # is already allowed for admin.
     try:
-        from services.job_state_machine import JobStateMachine, InvalidTransitionError
+        from services.job_state_machine import InvalidTransitionError, JobStateMachine
         await JobStateMachine.admin_transition(
             job=job,
             new_status="cancelled",
@@ -1582,8 +1582,8 @@ RESOLUTION_TO_STATUS = {
 
 class ResolveDisputeRequest(BaseModel):
     resolution: str   # one of RESOLUTION_TO_STATUS keys
-    note:       Optional[str] = None
-    refund_amount: Optional[float] = None  # only meaningful for partial_refund
+    note:       str | None = None
+    refund_amount: float | None = None  # only meaningful for partial_refund
 
 
 @router.post("/disputes/{job_id}/resolve")
@@ -1600,7 +1600,7 @@ async def resolve_dispute(
     job:status_changed WebSocket broadcast.
     """
     from models.job_event import JobEvent
-    from services.job_state_machine import JobStateMachine, InvalidTransitionError
+    from services.job_state_machine import InvalidTransitionError, JobStateMachine
 
     if body.resolution not in RESOLUTION_TO_STATUS:
         raise HTTPException(
@@ -1653,10 +1653,10 @@ async def resolve_dispute(
 
     # ── Notify both parties. Best-effort -- never raise. ────────────────────
     try:
-        from models.user import User as UserModel
-        from models.quote import Quote
         from models.lead import Lead
+        from models.quote import Quote
         from models.tradie_profile import TradieProfile as TP
+        from models.user import User as UserModel
         from services.resend_service import (
             send_dispute_resolved_to_homeowner_email,
             send_dispute_resolved_to_tradie_email,

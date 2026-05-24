@@ -25,11 +25,12 @@ Australian state licence registry URLs (used in Django admin for manual verifica
 """
 import asyncio
 import uuid
-from db.session import AsyncSessionLocal
-from models.category import Category, CategoryLevel
-from models.service_question import ServiceQuestion, AnswerType
+
 from sqlalchemy import select
 
+from db.session import AsyncSessionLocal
+from models.category import Category, CategoryLevel
+from models.service_question import AnswerType, ServiceQuestion
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAXONOMY DATA

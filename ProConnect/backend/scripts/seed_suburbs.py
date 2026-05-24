@@ -7,17 +7,18 @@ Run from backend directory:
 Requires the CSV at: scripts/aus_postcode_new.csv
 (copy the CSV file into backend/scripts/ first)
 """
+import asyncio
 import csv
 import os
 import sys
-import asyncio
 
 # Allow running from backend/ root
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import select, func
-from db.session import AsyncSessionLocal as SessionLocal, engine
-from models.suburb import Suburb, Base
+from sqlalchemy import func, select
+
+from db.session import AsyncSessionLocal as SessionLocal
+from models.suburb import Suburb
 
 CSV_PATH = os.path.join(os.path.dirname(__file__), "aus_postcode_new.csv")
 

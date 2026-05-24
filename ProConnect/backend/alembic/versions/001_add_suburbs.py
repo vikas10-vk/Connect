@@ -4,8 +4,9 @@ Revision ID: 001_add_suburbs
 Revises: add_match_intelligence
 Create Date: 2026-04-24
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # ---------------------------------------------------------------------------
 # IMPORTANT: set `down_revision` to your current latest migration ID

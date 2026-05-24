@@ -9,9 +9,8 @@ All layers are non-blocking — a failure in one never blocks the others.
 Zero code changes needed when you add SendGrid/Twilio keys later.
 """
 
-import os
 import logging
-from typing import Optional
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +25,10 @@ async def notify_tradie_new_inquiry(
     tradie_user_id:   str,
     tradie_name:      str,
     tradie_email:     str,
-    tradie_phone:     Optional[str],
+    tradie_phone:     str | None,
     sender_name:      str,
     sender_email:     str,
-    sender_phone:     Optional[str],
+    sender_phone:     str | None,
     message:          str,
     inquiry_id:       str,
 ) -> None:
@@ -90,7 +89,7 @@ async def _notify_email(
     tradie_email: str,
     sender_name:  str,
     sender_email: str,
-    sender_phone: Optional[str],
+    sender_phone: str | None,
     message:      str,
 ) -> None:
     """Send email via SendGrid. Skipped if SENDGRID_API_KEY not configured."""
@@ -139,7 +138,7 @@ Log in to your ProConnect dashboard to respond.
 
 
 async def _notify_sms(
-    tradie_phone: Optional[str],
+    tradie_phone: str | None,
     sender_name:  str,
     message:      str,
 ) -> None:

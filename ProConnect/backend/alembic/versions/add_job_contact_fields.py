@@ -12,8 +12,9 @@ What this migration does:
 All nullable — existing job rows are unaffected.
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision      = 'c3d4e5f6a7b8'
 down_revision = 'b2c3d4e5f6a7'   # ← points to add_tradie_profile_photos migration

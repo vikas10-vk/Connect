@@ -1,8 +1,11 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, ForeignKey
+
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from db.session import Base
+
 
 class JobPhoto(Base):
     __tablename__ = "job_photos"

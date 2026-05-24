@@ -1,7 +1,9 @@
 import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy import text
+
 from db.session import get_db
+
 
 async def create_table():
     async for db in get_db():

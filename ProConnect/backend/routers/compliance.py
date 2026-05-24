@@ -1,19 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from db.session import get_db
-from models.user import User
-from models.tradie_pass import TradiePass
-from models.tradie_preference import TradiePreference
-from models.tradie_profile import TradieProfile
-from services.auth_service import get_current_user
-from services.abn_service import lookup_abn
-from services.compliance_service import calculate_pass_score, calculate_badge, get_licence_requirements
-from services.storage_service import generate_presigned_upload_url
-from pydantic import BaseModel
-from datetime import date, datetime
-from typing import Optional
 import uuid
+from datetime import date, datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import get_db
+from models.tradie_pass import TradiePass
+from models.tradie_profile import TradieProfile
+from models.user import User
+from services.abn_service import lookup_abn
+from services.auth_service import get_current_user
+from services.compliance_service import calculate_badge, calculate_pass_score
+from services.storage_service import generate_presigned_upload_url
 
 router = APIRouter(prefix="/api/v1/compliance", tags=["Compliance"])
 
@@ -131,8 +131,8 @@ class InsuranceUpdate(BaseModel):
     pli_insurer:   str
     pli_amount_m:  float
     pli_expiry:    date
-    wc_insurer:    Optional[str] = None
-    wc_expiry:     Optional[date] = None
+    wc_insurer:    str | None = None
+    wc_expiry:     date | None = None
 
 @router.post("/update-insurance")
 async def update_insurance(

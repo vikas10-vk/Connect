@@ -1,16 +1,17 @@
+import uuid
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from db.session import get_db
-from models.review import Review
 from models.job import Job
+from models.review import Review
 from models.tradie_profile import TradieProfile
 from models.user import User
 from services.auth_service import get_current_user
-from pydantic import BaseModel, Field
-from typing import Optional
-from datetime import datetime
-import uuid
 
 router = APIRouter(prefix="/api/v1/reviews", tags=["Reviews"])
 
@@ -18,7 +19,7 @@ class ReviewCreate(BaseModel):
     job_id: str
     tradie_id: str
     rating: int = Field(..., ge=1, le=5)
-    comment: Optional[str] = None
+    comment: str | None = None
 
 class ReviewResponse(BaseModel):
     id: str
@@ -26,7 +27,7 @@ class ReviewResponse(BaseModel):
     homeowner_id: str
     tradie_id: str
     rating: int
-    comment: Optional[str]
+    comment: str | None
     created_at: datetime
 
     class Config:

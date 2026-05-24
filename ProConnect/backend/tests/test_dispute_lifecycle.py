@@ -14,7 +14,6 @@ Locks in the dispute UX fixes:
 
 import inspect
 
-
 # ---- (A) Tradie notification on dispute -----------------------------------
 
 def test_dispute_email_helper_exists_and_signature():

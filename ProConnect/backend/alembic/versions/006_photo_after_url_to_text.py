@@ -4,8 +4,9 @@ Revision ID: 006_photo_after_url_to_text
 Revises: f1e2d3c4b5a6
 Create Date: 2026-05-14
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = '006_photo_after_url_to_text'
 down_revision = 'f1e2d3c4b5a6'

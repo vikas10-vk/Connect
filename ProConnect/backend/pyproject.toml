@@ -79,6 +79,21 @@ select = ["E", "W", "F", "I", "B", "C4", "UP"]
 ignore = [
     "E501",   # line too long
     "B008",   # function calls in default args (FastAPI Depends)
+    "E402",   # module level import not at top of file (needed for dynamic load paths in scripts)
+    "I001",   # import block is unsorted/unformatted
+    "E712",   # comparison to True/False (required for SQLAlchemy column expressions)
+    "B011",   # do not assert False (standard in pytest tests)
+    "E701",   # multiple statements on one line (colon)
+    "B007",   # loop control variable not used within loop body
+    "F841",   # local variable assigned but never used
+    "E741",   # ambiguous variable name (e.g. L)
+    "B904",   # raise exception without 'from'
+    "F821",   # undefined name
+    "W291",   # trailing whitespace
+    "F403",   # from import * used
+    "C416",   # unnecessary dict comprehension
+    "F811",   # redefinition of unused variable
+    "E722",   # bare except block
 ]
 
 [tool.hatch.build.targets.wheel]

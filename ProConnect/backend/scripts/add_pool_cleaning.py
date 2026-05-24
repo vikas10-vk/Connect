@@ -13,10 +13,10 @@ Idempotent — safe to run multiple times (skips slugs that already exist).
 import asyncio
 import uuid
 
-from db.session import AsyncSessionLocal
-from models.category import Category, CategoryLevel
 from sqlalchemy import select
 
+from db.session import AsyncSessionLocal
+from models.category import Category, CategoryLevel
 
 NEW_SUBCATEGORIES = [
     # (slug, name, description)

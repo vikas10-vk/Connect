@@ -10,33 +10,27 @@
 #   - asyncio_default_fixture_loop_scope = session in pytest.ini removes warning
 # =============================================================================
 
-import sys
 import asyncio
+import sys
 
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import os
+
 os.environ["ENVIRONMENT"] = "test"
 
 import uuid
 from unittest.mock import AsyncMock, patch
 
-
-import pytest
 import pytest_asyncio
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from main import app
 from db.session import AsyncSessionLocal
-
-
-
-
+from main import app
 from models.category import Category, CategoryLevel
-
 
 # =============================================================================
 # Canonical trade categories — seeded once per test session

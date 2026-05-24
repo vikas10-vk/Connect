@@ -1,7 +1,10 @@
 import asyncio
-from db.session import engine
-from sqlalchemy import text
 import math
+
+from sqlalchemy import text
+
+from db.session import engine
+
 
 def haversine_distance(lat1, lng1, lat2, lng2):
     R = 6371
@@ -20,28 +23,28 @@ async def main():
             print("No jobs!")
             return
         print(f"Job: {job.title} | Suburb: {job.suburb} | Lat/Lng: {job.lat}, {job.lng}")
-        
+
         res = await conn.execute(text("SELECT id FROM users WHERE email = 'john@tradie.com'"))
         john_user = res.fetchone()
         if not john_user:
             print("John not found")
             return
-            
+
         res = await conn.execute(text(f"SELECT id, radius_km, lat, lng, is_available FROM tradie_profiles WHERE user_id = '{john_user.id}'"))
         john_prof = res.fetchone()
         print(f"John Prof: lat={john_prof.lat}, lng={john_prof.lng}, radius={john_prof.radius_km}, available={john_prof.is_available}")
         if not john_prof: return
-        
+
         dist = haversine_distance(job.lat, job.lng, john_prof.lat, john_prof.lng)
         print(f"Distance to job: {dist} km (Radius: {john_prof.radius_km} km)")
-        
+
         if dist > john_prof.radius_km:
             print("Job is OUTSIDE of John's radius!")
         else:
             print("Job is INSIDE John's radius.")
-            
+
         res = await conn.execute(text(f"SELECT service_suburbs FROM tradie_preferences WHERE tradie_id = '{john_prof.id}'"))
         pref = res.fetchone()
         print(f"Service Suburbs: {pref.service_suburbs if pref else 'None'}")
-        
+
 asyncio.run(main())

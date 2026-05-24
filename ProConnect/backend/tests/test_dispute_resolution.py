@@ -10,7 +10,6 @@ Locks in the full dispute resolution cycle:
 """
 import inspect
 
-
 # ---- State machine: resolution transitions --------------------------------
 
 def test_disputed_to_closed_admin_only():

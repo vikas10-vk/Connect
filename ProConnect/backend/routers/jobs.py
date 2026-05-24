@@ -17,31 +17,37 @@ UPDATED — all existing endpoints preserved exactly. New endpoints added:
   POST /{job_id}/dispute              Homeowner raises a dispute (in completed or partial_stop).
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-from db.session import get_db
-from models.job import Job
-from models.user import User
-from models.category import Category, CategoryLevel
-from models.lead import Lead
-from models.outbox_event import OutboxEvent
-from models.quote import Quote
-from models.tradie_certification import TradieCertification, CertificationStatus
-from models.tradie_profile import TradieProfile
-from schemas.job_schema import JobCreate, JobUpdate, JobResponse, JobWithDetailsResponse, JobPhotoResponse
-from services.auth_service import get_current_user
-from services.category_resolver import resolve_trade_category
-from services.job_state_machine import JobStateMachine, InvalidTransitionError
-from services.geocoding_service import geocode_suburb
-from pydantic import BaseModel, Field, model_validator
-from datetime import datetime, date, timedelta
-from typing import Optional
 import asyncio
 import json
 import os
 import uuid
+from datetime import date, datetime, timedelta
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from db.session import get_db
+from models.job import Job
+from models.lead import Lead
+from models.outbox_event import OutboxEvent
+from models.quote import Quote
+from models.tradie_certification import CertificationStatus, TradieCertification
+from models.tradie_profile import TradieProfile
+from models.user import User
+from schemas.job_schema import (
+    JobCreate,
+    JobPhotoResponse,
+    JobResponse,
+    JobUpdate,
+    JobWithDetailsResponse,
+)
+from services.auth_service import get_current_user
+from services.category_resolver import resolve_trade_category
+from services.geocoding_service import geocode_suburb
+from services.job_state_machine import InvalidTransitionError, JobStateMachine
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["Jobs"])
 
@@ -185,12 +191,12 @@ class UncategorisedJobCreate(BaseModel):
     pathway always uses the sentinel 'other-services' category.
     """
     description:   str = Field(min_length=10, max_length=2000)
-    suburb:        Optional[str] = None
-    state:         Optional[str] = None
-    postcode:      Optional[str] = None
-    contact_name:  Optional[str] = None
-    contact_phone: Optional[str] = None
-    contact_email: Optional[str] = None
+    suburb:        str | None = None
+    state:         str | None = None
+    postcode:      str | None = None
+    contact_name:  str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
 
 
 @router.post("/uncategorised", response_model=JobResponse, status_code=201)
@@ -284,7 +290,7 @@ async def retry_lead_distribution(
 
 @router.get("/my-jobs", response_model=list[JobWithDetailsResponse])
 async def my_jobs(
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: str | None = Query(None, description="Filter by status"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -311,8 +317,9 @@ async def my_jobs(
     jobs = result.scalars().all()
 
     # ── Bulk-fetch redo flags + re-dispute flags ──────────────────────────────
-    from models.job_event import JobEvent
     import sqlalchemy as sa
+
+    from models.job_event import JobEvent
 
     job_ids = [j.id for j in jobs]
     redo_job_ids:     set[str] = set()
@@ -473,6 +480,7 @@ async def clear_job_history(
     db: AsyncSession = Depends(get_db)
 ):
     from sqlalchemy import delete as sql_delete
+
     from models.quote import Quote
 
     result = await db.execute(
@@ -773,14 +781,14 @@ async def get_job_photos(
 
 class ReviewCreateBody(BaseModel):
     rating:  int           = Field(..., ge=1, le=5)
-    comment: Optional[str] = Field(None, max_length=2000)
+    comment: str | None = Field(None, max_length=2000)
 
 
 class ReviewSubmittedResponse(BaseModel):
     id:         str
     job_id:     str
     rating:     int
-    comment:    Optional[str]
+    comment:    str | None
     status:     str
     created_at: datetime
 
@@ -864,13 +872,13 @@ async def submit_review(
 # ── Schemas ────────────────────────────────────────────────────────────────
 
 class StartJobRequest(BaseModel):
-    photo_before_url: Optional[str] = Field(None, description="S3 URL of the before photo (optional)")
+    photo_before_url: str | None = Field(None, description="S3 URL of the before photo (optional)")
 
 
 class ScopeChangeRequest(BaseModel):
     reason:             str           = Field(..., min_length=5, max_length=1000)
     new_amount_cents:   int           = Field(..., gt=0, description="Proposed new total in cents")
-    new_category_id:    Optional[str] = Field(None, description="Set only if requesting a different trade category (skill-boundary check will run)")
+    new_category_id:    str | None = Field(None, description="Set only if requesting a different trade category (skill-boundary check will run)")
 
 
 class ScopeChangeRespondRequest(BaseModel):
@@ -884,7 +892,7 @@ class CompleteJobRequest(BaseModel):
         max_length=3,
         description="Ignored while photo upload is disabled",
     )
-    completion_note: Optional[str] = Field(None, max_length=1000)
+    completion_note: str | None = Field(None, max_length=1000)
 
     @model_validator(mode="after")
     def require_completion_note_only(self) -> "CompleteJobRequest":
@@ -902,7 +910,7 @@ class CompleteJobRequest(BaseModel):
 
 class PartialStopRequest(BaseModel):
     reason:           str           = Field(..., min_length=10, max_length=1000, description="Why work is being stopped")
-    photo_after_url:  Optional[str] = Field(None, description="Photo of current state of work (recommended)")
+    photo_after_url:  str | None = Field(None, description="Photo of current state of work (recommended)")
 
 
 class DisputeRequest(BaseModel):
@@ -1358,8 +1366,9 @@ async def raise_dispute(
         )
 
     # ── Check dispute cap + determine which window applies ───────────────────
-    from models.job_event import JobEvent as JE
     import sqlalchemy as sa
+
+    from models.job_event import JobEvent as JE
 
     # Count how many times this job has already gone to "disputed"
     dispute_count_res = await db.execute(
@@ -1567,7 +1576,7 @@ async def dispute_info(
 # ── Tradie: claim dispute is resolved ────────────────────────────────────────
 
 class DisputeClaimRequest(BaseModel):
-    message: Optional[str] = Field(default=None, max_length=1000)
+    message: str | None = Field(default=None, max_length=1000)
 
 
 @router.post("/{job_id}/dispute-claim-resolved")
@@ -1651,7 +1660,7 @@ async def dispute_claim_resolved(
 
 class DisputeResolutionResponseRequest(BaseModel):
     accept: bool
-    message: Optional[str] = Field(default=None, max_length=1000)
+    message: str | None = Field(default=None, max_length=1000)
 
 
 @router.post("/{job_id}/dispute-accept-resolution")
@@ -1754,7 +1763,7 @@ async def dispute_accept_resolution(
             action="dispute_resolution_rejected",
             old_value=None,
             new_value={"message": (body.message or "").strip()},
-            note=f"Homeowner rejected tradie resolution claim.",
+            note="Homeowner rejected tradie resolution claim.",
         ))
 
         # Count total rejections
@@ -1793,8 +1802,11 @@ async def dispute_accept_resolution(
                     # If admin escalation threshold reached, alert admin
                     if rejection_count >= 2:
                         try:
-                            from services.resend_service import send_dispute_escalated_to_admin_email
                             import os
+
+                            from services.resend_service import (
+                                send_dispute_escalated_to_admin_email,
+                            )
                             admin_email = os.getenv("ADMIN_ALERT_EMAIL", "admin@proconnect.com.au")
                             await send_dispute_escalated_to_admin_email(
                                 to_email=admin_email,

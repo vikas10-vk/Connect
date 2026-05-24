@@ -4,8 +4,9 @@ Revision ID: add_match_intelligence
 Revises: add_soft_delete_cols
 Create Date: 2026-04-18
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = 'add_match_intelligence'
 down_revision = 'add_soft_delete_cols'

@@ -17,33 +17,31 @@ Returns a structured dict:
 }
 """
 
-import os
 import json
-import httpx
-from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+import os
+import uuid
 
-from models.user import User
+import httpx
+from dotenv import load_dotenv
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.category import Category
+from models.home_asset import HomeAsset
 from models.job import Job
 from models.lead import Lead
 from models.quote import Quote
-from models.tradie_profile import TradieProfile
-from models.home_asset import HomeAsset
-from models.category import Category
 from models.tradie_category import TradieCategory
-
+from models.tradie_profile import TradieProfile
+from models.user import User
+from services.ai_tools import HOMEOWNER_TOOLS, SHARED_TOOLS, TRADIE_TOOLS
+from services.category_resolver import resolve_trade_category
 from services.compliance_service import get_licence_requirements
+from services.component_selector import select_component, select_vision_component
 from services.earnings_service import get_monthly_summary
+from services.memory_service import get_user_context
 from services.swms_service import generate_swms_with_ai
 from services.vision_service import analyse_photo, build_vision_context
-from services.component_selector import select_component, select_vision_component
-from services.category_resolver import resolve_trade_category
-from services.memory_service import get_user_context
-from services.ai_tools import HOMEOWNER_TOOLS, TRADIE_TOOLS, SHARED_TOOLS
-
-import uuid
-from dotenv import load_dotenv
 
 load_dotenv(
     dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
@@ -54,7 +52,7 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL   = "llama-3.3-70b-versatile"
 
 
-def get_system_prompt(user: User, profile: Optional[TradieProfile] = None, memory_context: str = "") -> str:
+def get_system_prompt(user: User, profile: TradieProfile | None = None, memory_context: str = "") -> str:
     name = user.full_name.split(" ")[0]
     memory_block = f"\n\n{memory_context}" if memory_context else ""
 
@@ -413,7 +411,7 @@ async def run_agent(
     user:         User,
     db:           AsyncSession,
     session_id:   str,
-    image_base64: Optional[str] = None,
+    image_base64: str | None = None,
     image_mime:   str = "image/jpeg",
 ) -> dict:
     """
@@ -436,7 +434,7 @@ async def run_agent(
     vision_context = ""
 
     if image_base64:
-        print(f"[AGENT] Photo uploaded — running vision analysis")
+        print("[AGENT] Photo uploaded — running vision analysis")
         vision_analysis = await analyse_photo(image_base64, image_mime)
         if not vision_analysis.get("error"):
             vision_context = build_vision_context(vision_analysis)

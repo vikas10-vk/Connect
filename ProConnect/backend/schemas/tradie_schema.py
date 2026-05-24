@@ -12,10 +12,9 @@ UPDATED — new schemas added at the bottom for:
 
 All existing schemas are preserved exactly.
 """
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List
-from datetime import datetime, date
+from datetime import date, datetime
 
+from pydantic import BaseModel
 
 # ═══════════════════════════════════════════════════════════════════════════
 # EXISTING SCHEMAS — PRESERVED EXACTLY
@@ -32,9 +31,9 @@ class CategoryBrief(BaseModel):
 class ReviewResponse(BaseModel):
     id:             str
     rating:         int
-    comment:        Optional[str]
+    comment:        str | None
     created_at:     datetime
-    homeowner_name: Optional[str] = None
+    homeowner_name: str | None = None
 
     class Config:
         from_attributes = True
@@ -42,30 +41,30 @@ class ReviewResponse(BaseModel):
 
 class TradieProfileCreate(BaseModel):
     business_name: str
-    abn:           Optional[str]   = None
-    bio:           Optional[str]   = None
-    suburb:        Optional[str]   = None
-    state:         Optional[str]   = None
-    postcode:      Optional[str]   = None
-    lat:           Optional[float] = None
-    lng:           Optional[float] = None
-    radius_km:     Optional[int]   = 25
+    abn:           str | None   = None
+    bio:           str | None   = None
+    suburb:        str | None   = None
+    state:         str | None   = None
+    postcode:      str | None   = None
+    lat:           float | None = None
+    lng:           float | None = None
+    radius_km:     int | None   = 25
 
 
 class TradieProfileUpdate(BaseModel):
     """All fields optional — used by PATCH /profile/me."""
-    business_name:   Optional[str]   = None
-    abn:             Optional[str]   = None
-    bio:             Optional[str]   = None
-    suburb:          Optional[str]   = None
-    state:           Optional[str]   = None
-    postcode:        Optional[str]   = None
-    lat:             Optional[float] = None
-    lng:             Optional[float] = None
-    radius_km:       Optional[int]   = None
-    is_available:    Optional[bool]  = None
-    avatar_url:      Optional[str]   = None
-    cover_photo_url: Optional[str]   = None
+    business_name:   str | None   = None
+    abn:             str | None   = None
+    bio:             str | None   = None
+    suburb:          str | None   = None
+    state:           str | None   = None
+    postcode:        str | None   = None
+    lat:             float | None = None
+    lng:             float | None = None
+    radius_km:       int | None   = None
+    is_available:    bool | None  = None
+    avatar_url:      str | None   = None
+    cover_photo_url: str | None   = None
 
 
 class TradieProfileResponse(BaseModel):
@@ -73,22 +72,22 @@ class TradieProfileResponse(BaseModel):
     id:                  str
     user_id:             str
     business_name:       str
-    abn:                 Optional[str]
-    bio:                 Optional[str]
-    suburb:              Optional[str]
-    state:               Optional[str]
-    postcode:            Optional[str]
-    lat:                 Optional[float]
-    lng:                 Optional[float]
+    abn:                 str | None
+    bio:                 str | None
+    suburb:              str | None
+    state:               str | None
+    postcode:            str | None
+    lat:                 float | None
+    lng:                 float | None
     radius_km:           int
     is_available:        bool
     credits:             int
-    avatar_url:          Optional[str]
-    cover_photo_url:     Optional[str]
+    avatar_url:          str | None
+    cover_photo_url:     str | None
     verification_status: str = "pending_review"
     solo_or_team:        str = "solo"
-    team_size:           Optional[str] = None
-    phone:               Optional[str] = None
+    team_size:           str | None = None
+    phone:               str | None = None
 
     class Config:
         from_attributes = True
@@ -102,15 +101,15 @@ class TradiePublicResponse(BaseModel):
     """
     id:              str
     business_name:   str
-    bio:             Optional[str]
-    suburb:          Optional[str]
-    state:           Optional[str]
+    bio:             str | None
+    suburb:          str | None
+    state:           str | None
     is_available:    bool
-    avatar_url:      Optional[str]
-    cover_photo_url: Optional[str]
+    avatar_url:      str | None
+    cover_photo_url: str | None
     is_verified:     bool = False
-    full_name:       Optional[str] = None
-    categories:      List[CategoryBrief] = []
+    full_name:       str | None = None
+    categories:      list[CategoryBrief] = []
 
     class Config:
         from_attributes = True
@@ -120,13 +119,13 @@ class TradieListItem(BaseModel):
     """Single tradie card on browse page. No ratings shown publicly."""
     id:            str
     business_name: str
-    bio:           Optional[str]
-    suburb:        Optional[str]
-    state:         Optional[str]
+    bio:           str | None
+    suburb:        str | None
+    state:         str | None
     is_available:  bool
-    avatar_url:    Optional[str]
+    avatar_url:    str | None
     is_verified:   bool = False
-    categories:    List[CategoryBrief] = []
+    categories:    list[CategoryBrief] = []
 
     class Config:
         from_attributes = True
@@ -134,7 +133,7 @@ class TradieListItem(BaseModel):
 
 class TradieListResponse(BaseModel):
     """Paginated list of tradies for the browse page."""
-    items:       List[TradieListItem]
+    items:       list[TradieListItem]
     total:       int
     page:        int
     limit:       int
@@ -145,7 +144,7 @@ class InquiryCreate(BaseModel):
     """Sent by homeowner from the tradie public profile page."""
     name:    str
     email:   str
-    phone:   Optional[str] = None
+    phone:   str | None = None
     message: str
 
 
@@ -154,7 +153,7 @@ class InquiryResponse(BaseModel):
     tradie_id:  str
     name:       str
     email:      str
-    phone:      Optional[str]
+    phone:      str | None
     message:    str
     created_at: datetime
 
@@ -176,19 +175,19 @@ class CertificationResponse(BaseModel):
     """
     id:               str
     category_id:      str
-    category_name:    Optional[str] = None   # populated when category is joined
+    category_name:    str | None = None   # populated when category is joined
     licence_number:   str
     issuing_state:    str
-    issuing_body:     Optional[str] = None
+    issuing_body:     str | None = None
     holder_name:      str
-    issued_at:        Optional[date] = None
-    expires_at:       Optional[date] = None
-    photo_url:        Optional[str]  = None
+    issued_at:        date | None = None
+    expires_at:       date | None = None
+    photo_url:        str | None  = None
     status:           str            # pending | in_review | verified | rejected | expired
-    rejection_reason: Optional[str]  = None
-    rejection_note:   Optional[str]  = None
-    verified_at:      Optional[datetime] = None
-    team_member_id:   Optional[str]  = None
+    rejection_reason: str | None  = None
+    rejection_note:   str | None  = None
+    verified_at:      datetime | None = None
+    team_member_id:   str | None  = None
     created_at:       datetime
 
     class Config:
@@ -211,13 +210,13 @@ class InsurancePolicyResponse(BaseModel):
     coverage_amount_cents:  int
     coverage_amount_aud:    str      # e.g. "$20,000,000.00" — computed in validator
     holder_name:            str
-    issued_at:              Optional[date] = None
+    issued_at:              date | None = None
     expires_at:             date
-    document_url:           Optional[str]  = None
+    document_url:           str | None  = None
     status:                 str            # pending | in_review | verified | rejected | expired
-    rejection_reason:       Optional[str]  = None
-    rejection_note:         Optional[str]  = None
-    verified_at:            Optional[datetime] = None
+    rejection_reason:       str | None  = None
+    rejection_note:         str | None  = None
+    verified_at:            datetime | None = None
     created_at:             datetime
 
     class Config:
@@ -264,11 +263,11 @@ class TeamMemberResponse(BaseModel):
     role:             str            # owner | worker
     is_active:        bool
     can_accept_jobs:  bool
-    avatar_url:       Optional[str]  = None
-    selfie_url:       Optional[str]  = None
+    avatar_url:       str | None  = None
+    selfie_url:       str | None  = None
     jobs_completed:   int            = 0
     no_show_count:    int            = 0
-    rating_avg:       Optional[float] = None
+    rating_avg:       float | None = None
     created_at:       datetime
 
     class Config:
@@ -281,7 +280,7 @@ class TeamMemberWithCertsResponse(TeamMemberResponse):
     Used in GET /team/workers and GET /onboarding/status.
     Inherits all TeamMemberResponse fields.
     """
-    certifications: List[CertificationResponse] = []
+    certifications: list[CertificationResponse] = []
 
 
 # ── Onboarding gates ──────────────────────────────────────────────────────────
@@ -307,7 +306,7 @@ class OnboardingProfileSummary(BaseModel):
     id:                  str
     business_name:       str
     verification_status: str
-    verification_notes:  Optional[str] = None
+    verification_notes:  str | None = None
     is_available:        bool
     solo_or_team:        str
 
@@ -323,9 +322,9 @@ class OnboardingStatusResponse(BaseModel):
     to show the specific incomplete step in the checklist.
     """
     profile:            OnboardingProfileSummary
-    certifications:     List[CertificationResponse]      = []
-    insurance_policies: List[InsurancePolicyResponse]    = []
-    team_members:       List[TeamMemberWithCertsResponse] = []
+    certifications:     list[CertificationResponse]      = []
+    insurance_policies: list[InsurancePolicyResponse]    = []
+    team_members:       list[TeamMemberWithCertsResponse] = []
     gates:              OnboardingGates
 
 
@@ -340,7 +339,7 @@ class AssignedWorkerPublic(BaseModel):
     """
     worker_first_name: str    # e.g. "Marcus"
     business_name:     str    # e.g. "Dave's Plumbing"
-    avatar_url:        Optional[str] = None
+    avatar_url:        str | None = None
     assignment_type:   str    # 'manual' | 'auto'
     assigned_at:       datetime
 
@@ -355,8 +354,8 @@ class ServiceQuestionResponse(BaseModel):
     id:           str
     question:     str
     answer_type:  str            # text | select | multiselect | boolean | number | photo
-    options:      Optional[list] = None
-    placeholder:  Optional[str]  = None
+    options:      list | None = None
+    placeholder:  str | None  = None
     is_required:  bool
     sort_order:   int
 
@@ -369,7 +368,7 @@ class CategoryTaskResponse(BaseModel):
     id:          str
     name:        str
     slug:        str
-    description: Optional[str] = None
+    description: str | None = None
 
     class Config:
         from_attributes = True
@@ -380,9 +379,9 @@ class CategorySubcategoryResponse(BaseModel):
     id:          str
     name:        str
     slug:        str
-    description: Optional[str]              = None
-    questions:   List[ServiceQuestionResponse] = []
-    tasks:       List[CategoryTaskResponse]    = []
+    description: str | None              = None
+    questions:   list[ServiceQuestionResponse] = []
+    tasks:       list[CategoryTaskResponse]    = []
 
     class Config:
         from_attributes = True
@@ -398,9 +397,9 @@ class CategoryTreeResponse(BaseModel):
     id:             str
     name:           str
     slug:           str
-    icon_slug:      Optional[str]                    = None
-    description:    Optional[str]                    = None
-    subcategories:  List[CategorySubcategoryResponse] = []
+    icon_slug:      str | None                    = None
+    description:    str | None                    = None
+    subcategories:  list[CategorySubcategoryResponse] = []
 
     class Config:
         from_attributes = True
@@ -408,4 +407,4 @@ class CategoryTreeResponse(BaseModel):
 
 class CategoryTreeListResponse(BaseModel):
     """Wrapper for the full category tree list."""
-    categories: List[CategoryTreeResponse]
+    categories: list[CategoryTreeResponse]

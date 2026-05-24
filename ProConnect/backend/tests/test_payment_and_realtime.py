@@ -17,7 +17,7 @@ Locks in the two follow-up fixes:
 import asyncio
 from types import SimpleNamespace
 
-from services.earnings_service import _job_is_payable, EarningsNotPayableError
+from services.earnings_service import _job_is_payable
 
 
 class _DBResult:
@@ -114,7 +114,12 @@ def test_not_payable_when_job_missing():
 
 def test_broadcast_helper_exists_and_is_async():
     """If this import breaks, JobStateMachine._execute can't push status events."""
-    from routers.websocket import broadcast_job_status, manager, start_realtime_pubsub, stop_realtime_pubsub
+    from routers.websocket import (
+        broadcast_job_status,
+        manager,
+        start_realtime_pubsub,
+        stop_realtime_pubsub,
+    )
     assert asyncio.iscoroutinefunction(broadcast_job_status)
     assert asyncio.iscoroutinefunction(start_realtime_pubsub)
     assert asyncio.iscoroutinefunction(stop_realtime_pubsub)
@@ -145,6 +150,7 @@ def test_state_machine_imports_broadcaster_lazily():
     """Sanity: the state machine references broadcast_job_status only inside
     the try/except so a missing import never fails a transition."""
     import inspect
+
     from services import job_state_machine as jsm
     src = inspect.getsource(jsm._execute_helper if hasattr(jsm, '_execute_helper') else jsm.JobStateMachine._execute)
     # The broadcast import lives inside a try block.
@@ -155,6 +161,7 @@ def test_state_machine_imports_broadcaster_lazily():
 
 def test_jobs_do_not_fallback_in_api_for_production_without_flag():
     import inspect
+
     from routers import jobs
 
     src = inspect.getsource(jobs.create_job)

@@ -18,8 +18,9 @@ NOTE: category_id should always point to a level-1 Category row (the
   licence covers the whole trade. The level-2 and level-3 categories exist
   for job classification and service questions only.
 """
-from sqlalchemy import String, Boolean, ForeignKey
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from db.session import Base
 
 

@@ -1,14 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from db.session import get_db
-from models.user import User
 from models.tradie_profile import TradieProfile
+from models.user import User
 from services.auth_service import get_current_user
 from services.earnings_service import (
-    get_monthly_summary, record_earning, EarningsNotPayableError,
+    EarningsNotPayableError,
+    get_monthly_summary,
+    record_earning,
 )
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/earnings", tags=["Earnings"])
 

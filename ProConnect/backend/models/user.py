@@ -1,8 +1,11 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime
+
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from db.session import Base
+
 
 class UserRole(str):
     HOMEOWNER = "homeowner"

@@ -4,7 +4,9 @@
 # =============================================================================
 
 from pathlib import Path
+
 from dotenv import load_dotenv
+
 
 # Walk up from this file's directory until we find a .env file.
 # Structure: ProConnect/backend/db/session.py → look at backend/, then ProConnect/, etc.
@@ -30,7 +32,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import NullPool          # ← NEW IMPORT
+from sqlalchemy.pool import NullPool  # ← NEW IMPORT
 
 logger = logging.getLogger(__name__)
 

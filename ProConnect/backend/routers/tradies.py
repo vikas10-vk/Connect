@@ -22,44 +22,41 @@ NEW ENDPOINTS:
 """
 
 import json
+import math
 import os
 import uuid
-import math
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Literal
 
+import bcrypt as _bcrypt
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query
-import bcrypt as _bcrypt
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.session import get_db
 from models.category import Category, CategoryLevel
-from models.insurance_policy import InsurancePolicy, InsuranceStatus, InsuranceType
 from models.inquiry import Inquiry
+from models.insurance_policy import InsurancePolicy, InsuranceStatus, InsuranceType
 from models.job import Job
 from models.lead import Lead
-from models.review import Review
 from models.service_question import ServiceQuestion
 from models.team_member import TeamMember, TeamMemberRole
 from models.tradie_category import TradieCategory
 from models.tradie_certification import (
-    TradieCertification,
     CertificationStatus,
-    IssuingState,
+    TradieCertification,
 )
-from models.tradie_profile import TradieProfile
 from models.tradie_preference import TradiePreference
+from models.tradie_profile import TradieProfile
 from models.user import User
 from schemas.lead_schema import LeadResponse
 from schemas.tradie_schema import (
     CategoryBrief,
     InquiryCreate,
     InquiryResponse,
-    ReviewResponse,
     TradieListItem,
     TradieListResponse,
     TradieProfileCreate,
@@ -68,9 +65,9 @@ from schemas.tradie_schema import (
     TradiePublicResponse,
 )
 from services.auth_service import get_current_user
+from services.category_resolver import resolve_to_canonical_trade
 from services.geocoding_service import geocode_tradie_suburb
 from services.notification_service import notify_tradie_new_inquiry
-from services.category_resolver import resolve_to_canonical_trade
 from services.tradie_change_requests import (
     TradieChangeRequestType,
     create_pending_change_request,
@@ -124,12 +121,12 @@ class CertificationSubmitRequest(BaseModel):
     category_id    : str             = Field(..., description="Level-1 category ID this licence covers")
     licence_number : str             = Field(..., min_length=2, max_length=100)
     issuing_state  : str             = Field(..., description="VIC | NSW | QLD | WA | SA | TAS | NT | ACT")
-    issuing_body   : Optional[str]   = Field(None, max_length=100)
+    issuing_body   : str | None   = Field(None, max_length=100)
     holder_name    : str             = Field(..., min_length=2, max_length=255)
-    issued_at      : Optional[date]  = None
-    expires_at     : Optional[date]  = None
-    photo_url      : Optional[str]   = Field(None)
-    team_member_id : Optional[str]   = Field(None)
+    issued_at      : date | None  = None
+    expires_at     : date | None  = None
+    photo_url      : str | None   = Field(None)
+    team_member_id : str | None   = Field(None)
 
 
 class InsurancePolicySubmitRequest(BaseModel):
@@ -138,9 +135,9 @@ class InsurancePolicySubmitRequest(BaseModel):
     policy_number         : str            = Field(..., min_length=2, max_length=100)
     coverage_amount_cents : int            = Field(..., gt=0)
     holder_name           : str            = Field(..., min_length=2, max_length=255)
-    issued_at             : Optional[date] = None
+    issued_at             : date | None = None
     expires_at            : date           = Field(...)
-    document_url          : Optional[str]  = Field(None)
+    document_url          : str | None  = Field(None)
 
 
 class WorkerInviteRequest(BaseModel):
@@ -151,9 +148,9 @@ class WorkerInviteRequest(BaseModel):
 
 
 class WorkerUpdateRequest(BaseModel):
-    full_name  : Optional[str]  = Field(None, max_length=255)
-    phone_real : Optional[str]  = Field(None, max_length=20)
-    is_active  : Optional[bool] = None
+    full_name  : str | None  = Field(None, max_length=255)
+    phone_real : str | None  = Field(None, max_length=20)
+    is_active  : bool | None = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -382,10 +379,10 @@ async def submit_onboarding(
 async def list_tradies(
     page:         int            = Query(1,    ge=1),
     limit:        int            = Query(10,   ge=1, le=50),
-    category_id:  Optional[str]  = Query(None),
-    suburb:       Optional[str]  = Query(None),
-    state:        Optional[str]  = Query(None),
-    is_available: Optional[bool] = Query(None),
+    category_id:  str | None  = Query(None),
+    suburb:       str | None  = Query(None),
+    state:        str | None  = Query(None),
+    is_available: bool | None = Query(None),
     db:           AsyncSession   = Depends(get_db),
 ):
     query = (

@@ -8,8 +8,9 @@ Drops the unique index/constraint on users.phone.
 Phone numbers are now non-unique — multiple accounts (e.g. family members
 or a homeowner + tradie with the same mobile) can share one number.
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision      = "005_phone_not_unique"
 down_revision = "004_verification"

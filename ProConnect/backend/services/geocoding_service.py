@@ -7,10 +7,10 @@ Geocoding service — two providers:
 Both return (lat, lng) tuple. Never raise — geocoding failure is non-fatal.
 """
 
-import httpx
-import os
 import logging
-from typing import Optional, Tuple
+import os
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,8 @@ NOMINATIM_HEADERS = {"User-Agent": "ProConnect-Clone/1.0 (internship project)"}
 
 async def geocode_suburb_nominatim(
     suburb: str,
-    state: Optional[str] = None
-) -> Tuple[Optional[float], Optional[float]]:
+    state: str | None = None
+) -> tuple[float | None, float | None]:
     """
     Geocode an Australian suburb using Nominatim (free, no API key).
     Used for job wizard AND as fallback for tradie profile if Mapbox fails.
@@ -75,8 +75,8 @@ async def geocode_suburb_nominatim(
 
 async def geocode_suburb_mapbox(
     suburb: str,
-    state: Optional[str] = None
-) -> Tuple[Optional[float], Optional[float]]:
+    state: str | None = None
+) -> tuple[float | None, float | None]:
     """
     Geocode an Australian suburb using Mapbox.
     Used for tradie profile setup.

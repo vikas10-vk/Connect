@@ -23,8 +23,6 @@ Admin triage (in routers/admin.py) then either:
 """
 
 import uuid
-from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +31,6 @@ from models.category import Category
 from models.job import Job
 from models.job_event import JobEvent
 from models.user import User
-
 
 SENTINEL_OTHER_SLUG = "other-services"
 
@@ -71,13 +68,13 @@ async def create_uncategorised_job(
     db: AsyncSession,
     *,
     description: str,
-    suburb: Optional[str] = None,
-    state: Optional[str] = None,
-    postcode: Optional[str] = None,
-    contact_name: Optional[str] = None,
-    contact_phone: Optional[str] = None,
-    contact_email: Optional[str] = None,
-    original_slug: Optional[str] = None,
+    suburb: str | None = None,
+    state: str | None = None,
+    postcode: str | None = None,
+    contact_name: str | None = None,
+    contact_phone: str | None = None,
+    contact_email: str | None = None,
+    original_slug: str | None = None,
 ) -> Job:
     """
     Create a Job row tagged with the sentinel category and surface it to admin.

@@ -1,6 +1,6 @@
-from pydantic import BaseModel, computed_field
-from typing import Optional
 from datetime import datetime
+
+from pydantic import BaseModel
 
 
 class LeadResponse(BaseModel):
@@ -16,21 +16,21 @@ class LeadResponse(BaseModel):
     sent_at:         datetime
 
     # ── Job details ───────────────────────────────────────────────
-    job_title:       Optional[str]   = None
-    job_suburb:      Optional[str]   = None
-    job_state:       Optional[str]   = None
-    job_description: Optional[str]   = None
-    job_budget_min:  Optional[float] = None
-    job_budget_max:  Optional[float] = None
-    job_urgency:     Optional[str]   = None
+    job_title:       str | None   = None
+    job_suburb:      str | None   = None
+    job_state:       str | None   = None
+    job_description: str | None   = None
+    job_budget_min:  float | None = None
+    job_budget_max:  float | None = None
+    job_urgency:     str | None   = None
 
     # ── Wizard fields (shown on lead card) ────────────────────────
-    job_type:        Optional[str]   = None   # residential | commercial
-    service_type:    Optional[str]   = None   # repair | new_installation | etc.
-    job_stage:       Optional[str]   = None   # ready_to_hire | planning_budgeting
+    job_type:        str | None   = None   # residential | commercial
+    service_type:    str | None   = None   # repair | new_installation | etc.
+    job_stage:       str | None   = None   # ready_to_hire | planning_budgeting
 
     # ── Job status (for Start Job button on tradie dashboard) ─────
-    job_status:      Optional[str]   = None
+    job_status:      str | None   = None
 
     # ── Badge flags ───────────────────────────────────────────────
     # Urgent: job needs to be done asap or it's an emergency

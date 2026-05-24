@@ -6,20 +6,21 @@ The get_quotes_for_job endpoint joins TradieProfile so the homeowner can
 see the tradie's name, business and suburb on each quote card.
 """
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from db.session import get_db
-from models.quote import Quote
-from models.lead import Lead
-from models.tradie_profile import TradieProfile
 from models.job import Job
+from models.lead import Lead
+from models.quote import Quote
+from models.tradie_profile import TradieProfile
 from models.user import User
 from schemas.quote_schema import QuoteCreate, QuoteResponse
 from services.auth_service import get_current_user
-from services.job_state_machine import JobStateMachine, InvalidTransitionError
-import uuid
+from services.job_state_machine import InvalidTransitionError, JobStateMachine
 
 router = APIRouter(prefix="/api/v1/quotes", tags=["Quotes"])
 
@@ -83,7 +84,7 @@ async def create_quote(
                 note="Tradie submitted the first quote for this job.",
             )
         except InvalidTransitionError as exc:
-            raise HTTPException(status_code=409, detail=str(exc))
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     await db.commit()
     await db.refresh(quote)
@@ -259,7 +260,7 @@ async def update_quote_status(
     # Fetch all lead ids and objects for this job
     all_leads_result = await db.execute(select(Lead).where(Lead.job_id == job_id_val))
     all_leads = all_leads_result.scalars().all()
-    all_lead_ids = [l.id for l in all_leads]
+    all_lead_ids = [ld.id for ld in all_leads]
 
     if new_status == "accepted":
         accepted_result = await db.execute(
@@ -285,12 +286,12 @@ async def update_quote_status(
             db.add(other)
 
         # Update all lead statuses for the job
-        for l in all_leads:
-            if l.id == lead.id:
-                l.status = "accepted"
+        for ld in all_leads:
+            if ld.id == lead.id:
+                ld.status = "accepted"
             else:
-                l.status = "rejected"
-            db.add(l)
+                ld.status = "rejected"
+            db.add(ld)
 
         # Move job through the state machine while the job row is locked.
         TERMINAL = {"in_progress", "completed", "closed", "cancelled"}
@@ -315,7 +316,7 @@ async def update_quote_status(
                         note="Job moved in progress after homeowner accepted quote.",
                     )
             except InvalidTransitionError as exc:
-                raise HTTPException(status_code=409, detail=str(exc))
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     elif new_status == "rejected":
         # Reopen job only if no accepted quote remains for this job
@@ -376,7 +377,8 @@ async def _notify_homeowner_new_quote(job, tradie_user: User, profile: TradiePro
     """Send email to homeowner when a new quote arrives on their job."""
     try:
         from sqlalchemy import select as _select
-        from services.resend_service import _send_raw_email, _base_html, _btn, _first, APP_NAME
+
+        from services.resend_service import _btn, _first
 
         homeowner_res = await db.execute(_select(User).where(User.id == job.homeowner_id))
         homeowner = homeowner_res.scalar_one_or_none()
@@ -403,5 +405,10 @@ async def _notify_homeowner_new_quote(job, tradie_user: User, profile: TradiePro
             Log in to your dashboard to review the quote, compare tradies and accept.
           </p>
           {_btn("View Quote", "http://localhost:3000/dashboard", "#2E7D5A")}"""
+
+        from services.resend_service import _base_html, _send_raw_email
+        html_content = _base_html(body, "#2E7D5A")
+        text_content = f"G'day {name}, {tradie_display} has submitted a quote of ${amount:,.2f} for your job \"{job.title}\"."
+        await _send_raw_email(homeowner.email, "New quote received!", html_content, text_content)
     except Exception as e:
         print(f"[quotes] Homeowner notification failed (non-fatal): {e}")

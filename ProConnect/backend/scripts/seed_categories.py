@@ -8,16 +8,17 @@ Idempotent: safe to run multiple times (skips existing slugs).
 """
 import asyncio
 import os
-import sys
 import re
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import uuid
+
+from sqlalchemy import select
+
 from db.session import AsyncSessionLocal
 from models.category import Category
-from models.service_question import ServiceQuestion
-from sqlalchemy import select
-import uuid
 
 SERVICES = [
     "Air Conditioning Installer / Supplier",

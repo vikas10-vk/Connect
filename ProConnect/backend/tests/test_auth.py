@@ -20,7 +20,6 @@
 #   Logout-all:    invalidates all sessions
 # =============================================================================
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
 from conftest import make_user_data

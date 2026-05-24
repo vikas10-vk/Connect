@@ -6,8 +6,9 @@ Revises: 002_tradie_preferences
 This migration is safe to run even if tradie_preferences already exists.
 It ONLY adds the service_suburbs column — does NOT recreate the table.
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision      = "003_add_service_suburbs"
 down_revision = "002_tradie_preferences"

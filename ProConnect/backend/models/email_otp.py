@@ -9,8 +9,10 @@ Stores email OTP codes for verification.
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, Integer, Boolean, ForeignKey, Index
+
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from db.session import Base
 
 

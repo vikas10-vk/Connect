@@ -1,11 +1,8 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from db.session import get_db
-from models.user import User
-from services.auth_service import get_current_user
-from services.compliance_service import get_licence_requirements
+
+from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+
+from services.compliance_service import get_licence_requirements
 
 router = APIRouter(prefix="/api/v1/licence-guard", tags=["LicenceGuard"])
 
@@ -13,7 +10,7 @@ router = APIRouter(prefix="/api/v1/licence-guard", tags=["LicenceGuard"])
 class LicenceCheckRequest(BaseModel):
     state:    str
     category: str
-    job_type: Optional[str] = "residential"
+    job_type: str | None = "residential"
 
 
 @router.post("/check")

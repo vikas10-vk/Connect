@@ -1,19 +1,21 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from db.session import get_db
 from models.category import Category, CategoryLevel
 from models.tradie_category import TradieCategory
 from models.tradie_profile import TradieProfile
+from models.user import User
 from schemas.category_schema import CategoryCreate, CategoryResponse
 from services.auth_service import get_current_user
 from services.category_resolver import resolve_to_canonical_trade
-from models.user import User
 from services.tradie_change_requests import (
     TradieChangeRequestType,
     create_pending_change_request,
 )
-import uuid
 
 router = APIRouter(prefix="/api/v1/categories", tags=["Categories"])
 

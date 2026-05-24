@@ -1,14 +1,15 @@
+import uuid
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from db.session import get_db
 from models.home_asset import HomeAsset
 from models.user import User
 from services.auth_service import get_current_user
-from pydantic import BaseModel
-from datetime import date
-from typing import Optional
-import uuid
 
 router = APIRouter(prefix="/api/v1/assets", tags=["Assets"])
 
@@ -35,19 +36,19 @@ class AssetCreate(BaseModel):
     brand_name:        str
     installation_date: date
     warranty_months:   int = 12
-    tradie_name:       Optional[str] = None
-    job_id:            Optional[str] = None
-    invoice_number:    Optional[str] = None
-    notes:             Optional[str] = None
+    tradie_name:       str | None = None
+    job_id:            str | None = None
+    invoice_number:    str | None = None
+    notes:             str | None = None
 
 class AssetUpdate(BaseModel):
-    brand_name:        Optional[str]  = None
-    installation_date: Optional[date] = None
-    warranty_months:   Optional[int]  = None
-    tradie_name:       Optional[str]  = None
-    job_id:            Optional[str]  = None
-    invoice_number:    Optional[str]  = None
-    notes:             Optional[str]  = None
+    brand_name:        str | None  = None
+    installation_date: date | None = None
+    warranty_months:   int | None  = None
+    tradie_name:       str | None  = None
+    job_id:            str | None  = None
+    invoice_number:    str | None  = None
+    notes:             str | None  = None
 
 
 @router.post("/")

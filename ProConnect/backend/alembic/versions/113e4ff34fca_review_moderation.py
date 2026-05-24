@@ -5,17 +5,17 @@ Revises: 005_phone_not_unique
 Create Date: 2026-04-26 23:03:07.195254
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '113e4ff34fca'
-down_revision: Union[str, Sequence[str], None] = '005_phone_not_unique'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '005_phone_not_unique'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

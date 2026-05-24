@@ -10,35 +10,36 @@ New in Generative UI version:
   - Fires background memory extraction after each turn
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from db.session import get_db
-from models.user import User
-from models.chat_conversation import ChatConversation
-from services.auth_service import get_current_user, get_optional_user
-from services.ai_agent_service import run_agent
-from services.memory_service import extract_insights
-from pydantic import BaseModel, Field
-from typing import Optional
-import uuid
 import json
+import uuid
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import get_db
+from models.chat_conversation import ChatConversation
+from models.user import User
+from services.ai_agent_service import run_agent
+from services.auth_service import get_current_user, get_optional_user
+from services.memory_service import extract_insights
 
 router = APIRouter(prefix="/api/v1/ai", tags=["AI Chat"])
 
 
 class ChatRequest(BaseModel):
     message:      str
-    session_id:   Optional[str]  = None
+    session_id:   str | None  = None
     # Vision — base64 encoded image (client strips the data URI prefix)
-    image_base64: Optional[str]  = None
-    image_mime:   Optional[str]  = "image/jpeg"   # image/jpeg | image/png | image/webp
+    image_base64: str | None  = None
+    image_mime:   str | None  = "image/jpeg"   # image/jpeg | image/png | image/webp
 
 
 class ChatResponse(BaseModel):
     response:     str
-    ui_component: Optional[dict] = None
-    vision:       Optional[dict] = None
+    ui_component: dict | None = None
+    vision:       dict | None = None
     actions:      list           = []
     session_id:   str
     error:        bool           = False
@@ -50,7 +51,7 @@ class AnalyseJobRequest(BaseModel):
     # the abuse mitigation. A per-IP quota / CAPTCHA is the follow-up hardening.
     description: str = Field(..., min_length=1, max_length=2000)
     category:    str = Field(..., min_length=1, max_length=100)
-    photo_urls:  Optional[list[str]] = Field(default=[], max_length=10)
+    photo_urls:  list[str] | None = Field(default=[], max_length=10)
 
 class AnalyseJobResponse(BaseModel):
     title:        str
@@ -228,13 +229,15 @@ async def get_sessions(
 @router.post("/analyse-job", response_model=AnalyseJobResponse)
 async def analyse_job(
     body: AnalyseJobRequest,
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
 ):
     # NOTE: get_optional_user (not get_current_user) — the booking wizard calls
     # this before the user creates an account. When a token IS present the call
     # is attributable to a user; combined with the bounded input size this
     # limits Groq cost-abuse without breaking the pre-signup flow.
-    import os, json
+    import json
+    import os
+
     from groq import AsyncGroq
 
     client = AsyncGroq(api_key=os.environ.get("GROQ_API_KEY"))

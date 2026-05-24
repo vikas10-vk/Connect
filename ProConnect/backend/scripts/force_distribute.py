@@ -43,8 +43,8 @@ def _load_env():
 
 _load_env()
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import select, text
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
@@ -78,24 +78,28 @@ async def force_one(job_id: str):
         print(f"\n  Job: {job_row['title']} (id={job_id})")
 
         if job_row['match_intelligence']:
-            print(f"  ℹ️   Clearing match_intelligence (idempotency guard) so distribution will re-run…")
+            print("  ℹ️   Clearing match_intelligence (idempotency guard) so distribution will re-run…")
             await db.execute(
                 text("UPDATE jobs SET match_intelligence = NULL WHERE id = :jid"),
                 {"jid": job_id}
             )
             await db.commit()
-            print(f"  ✅  match_intelligence cleared")
+            print("  ✅  match_intelligence cleared")
         else:
-            print(f"  ℹ️   match_intelligence was already NULL — distribution never ran or was cleared")
+            print("  ℹ️   match_intelligence was already NULL — distribution never ran or was cleared")
 
     # Now run distribution using the same async logic as the Celery task
     print(f"\n  Running lead distribution for {job_id}…\n")
     try:
         # Build a fresh engine + session factory for the task (mirrors what Celery does)
         from sqlalchemy.ext.asyncio import (
-            create_async_engine as _create_engine,
             AsyncSession as _AsyncSession,
+        )
+        from sqlalchemy.ext.asyncio import (
             async_sessionmaker as _async_sessionmaker,
+        )
+        from sqlalchemy.ext.asyncio import (
+            create_async_engine as _create_engine,
         )
         task_engine = _create_engine(DATABASE_URL, pool_size=2, max_overflow=0, pool_pre_ping=True)
         task_session = _async_sessionmaker(task_engine, class_=_AsyncSession, expire_on_commit=False)
@@ -113,7 +117,7 @@ async def force_one(job_id: str):
 
 async def main():
     print(f"\n{'='*60}")
-    print(f" FORCE DISTRIBUTE LEADS")
+    print(" FORCE DISTRIBUTE LEADS")
     print(f"{'='*60}")
 
     if JOB_ARG == "all-recent":
@@ -136,10 +140,10 @@ async def main():
     else:
         success = await force_one(JOB_ARG)
         if success:
-            print(f"\n  ✅  Done — check the output above for which tradies were matched.")
-            print(f"      The tradie should now see the lead in their dashboard.\n")
+            print("\n  ✅  Done — check the output above for which tradies were matched.")
+            print("      The tradie should now see the lead in their dashboard.\n")
         else:
-            print(f"\n  ❌  Distribution did not complete. Fix the issues above and retry.\n")
+            print("\n  ❌  Distribution did not complete. Fix the issues above and retry.\n")
 
     await engine.dispose()
 

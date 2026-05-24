@@ -1,7 +1,6 @@
-import httpx
-import json
 from datetime import datetime
 
+import httpx
 
 SWMS_TEMPLATES: dict[str, dict] = {
     "Electrical": {

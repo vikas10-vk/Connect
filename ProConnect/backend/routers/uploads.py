@@ -1,16 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
-from services.storage_service import generate_presigned_upload_url
-from services.auth_service import get_current_user, get_optional_user
-from models.user import User
-from models.job_photo import JobPhoto
-from models.job import Job
-from db.session import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from pydantic import BaseModel
-from typing import Optional
-import uuid
 import os
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.session import get_db
+from models.job import Job
+from models.job_photo import JobPhoto
+from models.user import User
+from services.auth_service import get_current_user, get_optional_user
+from services.storage_service import generate_presigned_upload_url
 
 router = APIRouter(prefix="/api/v1/uploads", tags=["Uploads"])
 
@@ -36,14 +37,14 @@ MIME_TO_EXT = {
 class PresignRequest(BaseModel):
     filename:     str
     content_type: str
-    context:      Optional[str] = "job_photo"   # frontend always sends "job_photo"
-    job_id:       Optional[str] = None           # optional — may not exist yet
+    context:      str | None = "job_photo"   # frontend always sends "job_photo"
+    job_id:       str | None = None           # optional — may not exist yet
 
 
 @router.post("/presign")
 async def get_presigned_url(
     body: PresignRequest,
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -57,7 +58,7 @@ async def get_presigned_url(
     if content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"File type not allowed. Allowed types: JPEG, PNG, WEBP, HEIC",
+            detail="File type not allowed. Allowed types: JPEG, PNG, WEBP, HEIC",
         )
 
     ext = MIME_TO_EXT.get(content_type, "jpg")
@@ -87,8 +88,8 @@ async def get_presigned_url(
 
 class ConfirmUpload(BaseModel):
     key:    str
-    job_id: Optional[str] = None
-    url:    Optional[str] = None
+    job_id: str | None = None
+    url:    str | None = None
 
 
 @router.post("/confirm")
@@ -149,8 +150,8 @@ async def get_job_photos(
 
     allowed = current_user.id == job.homeowner_id or current_user.role == "admin"
     if not allowed and current_user.role == "tradie":
-        from models.tradie_profile import TradieProfile
         from models.lead import Lead
+        from models.tradie_profile import TradieProfile
         prof_res = await db.execute(
             select(TradieProfile.id).where(TradieProfile.user_id == current_user.id)
         )

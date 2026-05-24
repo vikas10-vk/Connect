@@ -5,10 +5,8 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
-
 
 # =============================================================================
 # Enums
@@ -35,7 +33,7 @@ class RegisterRequest(BaseModel):
         # Also prevents DoS: an attacker sending 1MB passwords causes bcrypt CPU spikes.
     )
     full_name: str = Field(min_length=1, max_length=255)
-    phone:     Optional[str] = None
+    phone:     str | None = None
     role:      RoleEnum
 
     @field_validator("password")
@@ -91,7 +89,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email:         EmailStr
     password:      str = Field(max_length=72)  # Prevent DoS on login too
-    expected_role: Optional[str] = None
+    expected_role: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -115,7 +113,7 @@ class TokenResponse(BaseModel):
     access_token:  str
     token_type:    str = "bearer"
     expires_in:    int = Field(description="Access token lifetime in seconds.")
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
 
 
 class RefreshResponse(BaseModel):
@@ -133,7 +131,7 @@ class UserResponse(BaseModel):
     id:             str
     email:          str
     full_name:      str
-    phone:          Optional[str] = None
+    phone:          str | None = None
     role:           str
     is_active:      bool
     is_verified:    bool

@@ -20,14 +20,14 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=False)
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db
 
@@ -65,7 +65,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 def create_access_token(data: dict) -> str:
     payload = data.copy()
     # Use timezone-aware datetime — datetime.utcnow() is deprecated in Python 3.12
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(minutes=EXPIRE_MINS)
+    payload["exp"] = datetime.now(UTC) + timedelta(minutes=EXPIRE_MINS)
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 

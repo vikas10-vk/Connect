@@ -4,8 +4,11 @@ Usage: python create_test_leads.py
 """
 import asyncio
 import uuid
-from db.session import AsyncSessionLocal
+
 from sqlalchemy import text
+
+from db.session import AsyncSessionLocal
+
 
 async def create_leads():
     async with AsyncSessionLocal() as db:

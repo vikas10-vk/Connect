@@ -1,7 +1,8 @@
 """One-off script to delete orphan accounts."""
 import asyncio
-from sqlalchemy.ext.asyncio import create_async_engine
+
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 EMAILS = ["madness.hack1000@gmail.com", "ydivatagi@gmail.com"]
 DB_URL = "postgresql+asyncpg://hipages:devpassword@localhost:5433/ProConnect_dev"

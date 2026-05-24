@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.category import Category, CategoryLevel
 
-
 # ---------------------------------------------------------------------------
 # SYNONYM → CANONICAL SLUG MAP
 # ---------------------------------------------------------------------------

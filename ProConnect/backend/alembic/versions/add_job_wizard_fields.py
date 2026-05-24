@@ -15,8 +15,9 @@ What this migration does:
 All new columns are nullable so existing job rows are unaffected.
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # ── IMPORTANT: Set this to your actual last migration revision ID ──
 # Run: alembic history

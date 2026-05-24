@@ -23,9 +23,10 @@ import os
 import sys
 from logging.config import fileConfig
 
-from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 load_dotenv(
     dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env"),
@@ -39,33 +40,6 @@ from db.session import Base
 # =============================================================================
 # Import all models — required for autogenerate to detect schema changes.
 # =============================================================================
-from models.audit_event import AuditEvent
-from models.category import Category
-from models.chat_conversation import ChatConversation
-from models.earnings_record import EarningsRecord
-from models.email_otp import EmailOTP
-from models.home_asset import HomeAsset
-from models.inquiry import Inquiry
-from models.insurance_policy import InsurancePolicy
-from models.job import Job
-from models.job_assignment import JobAssignment
-from models.job_event import JobEvent
-from models.job_photo import JobPhoto
-from models.lead import Lead
-from models.outbox_event import OutboxEvent
-from models.quote import Quote
-from models.realtime_notification import RealtimeNotification
-from models.review import Review
-from models.service_question import ServiceQuestion
-from models.suburb import Suburb
-from models.swms_document import SWMSDocument
-from models.team_member import TeamMember
-from models.tradie_category import TradieCategory
-from models.tradie_certification import TradieCertification
-from models.tradie_pass import TradiePass
-from models.tradie_preference import TradiePreference
-from models.tradie_profile import TradieProfile
-from models.user import User
 
 # =============================================================================
 # Alembic config

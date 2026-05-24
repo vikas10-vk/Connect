@@ -14,13 +14,14 @@ NEW STATUS VALUES (added to the existing string-based status column):
 EXISTING STATUSES (unchanged):
   open, quoted, hired, in_progress, completed, closed, cancelled
 """
-import uuid
 import enum
+import uuid
 from datetime import datetime
-from sqlalchemy import CheckConstraint, String, Float, Boolean, DateTime, Text, Integer, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from db.session import Base
 
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from db.session import Base
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 

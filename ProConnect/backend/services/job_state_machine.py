@@ -24,15 +24,13 @@ NEW METHOD:
       not a User (solo owner still has a User, but business workers do not).
 """
 
-from datetime import datetime
-from typing import Optional
 import uuid
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.job import Job
 from models.job_event import JobEvent
-
 
 # ── State transition table ─────────────────────────────────────────────────────
 # (from_status, to_status) → list of actor_roles allowed to make this transition.
@@ -153,8 +151,8 @@ class JobStateMachine:
         new_status: str,
         current_user,          # models.user.User
         db: AsyncSession,
-        note: Optional[str] = None,
-        extra_job_fields: Optional[dict] = None,
+        note: str | None = None,
+        extra_job_fields: dict | None = None,
     ) -> None:
         """
         Primary transition method — called by homeowner and tradie endpoints.
@@ -180,8 +178,8 @@ class JobStateMachine:
         new_status: str,
         member,                # models.team_member.TeamMember
         db: AsyncSession,
-        note: Optional[str] = None,
-        extra_job_fields: Optional[dict] = None,
+        note: str | None = None,
+        extra_job_fields: dict | None = None,
     ) -> None:
         """
         Used by tradie-specific endpoints where the actor is a TeamMember
@@ -203,8 +201,8 @@ class JobStateMachine:
         job: Job,
         new_status: str,
         db: AsyncSession,
-        note: Optional[str] = None,
-        extra_job_fields: Optional[dict] = None,
+        note: str | None = None,
+        extra_job_fields: dict | None = None,
     ) -> None:
         """
         Used by Celery tasks and the watchdog. actor_role = 'system'.
@@ -227,8 +225,8 @@ class JobStateMachine:
         new_status: str,
         admin_user_id: str,
         db: AsyncSession,
-        note: Optional[str] = None,
-        extra_job_fields: Optional[dict] = None,
+        note: str | None = None,
+        extra_job_fields: dict | None = None,
     ) -> None:
         """
         Used by Django admin actions that need to change job status directly
@@ -254,8 +252,8 @@ class JobStateMachine:
         actor_id: str,
         actor_role: str,
         db: AsyncSession,
-        note: Optional[str],
-        extra_job_fields: Optional[dict],
+        note: str | None,
+        extra_job_fields: dict | None,
     ) -> None:
         old_status = job.status
 
@@ -325,11 +323,12 @@ class JobStateMachine:
         # tradie dashboard refresh in real-time without manual reload.
         # NEVER raises -- a WebSocket failure must never break a transition.
         try:
-            from routers.websocket import broadcast_job_status
+            from sqlalchemy import select
+
             from models.lead import Lead
             from models.realtime_notification import RealtimeNotification
             from models.tradie_profile import TradieProfile
-            from sqlalchemy import select
+            from routers.websocket import broadcast_job_status
 
             # Resolve tradie user_ids from any leads on this job. A job may have
             # up to 3 leads (the matcher caps at 3 tradies); we notify all of

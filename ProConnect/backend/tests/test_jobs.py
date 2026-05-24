@@ -25,9 +25,9 @@
 #                      No mock needed — the job is still created.
 # =============================================================================
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 
 # =============================================================================
 # Minimal valid job payload

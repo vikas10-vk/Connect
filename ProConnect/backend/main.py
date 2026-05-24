@@ -25,28 +25,28 @@ from middleware.audit_middleware import AuditMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.request_id import RequestIDMiddleware
 from middleware.security_headers import SecurityHeadersMiddleware
+from routers.admin import router as admin_router
+from routers.ai_chat import router as ai_chat_router
+from routers.assets import router as assets_router
 
 # ──── All existing router imports ───────────────────────────────────────────
 from routers.auth import router as auth_router
-from routers.tradies import router as tradies_router
 from routers.categories import router as categories_router
+from routers.compliance import router as compliance_router
+from routers.earnings import router as earnings_router
+from routers.job_assignments import router as job_assignments_router
 from routers.jobs import router as jobs_router
 from routers.leads import router as leads_router
+from routers.licence_guard import router as licence_guard_router
+from routers.preferences import router as preferences_router
 from routers.quotes import router as quotes_router
 from routers.reviews import router as reviews_router
+from routers.suburbs import router as suburbs_router
+from routers.swms import router as swms_router
+from routers.tradies import router as tradies_router
+from routers.uploads import router as uploads_router
 from routers.websocket import router as ws_router
 from routers.websocket import start_realtime_pubsub, stop_realtime_pubsub
-from routers.uploads import router as uploads_router
-from routers.assets import router as assets_router
-from routers.compliance import router as compliance_router
-from routers.licence_guard import router as licence_guard_router
-from routers.swms import router as swms_router
-from routers.earnings import router as earnings_router
-from routers.preferences import router as preferences_router
-from routers.ai_chat import router as ai_chat_router
-from routers.suburbs import router as suburbs_router
-from routers.job_assignments import router as job_assignments_router
-from routers.admin import router as admin_router
 
 logger = logging.getLogger(__name__)
 

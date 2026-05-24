@@ -1,6 +1,7 @@
 import asyncio
-import uuid
 import os
+import uuid
+
 from dotenv import load_dotenv
 
 load_dotenv(
@@ -8,9 +9,10 @@ load_dotenv(
     override=True
 )
 
+from sqlalchemy import select
+
 from db.session import AsyncSessionLocal
 from models.category import Category
-from sqlalchemy import select
 
 CATEGORIES = [
     {"name": "Plumbing",          "slug": "plumbing"},

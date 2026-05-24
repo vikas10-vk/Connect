@@ -12,8 +12,8 @@ import secrets
 import uuid
 from datetime import datetime, timedelta
 
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
 
 from models.email_otp import EmailOTP
 from models.user import User

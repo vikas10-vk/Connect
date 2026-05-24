@@ -4,8 +4,9 @@ Revision ID: 002_tradie_preferences
 Revises: 001_add_suburbs
 Create Date: 2026-04-24
 """
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision      = "002_tradie_preferences"
 down_revision = "001_add_suburbs"   # <-- adjust to your actual current head

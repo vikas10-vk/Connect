@@ -33,9 +33,11 @@ for candidate in [Path(__file__).parent / ".env", Path(__file__).parent.parent /
         break
 
 import os
+
 import bcrypt
 import psycopg2
 from psycopg2.extras import RealDictCursor
+
 from services.admin_security import AdminBootstrapError, validate_admin_bootstrap
 
 # ── DB connection (sync — no async needed for a CLI tool) ─────────────────────
@@ -123,11 +125,11 @@ def cmd_create(email: str, name: str, bootstrap_token: str | None):
             """, (user_id, email.lower().strip(), name.strip(), hashed, now, now))
             conn.commit()
 
-        print(f"\n✓ Admin created.")
+        print("\n✓ Admin created.")
         print(f"  Email : {email.lower().strip()}")
         print(f"  Name  : {name.strip()}")
         print(f"  ID    : {user_id}")
-        print(f"\n  Log in at /login with these credentials.\n")
+        print("\n  Log in at /login with these credentials.\n")
     finally:
         conn.close()
 
@@ -146,7 +148,7 @@ def cmd_promote(email: str, bootstrap_token: str | None):
                 print(f"\n✓ '{email}' is already an admin. Nothing changed.")
                 sys.exit(0)
 
-            print(f"\nPromoting to admin:")
+            print("\nPromoting to admin:")
             print(f"  Name : {user['full_name']}")
             print(f"  From : {user['role']}  →  admin")
             if input("\n  Confirm? [y/N]: ").strip().lower() != "y":
@@ -176,7 +178,7 @@ def cmd_demote(email: str, to_role: str):
                 print(f"\n✗ '{email}' is not an admin (role: {user['role']}).")
                 sys.exit(0)
 
-            print(f"\nDemoting admin:")
+            print("\nDemoting admin:")
             print(f"  Name : {user['full_name']}")
             print(f"  From : admin  →  {to_role}")
             if input("\n  Confirm? [y/N]: ").strip().lower() != "y":

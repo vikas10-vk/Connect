@@ -23,10 +23,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from services.uncategorised_service import (
-    SENTINEL_OTHER_SLUG, SentinelCategoryMissingError,
-    _synthesize_title, create_uncategorised_job, get_sentinel_category,
+    SENTINEL_OTHER_SLUG,
+    SentinelCategoryMissingError,
+    _synthesize_title,
+    create_uncategorised_job,
 )
-
 
 # ---- Title synthesis (pure) ----------------------------------------------
 

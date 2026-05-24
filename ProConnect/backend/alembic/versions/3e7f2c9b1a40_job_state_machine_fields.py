@@ -5,24 +5,24 @@ Revises: 9c1b4f6a3d82
 Create Date: 2026-05-01 11:44:32.247257
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '3e7f2c9b1a40'
-down_revision: Union[str, Sequence[str], None] = '9c1b4f6a3d82'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '9c1b4f6a3d82'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     # ──────────────────────────────────────────────────────────────
     # 1. Extend jobs table
     # ──────────────────────────────────────────────────────────────
- 
+
     # Scope change in progress (only one pending scope change at a time)
     op.add_column("jobs", sa.Column("pending_scope_amount_cents",   sa.Integer(),  nullable=True))
     op.add_column("jobs", sa.Column("scope_change_reason",         sa.Text(),     nullable=True))
@@ -32,15 +32,15 @@ def upgrade() -> None:
     op.add_column("jobs", sa.Column("scope_change_expires_at",     sa.DateTime(), nullable=True))
     op.add_column("jobs", sa.Column("scope_change_task_id",        sa.String(),   nullable=True))
     # ^ Celery task ID for the 10-minute auto-reject timeout
- 
+
     # Before / after photo evidence (mandatory for tradie at job start + completion)
     op.add_column("jobs", sa.Column("photo_before_url",            sa.String(500), nullable=True))
     op.add_column("jobs", sa.Column("photo_after_url",             sa.String(500), nullable=True))
     op.add_column("jobs", sa.Column("completion_note",             sa.Text(),     nullable=True))
- 
+
     # Homeowner confirms job complete (starts 48h dispute window)
     op.add_column("jobs", sa.Column("confirmed_by_user_at",        sa.DateTime(), nullable=True))
- 
+
     # ──────────────────────────────────────────────────────────────
     # 2. job_assignments
     # ──────────────────────────────────────────────────────────────
@@ -89,13 +89,13 @@ def upgrade() -> None:
     )
     op.create_index("ix_job_assignments_job_id",    "job_assignments", ["job_id", "is_active"])
     op.create_index("ix_job_assignments_worker_id", "job_assignments", ["assigned_worker_id", "assigned_at"])
- 
- 
+
+
 def downgrade() -> None:
     op.drop_index("ix_job_assignments_worker_id", table_name="job_assignments")
     op.drop_index("ix_job_assignments_job_id",    table_name="job_assignments")
     op.drop_table("job_assignments")
- 
+
     for col in [
         "confirmed_by_user_at",
         "completion_note",

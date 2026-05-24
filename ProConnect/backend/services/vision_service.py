@@ -9,11 +9,10 @@ Input: base64-encoded image (JPEG / PNG / WEBP)
 Output: structured dict with problem, urgency, trade, and description
 """
 
-import os
 import json
-import httpx
-from typing import Optional
+import os
 
+import httpx
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 VISION_MODEL = "llama-3.2-11b-vision-preview"
@@ -134,7 +133,7 @@ def build_vision_context(analysis: dict) -> str:
         return ""
 
     lines = [
-        f"[PHOTO ANALYSIS] The user has uploaded a photo.",
+        "[PHOTO ANALYSIS] The user has uploaded a photo.",
         f"Problem detected: {analysis.get('problem_title', 'Unknown issue')}",
         f"Description: {analysis.get('problem_description', '')}",
         f"Trade required: {analysis.get('trade_required', 'Unknown')}",

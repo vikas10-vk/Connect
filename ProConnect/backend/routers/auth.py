@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db
-from models.user import User, UserRole
+from models.user import User
 from schemas.user_schema import (
     LoginRequest,
     LogoutRequest,
@@ -21,20 +21,21 @@ from schemas.user_schema import (
     UserResponse,
 )
 from security import (
-    get_dummy_hash,
     create_refresh_token,
+    get_dummy_hash,
     revoke_token_family,
     rotate_refresh_token,
     store_refresh_token,
 )
 from services.auth_service import (
     create_access_token as legacy_create_access_token,
+)
+from services.auth_service import (
     get_current_user,
     hash_password,
     verify_password,
 )
 from services.otp_service import can_resend, generate_and_send, verify
-
 
 # =============================================================================
 # Constants

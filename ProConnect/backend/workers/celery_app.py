@@ -7,18 +7,17 @@ FINAL — adds two new beat schedule entries and task routes:
   auto_reject_scope_change   Countdown task (not beat) — registered in task_routes only
 """
 
+import os
+
 from celery import Celery
 from celery.schedules import crontab
 from dotenv import load_dotenv
-import os
-from models.service_question import ServiceQuestion
 
 load_dotenv(
     dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"),
     override=False,
 )
 
-import models
 
 # Broker / result backend.
 # Prefer the dedicated CELERY_* variables (separate Redis logical DBs) so the

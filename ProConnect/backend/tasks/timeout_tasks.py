@@ -4,9 +4,9 @@ import random
 from datetime import datetime, timedelta
 
 from celery import shared_task
-from db.session import AsyncSessionLocal
 from sqlalchemy import select
 
+from db.session import AsyncSessionLocal
 
 # ── Task 1: notify homeowner of stale job (no quotes after 24h) ───────────────
 
@@ -38,8 +38,6 @@ def check_stale_jobs(self):
 
 
 async def _check_stale_jobs():
-    from sqlalchemy.orm import selectinload
-    from sqlalchemy import update, func
     from models.job import Job
     from models.lead import Lead
     from models.quote import Quote

@@ -1,8 +1,11 @@
 import uuid
-from datetime import datetime, date
-from sqlalchemy import String, DateTime, Date, Integer, ForeignKey, Float
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from datetime import date, datetime
+
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
+
 from db.session import Base
+
 
 class HomeAsset(Base):
     __tablename__ = "home_assets"

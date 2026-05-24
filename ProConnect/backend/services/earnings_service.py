@@ -15,8 +15,10 @@ again if the homeowner spots a problem in hour 30 and disputes.
 """
 
 from datetime import datetime
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+
 from models.earnings_record import EarningsRecord
 
 GST_THRESHOLD   = 75000.0

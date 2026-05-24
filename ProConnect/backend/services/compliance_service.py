@@ -1,4 +1,5 @@
 from datetime import date
+
 from models.tradie_pass import TradiePass
 
 

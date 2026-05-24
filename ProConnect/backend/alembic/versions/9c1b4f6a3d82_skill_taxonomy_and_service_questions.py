@@ -5,17 +5,17 @@ Revises: 5f8a3d2e7c91
 Create Date: 2026-05-01 10:23:50.130139
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '9c1b4f6a3d82'
-down_revision: Union[str, Sequence[str], None] = '5f8a3d2e7c91'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '5f8a3d2e7c91'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -48,7 +48,7 @@ def upgrade() -> None:
         "categories",
         sa.Column("description", sa.Text(),             nullable=True),
     )
- 
+
     op.create_index("idx_categories_level",     "categories", ["level"])
     op.create_index("idx_categories_is_active",  "categories", ["is_active"])
     op.create_index(
@@ -56,7 +56,7 @@ def upgrade() -> None:
         "categories",
         ["level", "is_active"],
     )
- 
+
     # ──────────────────────────────────────────────────────────────
     # 2. Extend tradie_categories
     # ──────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ def upgrade() -> None:
             server_default=sa.false(),
         ),
     )
- 
+
     # ──────────────────────────────────────────────────────────────
     # 3. service_questions
     # ──────────────────────────────────────────────────────────────
@@ -110,17 +110,17 @@ def upgrade() -> None:
         "service_questions",
         ["category_id", "sort_order"],
     )
- 
- 
+
+
 def downgrade() -> None:
     # service_questions
     op.drop_index("idx_service_questions_category_order", table_name="service_questions")
     op.drop_index("ix_service_questions_category_id",     table_name="service_questions")
     op.drop_table("service_questions")
- 
+
     # tradie_categories
     op.drop_column("tradie_categories", "is_primary")
- 
+
     # categories
     op.drop_index("idx_categories_level_active", table_name="categories")
     op.drop_index("idx_categories_is_active",    table_name="categories")

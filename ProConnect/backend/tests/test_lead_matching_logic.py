@@ -18,8 +18,8 @@ from types import SimpleNamespace
 
 from tasks.lead_tasks import (
     SCORE_EXACT_OR_DEEPER,
-    SCORE_PARENT,
     SCORE_GRANDPARENT,
+    SCORE_PARENT,
     _build_category_score_map,
     _radius_filter,
 )

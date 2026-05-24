@@ -1,7 +1,6 @@
 import asyncio
 import os
 import uuid
-import sys
 
 from dotenv import load_dotenv
 
@@ -10,11 +9,13 @@ load_dotenv(
     override=True
 )
 
-from main import *
-from db.session import AsyncSessionLocal
-from models.user import User, UserRole
 from sqlalchemy import select
+
+from db.session import AsyncSessionLocal
+from main import *
+from models.user import User, UserRole
 from services.auth_service import hash_password
+
 
 async def create_users():
     async with AsyncSessionLocal() as db:

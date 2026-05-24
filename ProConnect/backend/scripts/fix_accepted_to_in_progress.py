@@ -6,7 +6,9 @@ directly. This script brings any old/stuck records in line with the new flow.
 
     docker exec -it tradie_dev_fastapi python scripts/fix_accepted_to_in_progress.py
 """
-import asyncio, os, sys
+import asyncio
+import os
+import sys
 from pathlib import Path
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -27,10 +29,11 @@ _load_env()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 if not DATABASE_URL:
-    print("ERROR: DATABASE_URL not set"); sys.exit(1)
+    print("ERROR: DATABASE_URL not set")
+    sys.exit(1)
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 engine  = create_async_engine(DATABASE_URL, pool_pre_ping=True)
 Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

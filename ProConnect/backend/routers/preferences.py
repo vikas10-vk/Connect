@@ -8,19 +8,18 @@ Routes:
   GET  /api/v1/tradies/preferences/me
   PATCH /api/v1/tradies/preferences/me
 """
-import uuid
 import json
+import uuid
 from datetime import datetime
-from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.session import get_db
-from models.tradie_profile import TradieProfile
 from models.tradie_preference import TradiePreference
+from models.tradie_profile import TradieProfile
 from models.user import User
 from services.auth_service import get_current_user
 from services.tradie_change_requests import (
@@ -41,14 +40,14 @@ class ServiceSuburb(BaseModel):
 
 
 class PreferenceUpdate(BaseModel):
-    accept_residential : Optional[bool]                = None
-    accept_commercial  : Optional[bool]                = None
-    accept_high_intent : Optional[bool]                = None
-    accept_planning    : Optional[bool]                = None
-    notify_new_lead    : Optional[bool]                = None
-    notify_email       : Optional[bool]                = None
-    notify_sms         : Optional[bool]                = None
-    service_suburbs    : Optional[List[ServiceSuburb]] = None
+    accept_residential : bool | None                = None
+    accept_commercial  : bool | None                = None
+    accept_high_intent : bool | None                = None
+    accept_planning    : bool | None                = None
+    notify_new_lead    : bool | None                = None
+    notify_email       : bool | None                = None
+    notify_sms         : bool | None                = None
+    service_suburbs    : list[ServiceSuburb] | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -159,7 +158,7 @@ async def update_my_preferences(
                 )
                 protected_change_requested = True
                 continue
-            setattr(pref, "service_suburbs", _serialize_suburbs(value) if value is not None else None)
+            pref.service_suburbs = _serialize_suburbs(value) if value is not None else None
         else:
             setattr(pref, field, value)
 

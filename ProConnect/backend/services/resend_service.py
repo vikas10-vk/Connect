@@ -10,10 +10,9 @@ UPDATED — four new email functions added at the bottom:
 All existing functions are preserved exactly as written.
 """
 
-import os
 import logging
+import os
 from datetime import date
-from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -170,7 +169,7 @@ async def send_tradie_approved_email(to_email: str, full_name: str, business_nam
     return await _send_raw_email(to_email, f"✅ You're verified on {APP_NAME}! Welcome aboard, {name}", _base_html(body, "#2E7D5A"), text)
 
 
-async def send_tradie_rejected_email(to_email: str, full_name: str, business_name: str, notes: Optional[str] = None) -> bool:
+async def send_tradie_rejected_email(to_email: str, full_name: str, business_name: str, notes: str | None = None) -> bool:
     name = _first(full_name)
     notes_block = _box(f"<strong>Reason:</strong><br>{notes}", "#B85C00", "#FFF9F0") if notes else ""
     body = f"""
@@ -185,7 +184,7 @@ async def send_tradie_rejected_email(to_email: str, full_name: str, business_nam
     return await _send_raw_email(to_email, f"Update on your {APP_NAME} application", _base_html(body), text)
 
 
-async def send_tradie_needs_documents_email(to_email: str, full_name: str, business_name: str, notes: Optional[str] = None) -> bool:
+async def send_tradie_needs_documents_email(to_email: str, full_name: str, business_name: str, notes: str | None = None) -> bool:
     name = _first(full_name)
     url = f"{APP_BASE_URL}/tradie/dashboard"
     notes_block = _box(f"<strong>What we need:</strong><br>{notes}", "#0077AA", "#E0F4FF") if notes else ""
@@ -202,7 +201,7 @@ async def send_tradie_needs_documents_email(to_email: str, full_name: str, busin
     return await _send_raw_email(to_email, f"Action required: documents needed for your {APP_NAME} application", _base_html(body, "#0077AA"), text)
 
 
-async def send_tradie_suspended_email(to_email: str, full_name: str, business_name: str, reason: Optional[str] = None) -> bool:
+async def send_tradie_suspended_email(to_email: str, full_name: str, business_name: str, reason: str | None = None) -> bool:
     name = _first(full_name)
     reason_block = _box(f"<strong>Reason:</strong><br>{reason}", "#A33030", "#FFF5F5") if reason else ""
     body = f"""
@@ -298,7 +297,7 @@ async def send_uncategorised_received_email(
     )
     return await _send_raw_email(
         to_email,
-        f"We've received your service request — we'll respond within 24h",
+        "We've received your service request — we'll respond within 24h",
         _base_html(body, "#0077AA"),
         text,
     )
@@ -306,7 +305,7 @@ async def send_uncategorised_received_email(
 
 async def send_uncategorised_not_supported_email(
     to_email: str, full_name: str, description_excerpt: str,
-    admin_note: Optional[str] = None,
+    admin_note: str | None = None,
 ) -> bool:
     """
     Sent when admin reviews an uncategorised request and decides the platform
@@ -358,7 +357,7 @@ async def send_uncategorised_not_supported_email(
 
 async def send_job_disputed_to_tradie_email(
     to_email: str, full_name: str, business_name: str,
-    job_title: str, suburb: str, dispute_reason: Optional[str] = None,
+    job_title: str, suburb: str, dispute_reason: str | None = None,
 ) -> bool:
     """
     Sent the moment a homeowner raises a dispute. The tradie needs to know
@@ -452,8 +451,8 @@ async def send_dispute_response_posted_email(
 
 async def send_dispute_resolved_to_homeowner_email(
     to_email: str, full_name: str, job_title: str,
-    resolution: str, admin_note: Optional[str] = None,
-    refund_amount: Optional[float] = None,
+    resolution: str, admin_note: str | None = None,
+    refund_amount: float | None = None,
 ) -> bool:
     """
     Sent when admin closes a dispute. The wording adapts to which of the four
@@ -528,8 +527,8 @@ async def send_dispute_resolved_to_homeowner_email(
 
 async def send_dispute_resolved_to_tradie_email(
     to_email: str, full_name: str, business_name: str, job_title: str,
-    resolution: str, admin_note: Optional[str] = None,
-    refund_amount: Optional[float] = None,
+    resolution: str, admin_note: str | None = None,
+    refund_amount: float | None = None,
 ) -> bool:
     """Same four resolution paths, framed from the tradie's perspective."""
     name = _first(full_name)
@@ -726,11 +725,11 @@ async def send_cert_expired_email(
       {_box(
           "🔴 <strong>What this means</strong><br>"
           "Your account has been paused for this trade category. You will not receive "
-          "new leads for <strong>{category_name}</strong> jobs until a valid licence is verified.<br><br>"
+          f"new leads for <strong>{category_name}</strong> jobs until a valid licence is verified.<br><br>"
           "✅ <strong>How to get back online</strong><br>"
           "1. Renew your licence with the relevant state authority<br>"
           "2. Submit your new licence number via the dashboard<br>"
-          "3. Our team will verify and re-activate your account within 1 business day".format(category_name=category_name),
+          "3. Our team will verify and re-activate your account within 1 business day",
           "#A33030", "#FFF5F5"
       )}
       {_btn("Submit New Licence", url, "#A33030")}

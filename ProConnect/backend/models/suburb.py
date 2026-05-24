@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Index
+from sqlalchemy import Column, Index, Integer, String
+
 from db.session import Base
 
 

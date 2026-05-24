@@ -12,14 +12,13 @@ These insights power:
 Runs as a FastAPI BackgroundTask — non-blocking, fires after response is sent.
 """
 
-import os
 import json
+import os
 import uuid
-import httpx
-from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
 
+import httpx
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 INSIGHT_MODEL = "llama-3.3-70b-versatile"
@@ -115,7 +114,7 @@ async def extract_insights(
     assistant_response: str,
     user_id: str,
     db: AsyncSession,
-) -> Optional[dict]:
+) -> dict | None:
     """
     Extract structured insights from one conversation turn.
     Saves insights to the user's profile in the DB.
@@ -181,7 +180,7 @@ async def _upsert_user_insights(user_id: str, insights: dict, db: AsyncSession) 
         )
         existing = result.fetchone()
 
-        def merge_lists(existing_json: Optional[str], new_list: list) -> str:
+        def merge_lists(existing_json: str | None, new_list: list) -> str:
             existing_list = json.loads(existing_json) if existing_json else []
             merged = list(set(existing_list + (new_list or [])))
             return json.dumps(merged[:50])

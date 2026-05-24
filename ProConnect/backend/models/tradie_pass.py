@@ -1,7 +1,9 @@
 import uuid
-from datetime import datetime, date
-from sqlalchemy import String, DateTime, Date, Boolean, Integer, Float, ForeignKey, Text
+from datetime import date, datetime
+
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from db.session import Base
 
 

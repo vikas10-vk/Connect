@@ -40,7 +40,8 @@ WIRING — add these to celery_app.py beat_schedule:
 
 import asyncio
 import logging
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
+
 from workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -82,13 +83,14 @@ def notify_verification_decisions():
 
 async def _async_notify_verification_decisions():
     from sqlalchemy import select, update
+
     from db.session import AsyncSessionLocal
     from models.tradie_profile import TradieProfile
     from models.user import User
     from services.resend_service import (
         send_tradie_approved_email,
-        send_tradie_rejected_email,
         send_tradie_needs_documents_email,
+        send_tradie_rejected_email,
         send_tradie_suspended_email,
     )
 
@@ -185,11 +187,11 @@ def notify_review_decisions():
 
 async def _async_notify_review_decisions():
     from sqlalchemy import select, update
-    from sqlalchemy.orm import selectinload
+
     from db.session import AsyncSessionLocal
     from models.review import Review
-    from models.user import User
     from models.tradie_profile import TradieProfile
+    from models.user import User
     from services.resend_service import (
         send_review_approved_email,
         send_review_rejected_email,
@@ -289,13 +291,14 @@ def check_cert_expiry():
 
 
 async def _async_check_cert_expiry():
-    from sqlalchemy import select, update, and_
+    from sqlalchemy import select, update
+
     from db.session import AsyncSessionLocal
-    from models.tradie_certification import TradieCertification, CertificationStatus
-    from models.tradie_profile import TradieProfile
-    from models.team_member import TeamMember
-    from models.user import User
     from models.category import Category
+    from models.team_member import TeamMember
+    from models.tradie_certification import CertificationStatus, TradieCertification
+    from models.tradie_profile import TradieProfile
+    from models.user import User
 
     today = date.today()
 
@@ -435,10 +438,11 @@ async def _disable_cert_owner(cert, db):
     For solo tradies: also sets is_available=False on the profile if no other
     verified cert remains — they cannot be dispatched without a valid licence.
     """
-    from sqlalchemy import select, update, and_
-    from models.tradie_certification import TradieCertification, CertificationStatus
-    from models.tradie_profile import TradieProfile
+    from sqlalchemy import select, update
+
     from models.team_member import TeamMember
+    from models.tradie_certification import CertificationStatus, TradieCertification
+    from models.tradie_profile import TradieProfile
 
     if cert.team_member_id:
         # Check if the worker has any other verified certs
@@ -512,8 +516,8 @@ async def _send_cert_email(
     """
     try:
         from services.resend_service import (
-            send_cert_expiry_reminder_email,
             send_cert_expired_email,
+            send_cert_expiry_reminder_email,
         )
         if email_type == "reminder":
             await send_cert_expiry_reminder_email(
@@ -562,10 +566,11 @@ def check_insurance_expiry():
 
 async def _async_check_insurance_expiry():
     from sqlalchemy import select, update
+
     from db.session import AsyncSessionLocal
     from models.insurance_policy import InsurancePolicy, InsuranceStatus, InsuranceType
-    from models.tradie_profile import TradieProfile
     from models.team_member import TeamMember
+    from models.tradie_profile import TradieProfile
     from models.user import User
 
     today = date.today()
@@ -710,8 +715,8 @@ async def _send_insurance_email(
     """
     try:
         from services.resend_service import (
-            send_insurance_expiry_reminder_email,
             send_insurance_expired_email,
+            send_insurance_expiry_reminder_email,
         )
         if email_type == "reminder":
             await send_insurance_expiry_reminder_email(
@@ -766,6 +771,7 @@ def watchdog_ghost_jobs():
 
 async def _async_watchdog_ghost_jobs():
     from sqlalchemy import select, update
+
     from db.session import AsyncSessionLocal
     from models.job import Job
 

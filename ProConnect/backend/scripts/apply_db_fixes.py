@@ -36,8 +36,8 @@ if not DATABASE_URL:
     print("ERROR: DATABASE_URL is not set.")
     sys.exit(1)
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 engine  = create_async_engine(DATABASE_URL, pool_pre_ping=True)
 Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -101,7 +101,7 @@ async def main():
 
         # ── Summary ───────────────────────────────────────────────
         counts = (await db.execute(text(COUNT_JOBS))).mappings().fetchone()
-        print(f"\n  Job status summary:")
+        print("\n  Job status summary:")
         print(f"    open   : {counts['open']}")
         print(f"    quoted : {counts['quoted']}")
         print(f"    hired  : {counts['hired']}")

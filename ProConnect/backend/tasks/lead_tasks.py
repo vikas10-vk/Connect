@@ -29,32 +29,30 @@ EXISTING TASK (preserved exactly):
   distribute_leads(job_id)
 """
 
-import uuid
+import asyncio
+import json
 import math
 import os
-import sys
-import json
-import asyncio
 import random
+import sys
+import uuid
 from datetime import datetime, timedelta
 
 from celery import shared_task
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from models.user import User
 from models.category import Category
+from models.insurance_policy import InsurancePolicy, InsuranceStatus, InsuranceType
 from models.job import Job
-from models.job_photo import JobPhoto
 from models.lead import Lead
 from models.quote import Quote
-from models.review import Review
-from models.tradie_profile import TradieProfile
 from models.tradie_category import TradieCategory
-from models.tradie_certification import TradieCertification, CertificationStatus
-from models.insurance_policy import InsurancePolicy, InsuranceStatus, InsuranceType
-from models.tradie_preference import TradiePreference
+from models.tradie_certification import CertificationStatus, TradieCertification
 from models.tradie_pass import TradiePass
+from models.tradie_preference import TradiePreference
+from models.tradie_profile import TradieProfile
+from models.user import User
 from services.category_resolver import canonical_trade_category
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -71,9 +69,7 @@ def _make_session_factory():
     Fresh engine + session factory per task.
     Tied to the CURRENT event loop, not the import-time loop.
     """
-    from sqlalchemy.ext.asyncio import (
-        create_async_engine, AsyncSession, async_sessionmaker
-    )
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
     engine = create_async_engine(
         DATABASE_URL,
         pool_size=2,
@@ -499,7 +495,7 @@ async def _distribute_leads(job_id: str, session_factory):
         if not has_coords:
             print(f"[leads] Job {job_id} has no coordinates — matching by suburb name only")
 
-        print(f"[leads] ─────────────────────────────────────────────────")
+        print("[leads] ─────────────────────────────────────────────────")
         print(f"[leads] JOB: {job.title} | {job.suburb}, {job.state}")
         if has_coords:
             print(f"[leads]   Coords: ({job.lat:.4f}, {job.lng:.4f})")
@@ -526,7 +522,7 @@ async def _distribute_leads(job_id: str, session_factory):
         # ── 4. SQL filter — production vs dev gates ────────────────────────
         IS_DEV = os.getenv("ENVIRONMENT", "development") == "development"
         if IS_DEV:
-            print(f"[leads]   DEV mode — skipping verification_status/lat/lng/is_verified filters")
+            print("[leads]   DEV mode — skipping verification_status/lat/lng/is_verified filters")
 
         scored_rows = await _gather_scored_candidates(db, score_map, IS_DEV, job_category)
         print(f"[leads]   Eligible tradies (sql): {len(scored_rows)}")
@@ -535,7 +531,7 @@ async def _distribute_leads(job_id: str, session_factory):
 
         # ── 5. NLP fallback for jobs that arrived with a stale category_id ─
         if not scored_rows:
-            print(f"[leads]   0 tradies — trying NLP title/description fallback...")
+            print("[leads]   0 tradies — trying NLP title/description fallback...")
             attempts.append("nlp_remap")
             from services.category_resolver import resolve_trade_category as _resolve
 
@@ -560,14 +556,14 @@ async def _distribute_leads(job_id: str, session_factory):
                 print(f"[leads]   After NLP remap — eligible tradies: {len(scored_rows)}")
             else:
                 if not search_text:
-                    print(f"[leads]   No title/description to resolve from")
+                    print("[leads]   No title/description to resolve from")
                 elif not real_category:
                     print(f"[leads]   NLP could not resolve a category from: '{search_text[:60]}'")
                 else:
-                    print(f"[leads]   NLP resolved same category — no change")
+                    print("[leads]   NLP resolved same category — no change")
 
         if not scored_rows:
-            print(f"[leads]   0 tradies even after NLP fallback — supply gap")
+            print("[leads]   0 tradies even after NLP fallback — supply gap")
             await _store_match_intelligence(db, job, 0, 0)
             await _log_supply_gap(db, job, attempts + ["zero_candidates"], len(score_map))
             await _notify_homeowner_no_tradies(db, job)
@@ -598,7 +594,7 @@ async def _distribute_leads(job_id: str, session_factory):
                 in_range = in_range_20
 
         if not in_range:
-            print(f"[leads]   No tradies after every radius — supply gap")
+            print("[leads]   No tradies after every radius — supply gap")
             await _store_match_intelligence(db, job, 0, 0)
             await _log_supply_gap(db, job, attempts + ["all_radii_empty"], len(score_map))
             await _notify_homeowner_no_tradies(db, job)
@@ -666,7 +662,7 @@ async def _distribute_leads(job_id: str, session_factory):
             await _notify_homeowner_no_tradies(db, job)
             await db.commit()
 
-        print(f"[leads] ─────────────────────────────────────────────────")
+        print("[leads] ─────────────────────────────────────────────────")
 
 
 async def _store_match_intelligence(db, job, leads_created: int, in_area: int):
@@ -687,6 +683,7 @@ async def _store_match_intelligence(db, job, leads_created: int, in_area: int):
 async def _notify_homeowner_no_tradies(db, job):
     try:
         from sqlalchemy import select
+
         from services.resend_service import send_no_tradies_email
         result = await db.execute(select(User).where(User.id == job.homeowner_id))
         homeowner = result.scalar_one_or_none()
@@ -709,7 +706,8 @@ async def _notify_tradies_new_lead(db, job, profiles: list) -> None:
     """
     try:
         from sqlalchemy import select
-        from services.resend_service import _send_raw_email, _base_html, _btn, _first, APP_NAME
+
+        from services.resend_service import APP_NAME, _base_html, _btn, _first, _send_raw_email
 
         urgency_map = {
             "emergency":      ("🚨 URGENT", "#A33030"),
@@ -827,8 +825,10 @@ def auto_reject_scope_change(self, job_id: str):
 
 async def _async_auto_reject_scope_change(job_id: str, session_factory):
     import logging
+
     from sqlalchemy import select
-    from services.job_state_machine import JobStateMachine, InvalidTransitionError
+
+    from services.job_state_machine import InvalidTransitionError, JobStateMachine
 
     logger = logging.getLogger(__name__)
 
@@ -899,7 +899,12 @@ async def _async_auto_reject_scope_change(job_id: str, session_factory):
                 row = profile_res.first()
                 if row:
                     profile, tradie_user = row
-                    from services.resend_service import _send_raw_email, _base_html, _btn, _first, APP_NAME
+                    from services.resend_service import (
+                        APP_NAME,
+                        _base_html,
+                        _first,
+                        _send_raw_email,
+                    )
                     name = _first(tradie_user.full_name or "")
                     body = f"""
                       <h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:26px;
@@ -956,11 +961,12 @@ def auto_close_completed_jobs(self):
 
 async def _async_auto_close_completed_jobs(session_factory):
     import logging
+
     from sqlalchemy import select
-    from services.job_state_machine import JobStateMachine, InvalidTransitionError
-    from services.earnings_service import record_earning, EarningsNotPayableError
-    from models.quote import Quote
+
     from models.lead import Lead
+    from services.earnings_service import EarningsNotPayableError, record_earning
+    from services.job_state_machine import InvalidTransitionError, JobStateMachine
 
     logger = logging.getLogger(__name__)
     cutoff = datetime.utcnow() - timedelta(hours=48)
@@ -1094,8 +1100,10 @@ def detect_no_shows(self):
 
 async def _async_detect_no_shows(session_factory):
     import logging
+
     from sqlalchemy import select
-    from services.job_state_machine import JobStateMachine, InvalidTransitionError
+
+    from services.job_state_machine import InvalidTransitionError, JobStateMachine
 
     logger = logging.getLogger(__name__)
     now = datetime.utcnow()
@@ -1188,8 +1196,8 @@ async def _flag_tradie_no_show(job: Job, db, logger):
     """
     try:
         from sqlalchemy import select, update
+
         from models.lead import Lead
-        from models.tradie_profile import TradieProfile
         from models.team_member import TeamMember
 
         lead_res = await db.execute(
@@ -1233,7 +1241,8 @@ async def _notify_homeowner_no_show_alert(job: Job, db):
     """T+30min alert — homeowner told the tradie hasn't shown up."""
     try:
         from sqlalchemy import select
-        from services.resend_service import _send_raw_email, _base_html, _btn, _first, APP_NAME
+
+        from services.resend_service import APP_NAME, _base_html, _btn, _first, _send_raw_email
 
         homeowner_res = await db.execute(select(User).where(User.id == job.homeowner_id))
         homeowner = homeowner_res.scalar_one_or_none()
@@ -1260,7 +1269,7 @@ async def _notify_homeowner_no_show_alert(job: Job, db):
           <p style="margin:0;font-size:13px;color:#8A8882;">
             If you want to cancel now, you can do so from your dashboard.
           </p>
-          {_btn("View Job", f"http://localhost:3000/dashboard", "#B85C00")}"""
+          {_btn("View Job", "http://localhost:3000/dashboard", "#B85C00")}"""
         text = (
             f"G'day {name},\n\n"
             f"The tradie for '{job.title}' hasn't arrived yet.\n\n"
@@ -1282,7 +1291,8 @@ async def _notify_homeowner_no_show_cancelled(job: Job, db):
     """T+60min — job cancelled, full refund."""
     try:
         from sqlalchemy import select
-        from services.resend_service import _send_raw_email, _base_html, _btn, _first, APP_NAME
+
+        from services.resend_service import APP_NAME, _base_html, _btn, _first, _send_raw_email
 
         homeowner_res = await db.execute(select(User).where(User.id == job.homeowner_id))
         homeowner = homeowner_res.scalar_one_or_none()
@@ -1305,7 +1315,7 @@ async def _notify_homeowner_no_show_cancelled(job: Job, db):
               We're sorry this happened — we take no-shows seriously.
             </p>
           </div>
-          {_btn("Re-post your job", f"http://localhost:3000/book", "#2E7D5A")}"""
+          {_btn("Re-post your job", "http://localhost:3000/book", "#2E7D5A")}"""
         text = (
             f"G'day {name},\n\n"
             f"The tradie didn't arrive for '{job.title}'. Booking cancelled. Full refund issued.\n"
@@ -1327,9 +1337,10 @@ async def _notify_tradie_no_show_warning(job: Job, db, logger):
     """T+30min — tradie warned that the booking will be cancelled if they don't check in."""
     try:
         from sqlalchemy import select
+
         from models.lead import Lead
         from models.tradie_profile import TradieProfile
-        from services.resend_service import _send_raw_email, _base_html, _first, APP_NAME
+        from services.resend_service import APP_NAME, _base_html, _first, _send_raw_email
 
         lead_res = await db.execute(
             select(Lead).where(Lead.job_id == job.id).limit(1)
@@ -1452,7 +1463,7 @@ async def _async_redistribute_open_jobs_for_tradie(
             return
 
         print(
-            f"[retrodist] ══════════════════════════════════════════════════════"
+            "[retrodist] ══════════════════════════════════════════════════════"
         )
         print(
             f"[retrodist] Tradie verified: {profile.business_name} ({tradie_profile_id})"
@@ -1514,7 +1525,7 @@ async def _async_redistribute_open_jobs_for_tradie(
         )
 
         if not all_open_jobs:
-            print(f"[retrodist] No candidate jobs — done.")
+            print("[retrodist] No candidate jobs — done.")
             return
 
         # ── 4. Filter: skip already-matched jobs + apply geography ────────
@@ -1562,7 +1573,7 @@ async def _async_redistribute_open_jobs_for_tradie(
         )
 
         if not eligible_jobs:
-            print(f"[retrodist] No eligible jobs after filtering -- done.")
+            print("[retrodist] No eligible jobs after filtering -- done.")
             return
 
         # 5. Reset match_intelligence so _distribute_leads runs fresh
@@ -1595,7 +1606,7 @@ async def _async_redistribute_open_jobs_for_tradie(
             f"[retrodist] DONE -- {queued}/{len(eligible_jobs)} job(s) re-queued "
             f"for {profile.business_name}"
         )
-        print(f"[retrodist] ======================================================")
+        print("[retrodist] ======================================================")
 
 
 # NOTE: A duplicate definition of redistribute_open_jobs_for_tradie used to live

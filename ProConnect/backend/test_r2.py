@@ -1,4 +1,7 @@
-import boto3, os, json
+import json
+import os
+
+import boto3
 from dotenv import load_dotenv
 
 load_dotenv(r"C:\Users\Capstone\Intership_main\ProConnect\.env")

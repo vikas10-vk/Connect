@@ -30,8 +30,10 @@ ANSWER TYPES:
   photo     — photo upload prompt (stored to S3 via /api/upload-photo)
 """
 import uuid
-from sqlalchemy import String, SmallInteger, Boolean, Text, JSON, ForeignKey
+
+from sqlalchemy import JSON, Boolean, ForeignKey, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from db.session import Base
 
 

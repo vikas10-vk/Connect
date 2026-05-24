@@ -1,8 +1,11 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, ForeignKey, UniqueConstraint
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from db.session import Base
+
 
 class Lead(Base):
     __tablename__ = "leads"

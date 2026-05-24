@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime
-from typing import Optional
-from sqlalchemy import String, DateTime, Text, ForeignKey
+
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
 from db.session import Base
 
 
@@ -16,12 +17,12 @@ class ChatConversation(Base):
     session_id   : Mapped[str]           = mapped_column(String(100), nullable=False, index=True)
 
     # Generative UI — stores JSON string of { type, data } for the component to render
-    ui_component : Mapped[Optional[str]] = mapped_column(Text,        nullable=True)
+    ui_component : Mapped[str | None] = mapped_column(Text,        nullable=True)
 
     # Vision — stores R2 URL or base64 ref of any uploaded photo
-    image_url    : Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    image_url    : Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Memory — extracted insight tags e.g. '["has_old_plumbing","needs_gutters"]'
-    insight_tags : Mapped[Optional[str]] = mapped_column(Text,        nullable=True)
+    insight_tags : Mapped[str | None] = mapped_column(Text,        nullable=True)
 
     created_at   : Mapped[datetime]      = mapped_column(DateTime,    default=datetime.utcnow)
