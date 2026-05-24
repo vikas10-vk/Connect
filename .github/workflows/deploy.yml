@@ -58,34 +58,43 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        working-directory: hipages/backend
+        working-directory: ProConnect/backend
         run: |
-        
           python -m pip install --upgrade pip
-          pip install "fastapi==0.135.1" "uvicorn[standard]==0.42.0" "gunicorn==25.1.0"
-          pip install "sqlalchemy[asyncio]==2.0.48" "asyncpg==0.30.0" "alembic==1.14.0" "psycopg2-binary==2.9.11"
-          pip install "pydantic==2.12.5" "pydantic-settings==2.13.1" "python-dotenv==1.2.2" "email-validator==2.3.0"
-          pip install "python-jose[cryptography]==3.5.0" "cryptography==46.0.5" "bcrypt==4.0.1"
-          pip install "redis==7.3.0" "celery==5.6.2"
-          pip install "httpx==0.28.1" "python-multipart==0.0.22" "python-dateutil==2.9.0" "orjson" "stripe" "boto3"
-          pip install "sentry-sdk[fastapi]==2.56.0"
-          pip install "pytest==8.3.4" "pytest-asyncio==0.24.0" "pytest-cov==6.0.0" "ruff==0.8.4"
+          pip install -r requirements.txt
+          pip install \
+            pytest==8.3.4 \
+            pytest-asyncio==0.24.0 \
+            pytest-cov==6.0.0 \
+            ruff==0.8.4 \
+            asgi-lifespan==2.1.0
 
-      - name: Lint
-        working-directory: hipages/backend
+      - name: Lint with ruff
+        working-directory: ProConnect/backend
         run: ruff check .
         continue-on-error: true
 
       - name: Run migrations
-        working-directory: hipages/backend
+        working-directory: ProConnect/backend
         env:
           DATABASE_URL: postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
           SECRET_KEY:   ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
           ALGORITHM:    HS256
         run: alembic upgrade head
 
+      # Seed canonical trade categories so category-slug resolution tests pass.
+      # This step is required — tests that call POST /jobs/ with a category_slug
+      # will fail with 400 if the DB has no categories.
+      - name: Seed categories
+        working-directory: ProConnect/backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
+          SECRET_KEY:   ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
+          ALGORITHM:    HS256
+        run: python -m seeds.seed_categories
+
       - name: Run tests
-        working-directory: hipages/backend
+        working-directory: ProConnect/backend
         env:
           DATABASE_URL:          postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
           REDIS_URL:             redis://localhost:6379/0
@@ -146,44 +155,39 @@ jobs:
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
+      # -----------------------------------------------------------------------
+      # Backend — uses the production multi-stage Dockerfile (not Dockerfile.dev)
+      # Image name: "fastapi" to match docker-compose.prod.yml references
+      # -----------------------------------------------------------------------
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
-          context: ./hipages/backend
-          file: ./hipages/backend/Dockerfile
+          context: ./ProConnect/backend
+          file: ./ProConnect/backend/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/backend:${{ steps.meta.outputs.version }}
-            ghcr.io/${{ github.repository }}/backend:latest
+            ghcr.io/${{ github.repository }}/fastapi:${{ steps.meta.outputs.version }}
+            ghcr.io/${{ github.repository }}/fastapi:latest
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/backend:buildcache
-          cache-to:   type=registry,ref=ghcr.io/${{ github.repository }}/backend:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/fastapi:buildcache
+          cache-to:   type=registry,ref=ghcr.io/${{ github.repository }}/fastapi:buildcache,mode=max
 
+      # -----------------------------------------------------------------------
+      # Frontend — uses the existing production multi-stage Dockerfile
+      # Image name: "nextjs" to match docker-compose.prod.yml references
+      # -----------------------------------------------------------------------
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
-          context: ./hipages/frontend
-          file: ./hipages/frontend/Dockerfile
+          context: ./ProConnect/frontend
+          file: ./ProConnect/frontend/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/frontend:${{ steps.meta.outputs.version }}
-            ghcr.io/${{ github.repository }}/frontend:latest
+            ghcr.io/${{ github.repository }}/nextjs:${{ steps.meta.outputs.version }}
+            ghcr.io/${{ github.repository }}/nextjs:latest
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/frontend:buildcache
-          cache-to:   type=registry,ref=ghcr.io/${{ github.repository }}/frontend:buildcache,mode=max
-
-      - name: Build and push admin image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./hipages/admin
-          file: ./hipages/admin/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}/admin:${{ steps.meta.outputs.version }}
-            ghcr.io/${{ github.repository }}/admin:latest
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/admin:buildcache
-          cache-to:   type=registry,ref=ghcr.io/${{ github.repository }}/admin:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/nextjs:buildcache
+          cache-to:   type=registry,ref=ghcr.io/${{ github.repository }}/nextjs:buildcache,mode=max
 
   # ============================================================================
   # Job 3: Deploy to production server
@@ -212,7 +216,7 @@ jobs:
         run: |
           scp -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
-            hipages/deploy.sh \
+            ProConnect/deploy.sh \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/home/${{ secrets.SERVER_USER }}/deploy.sh
 
       - name: Deploy
