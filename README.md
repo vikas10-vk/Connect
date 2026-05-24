@@ -1,179 +1,108 @@
-# ProConnect 🔧
+# ProConnect — Australian On-Demand Trades Marketplace 🔧
 
-A marketplace connecting homeowners with verified tradies — built with FastAPI, Next.js, PostgreSQL, and Redis.
+[![Build Status](https://github.com/vikas10-vk/Connect/actions/workflows/test.yml/badge.svg)](https://github.com/vikas10-vk/Connect/actions/workflows/test.yml)
+[![Deployment Status](https://github.com/vikas10-vk/Connect/actions/workflows/deploy.yml/badge.svg)](https://github.com/vikas10-vk/Connect/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)](https://nextjs.org/)
+[![Docker](https://img.shields.io/badge/Docker-Enabled-cyan.svg)](https://www.docker.com/)
 
----
-
-## Prerequisites
-
-Make sure the following are installed on your machine before you begin:
-
-| Tool | Version | Download |
-|------|---------|----------|
-| **Python** | 3.11+ | https://www.python.org/downloads/ |
-| **Node.js** | 18+ | https://nodejs.org/ |
-| **Docker Desktop** | Latest | https://www.docker.com/products/docker-desktop/ |
-| **Git** | Latest | https://git-scm.com/ |
+ProConnect is a high-performance, enterprise-grade marketplace platform matching homeowners with licensed trade professionals across Australia. Built to handle extreme concurrency, the system orchestrates real-time geospatial matches, secure online escrow, automated multi-channel notifications, and real-time status updates.
 
 ---
 
-## 🐳 The Easiest Way: Full Docker Setup (Recommended)
+## 🌟 Architectural Features
 
-If you have Docker installed, you can run the **entire stack** (Frontend, Backend, Database, Redis, Celery) inside containers with a single command! This is the simplest way to get up and running without installing Python or Node.js locally.
+* **Multi-Stage Containerization:** Both Next.js (standalone) and FastAPI backends are containerized with strict non-root policies and minimized sizes (~80MB runtime footprints).
+* **Automated Semantic Lead Dispatch:** Advanced NLP algorithms process customer descriptions on the fly, auto-mapping them to standard trade licensing categories for instant notifications.
+* **Resilient Distributed Workloads:** Redis-backed Celery worker queues coordinate background processes, email dispatchers, and automated lead escalations.
+* **Fully Audited Security Architecture:** Enforces robust role boundaries (RBAC), end-to-end IDOR verification on ownership hierarchies, and secure JWT-based auth flows.
+* **Enterprise CI/CD Pipelines:** Complete GitHub Actions integration running linting, strict static analysis, complete test suites, Docker image compilation, and automated SSH-based cluster deployment.
 
-1. **Clone the repository:**
+---
+
+## 📦 Tech Stack
+
+| Component | Technology | Role |
+|---|---|---|
+| **Frontend** | Next.js 14, React, TailwindCSS, TypeScript | Customer & Tradie Portal UI |
+| **Backend** | FastAPI, SQLAlchemy (unified asyncio), Alembic | Unified API Webserver |
+| **Database** | PostgreSQL 16 | Primary ACID Relational Store |
+| **Broker / Cache** | Redis 7 | Background Broker & Performance Cache |
+| **Tasks Engine** | Celery 5 | Distributed Workloads & Cron Schedules |
+| **Web Proxy** | Nginx | Reverse Proxy & Rate Limiter |
+| **Observability** | Sentry, Flower | System Metrics & Error Interceptors |
+
+---
+
+## 📂 Project Anatomy
+
+```
+proconnect/                          ← Active repository root
+├── .github/
+│   ├── workflows/
+│   │   ├── test.yml                 ← Standard CI suite (lint + tests)
+│   │   └── deploy.yml               ← CD production pipeline
+│   └── PULL_REQUEST_TEMPLATE.md     ← Quality checklist for submissions
+├── ProConnect/                         ← Core codebase
+│   ├── backend/                     ← High-performance FastAPI backend
+│   ├── frontend/                    ← Premium standalone Next.js application
+│   ├── nginx/                       ← Nginx config and reverse proxy layer
+│   ├── docs/                        ← ARCHITECTURAL & DEPLOYMENT MANUALS
+│   │   ├── ARCHITECTURE.md          ← Complete systems diagram & flows
+│   │   ├── DEPLOYMENT.md            ← SSH, GHCR, and cloud guides
+│   │   └── LOCAL_SETUP.md           ← Quick onboarding & local setup
+│   ├── docker-compose.dev.yml       ← Full-stack dockerized local stack
+│   ├── docker-compose.prod.yml      ← Secure production environment stack
+│   ├── Makefile                     ← Comprehensive CLI shortcut controller
+│   └── README.md                    ← Hipages workspace reference
+└── README.md                        ← Main Repository Guide
+```
+
+---
+
+## 🚀 Getting Started
+
+The fastest way to experience ProConnect locally is to spin up our fully dockerized stack. 
+
+### Quick Onboarding
+
+1. **Enter directory:**
    ```bash
-   git clone <repository_url>
-   cd Intership_main/hipages
+   cd ProConnect/
    ```
 
-2. **Configure Environment Variables:**
+2. **Clone Configuration Templates:**
    ```bash
-   # Windows
-   copy .env.example .env
-   # Mac/Linux
    cp .env.example .env
+   cp .env.dev.example .env.dev
    ```
-   *You can leave all values in `.env` as default for local development.*
 
-3. **Start the Entire Application:**
+3. **Launch the Containers:**
    ```bash
-   docker compose -f docker-compose.dev.yml up --build -d
+   make dev
    ```
 
-4. **Run Database Migrations (First time only):**
+4. **Initialize DB & Categories:**
    ```bash
-   docker compose -f docker-compose.dev.yml exec fastapi alembic upgrade head
+   make migrate
+   make seed
    ```
 
-That's it! The services will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **Flower (Task Monitor)**: http://localhost:5555
-- **Mailpit (Local Emails)**: http://localhost:8025
-
-To stop everything, run: `docker compose -f docker-compose.dev.yml down`
+You are ready! Open [http://localhost:3000](http://localhost:3000) to access the customer interface.
 
 ---
 
-## 🚀 Windows Quick Start (Alternative)
+## 📖 In-Depth System Manuals
 
-If you are on Windows and prefer running the code locally on your machine rather than in full Docker containers, use the included `.bat` scripts.
+To continue configuring, operating, or developing the platform, consult our comprehensive documentation:
 
-1. **Configure `.env`**: Copy `.env.example` to `.env` as shown above.
-2. **Run the Setup Script**:
-   Double-click `setup.bat` or run:
-   ```cmd
-   setup.bat
-   ```
-   > This automatically sets up the Python virtual environment, installs Python/Node dependencies, starts Docker (for DB+Redis only), and runs migrations!
-3. **Start the Application**:
-   Double-click `start.bat` or run:
-   ```cmd
-   start.bat
-   ```
-   > Opens 3 terminal windows (Backend, Celery, Frontend) and launches your browser.
-
-When done, run `stop.bat` to shut everything down.
+* 📚 **[Local Developer Onboarding & API Guide](file:///c:/Users/Capstone/Intership_main/ProConnect/docs/LOCAL_SETUP.md)**
+* 🗺️ **[System Architecture & Core Patterns](file:///c:/Users/Capstone/Intership_main/ProConnect/docs/ARCHITECTURE.md)**
+* ⚙️ **[Production Provisioning & Deployment Blueprint](file:///c:/Users/Capstone/Intership_main/ProConnect/docs/DEPLOYMENT.md)**
 
 ---
 
-## 🛠️ Manual Setup Guide (Mac / Linux / Windows)
+## 🛡️ License
 
-If you prefer to run things completely manually:
-
-### Step 1 — Configure Environment Variables
-
-```bash
-# Copy backend env
-cp .env.example .env
-
-# Create frontend env
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
-```
-
-### Step 2 — Start Docker (Database + Redis Only)
-
-```bash
-docker-compose up -d
-```
-Starts PostgreSQL on port `5433` and Redis on port `6379`.
-
-### Step 3 — Set Up the Backend
-
-```bash
-cd backend
-
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate      # Mac/Linux
-# venv\Scripts\activate       # Windows
-
-# Install dependencies and migrate
-pip install -r requirements.txt
-alembic upgrade head
-
-# Start backend server
-uvicorn main:app --reload --port 8000
-```
-
-### Step 4 — Start the Celery Worker (new terminal)
-
-```bash
-cd backend
-source venv/bin/activate      # Mac/Linux
-# venv\Scripts\activate       # Windows
-
-celery -A workers.celery_app worker --loglevel=info --pool=solo
-```
-
-### Step 5 — Start the Frontend (new terminal)
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
----
-
-## 📁 Project Structure
-
-```
-hipages/
-├── backend/                  # FastAPI Python backend
-│   ├── routers/              # API route handlers
-│   ├── models/               # SQLAlchemy database models
-│   ├── schemas/              # Pydantic request/response schemas
-│   ├── services/             # Business logic & integrations
-│   ├── workers/              # Celery background tasks
-│   ├── alembic/              # Database migrations
-│   └── main.py               # App entry point
-│
-├── frontend/                 # Next.js React frontend
-│   ├── src/app/              # Pages (App Router)
-│   ├── src/components/       # Reusable UI components
-│   ├── src/lib/              # Auth context, API client, utils
-│   └── src/hooks/            # Custom React hooks
-│
-├── .env.example              # Environment variable template
-├── docker-compose.dev.yml    # FULL DOCKER stack (Frontend, Backend, DB, Redis, Celery)
-├── docker-compose.yml        # DB + Redis ONLY containers
-├── setup.bat                 # First-time local setup (Windows)
-├── start.bat                 # Launch local services (Windows)
-└── stop.bat                  # Stop local services (Windows)
-```
-
----
-
-## 🛠️ Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| Docker not starting | Open Docker Desktop first, wait for it to fully load |
-| Port 3000 in use | `npx kill-port 3000` |
-| Port 8000 in use | `npx kill-port 8000` |
-| `venv` not found | Run `python -m venv venv` in the `backend/` folder |
-| DB migration error | Ensure Docker is running, then re-run `alembic upgrade head` |
-| `npm install` fails | Delete `node_modules/` and run `npm install` again |
-| Backend can't connect to DB | Check that `docker-compose up -d` ran successfully |
+This project is distributed under the MIT License. See [SECURITY.md](file:///c:/Users/Capstone/Intership_main/SECURITY.md) for vulnerability disclosure procedures.

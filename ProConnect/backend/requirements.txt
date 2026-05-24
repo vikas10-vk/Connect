@@ -1,0 +1,46 @@
+# =============================================================================
+# requirements.txt — Production dependencies
+# ProConnect Backend
+# =============================================================================
+#
+# Generated and pinned for production-grade stability. Matches pyproject.toml.
+
+fastapi==0.135.1
+uvicorn[standard]==0.42.0
+gunicorn==25.1.0
+
+# Database
+sqlalchemy[asyncio]==2.0.48
+asyncpg==0.30.0
+alembic==1.14.0
+psycopg2-binary==2.9.11
+
+# Settings & validation
+pydantic==2.12.5
+pydantic-settings==2.13.1
+python-dotenv==1.2.2
+email-validator==2.3.0
+
+# Security
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+cryptography==46.0.5
+
+# Redis & Celery
+redis[hiredis]==7.3.0
+celery[redis]==5.6.2
+flower==2.0.1
+
+# HTTP client
+httpx==0.28.1
+
+# Monitoring
+sentry-sdk[fastapi]==2.56.0
+
+# Utilities
+python-multipart==0.0.22
+orjson
+python-dateutil==2.9.0
+
+# AI Services
+groq==1.1.2

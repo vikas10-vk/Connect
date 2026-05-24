@@ -1,0 +1,55 @@
+# =============================================================================
+# .dockerignore — Files excluded from the Docker build context
+# ProConnect Frontend (Next.js)
+# =============================================================================
+
+# Dependencies — these are installed fresh inside the Docker build
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js build output — rebuilt inside Docker
+.next/
+out/
+
+# Environment files — secrets are injected at runtime, never baked into image
+.env
+.env.*
+!.env.example
+
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# TypeScript build info (regenerated during npm run build)
+tsconfig.tsbuildinfo
+
+# Test and coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Debug and log files
+*.log
+ts_output.txt
+metadata.json
+
+# Dockerfile variants (keep only the production Dockerfile in image context)
+Dockerfile.dev
+.dockerignore
+
+# CI/build artefacts
+*.egg-info/
+dist/
+build/

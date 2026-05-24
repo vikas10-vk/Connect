@@ -1,0 +1,38 @@
+# =============================================================================
+# requirements-dev.txt — Development & testing dependencies
+# ProConnect Backend
+# =============================================================================
+#
+# Usage:
+#   pip install -r requirements-dev.txt
+#
+# This file includes everything in requirements.txt plus test/lint tooling.
+# Never install this in production — use requirements.txt only.
+# =============================================================================
+
+# Production dependencies (pinned)
+-r requirements.txt
+
+# =============================================================================
+# Testing
+# =============================================================================
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+
+# ASGI lifespan manager — required by conftest.py to trigger app startup/shutdown
+# during tests so app.state.redis_client is initialised (LifespanManager)
+asgi-lifespan==2.1.0
+
+# Async HTTP client for test assertions against the ASGI app
+httpx==0.28.1
+
+# Test data factories
+factory-boy==3.3.1
+faker==33.1.0
+
+# =============================================================================
+# Linting & type checking
+# =============================================================================
+ruff==0.8.4
+mypy==1.13.0

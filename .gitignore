@@ -145,3 +145,26 @@ docker-compose.override.yml
 *.bak
 *.orig
 scratch/
+runs.json
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat-schedule.dir
+celerybeat-schedule.bak
+celerybeat-schedule.dat
+
+# ============================================================
+# PRIVATE NOTES & SENSITIVE DOCUMENTATION (USER EYE ONLY)
+# ============================================================
+Critical_want_to_fix_problem.md
+Main_ problem.md
+Remediation_Plan.md
+categories.md
+ProConnect/frontend_prd.md
+ProConnect/API_Architecture_Fixes.md
+CLAUDE.md
+ProConnect/CLAUDE.md
+.fuse_hidden*
+*.fuse_hidden*
+fix_mojibake_result.txt
+
+

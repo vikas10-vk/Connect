@@ -1,0 +1,13 @@
+node_modules/
+build/
+dist/
+coverage/
+.next/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# User-uploaded files must never be committed or served from the frontend.
+# (The old R2-failure fallback wrote uploads here — that fallback was removed.)
+public/uploads/

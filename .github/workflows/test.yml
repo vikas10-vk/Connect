@@ -52,11 +52,10 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      # Direct pip install — no package build system.
-      # Your backend is a FastAPI app, not a Python library.
-      # pip install ".[dev]" tried to build a wheel and failed.
+      # Install production deps from requirements.txt then add test/dev tooling.
+      # asgi-lifespan is installed here (also in requirements-dev.txt for local use).
       - name: Install dependencies
-        working-directory: hipages/backend
+        working-directory: ProConnect/backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -67,21 +66,64 @@ jobs:
             ruff==0.8.4 \
             asgi-lifespan==2.1.0
 
+      # Lint check — now enforced (not continue-on-error).
+      # Fix lint errors with: ruff check --fix .
       - name: Lint with ruff
-        working-directory: hipages/backend
+        working-directory: ProConnect/backend
         run: ruff check .
-        continue-on-error: true
 
       - name: Run Alembic migrations
-        working-directory: hipages/backend
+        working-directory: ProConnect/backend
         env:
           DATABASE_URL: postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
           SECRET_KEY:   ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
           ALGORITHM:    HS256
         run: alembic upgrade head
 
+      # Seed canonical trade categories so category-slug resolution works in tests.
+      # Without this, POST /jobs/ with any category_slug returns 400.
+      - name: Seed categories
+        working-directory: ProConnect/backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
+          SECRET_KEY:   ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
+          ALGORITHM:    HS256
+        run: python -m seeds.seed_categories
+
+      # Smoke test: verifies the Celery app path that docker-compose.prod.yml
+      # uses (`celery -A workers.celery_app:celery_app`) actually imports and
+      # boots. A misnamed module path (the old `app.celery_app`) fails here.
+      - name: Celery boot smoke test
+        working-directory: ProConnect/backend
+        env:
+          DATABASE_URL:          postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
+          REDIS_URL:             redis://localhost:6379/0
+          CELERY_BROKER_URL:     redis://localhost:6379/1
+          CELERY_RESULT_BACKEND: redis://localhost:6379/2
+          ENVIRONMENT:           test
+          SECRET_KEY:            ci-test-secret-key-minimum-32-chars-xxxxxxxxxxx
+          ALGORITHM:             HS256
+        run: |
+          set -e
+          # 1. The Celery app module must import at the exact path prod uses.
+          PYTHONPATH=. python -c "from workers.celery_app import celery_app; print('Celery app:', celery_app.main); assert celery_app.tasks, 'no tasks registered'"
+          # 2. Boot a real worker against Redis, confirm it answers a ping, stop it.
+          PYTHONPATH=. celery -A workers.celery_app:celery_app worker --pool=solo --concurrency=1 --loglevel=info &
+          WORKER_PID=$!
+          for i in $(seq 1 20); do
+            if PYTHONPATH=. celery -A workers.celery_app:celery_app inspect ping --timeout 5 >/dev/null 2>&1; then
+              echo "Celery worker booted and responded to ping"
+              kill "$WORKER_PID" 2>/dev/null || true
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Celery worker did not respond within timeout"
+          kill "$WORKER_PID" 2>/dev/null || true
+          exit 1
+
       - name: Run tests
-        working-directory: hipages/backend
+        working-directory: ProConnect/backend
         env:
           DATABASE_URL:          postgresql+asyncpg://tradie:test_password_ci@localhost:5432/tradie_test
           REDIS_URL:             redis://localhost:6379/0
@@ -120,14 +162,16 @@ jobs:
         if: always()
         with:
           name: coverage-report
-          path: hipages/backend/coverage.xml
+          path: ProConnect/backend/coverage.xml
           retention-days: 7
 
   frontend-build:
     name: Frontend build check
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
+    # NOTE: A failing frontend build (including TypeScript and ESLint errors,
+    # now that next.config.mjs no longer ignores them) is a release blocker
+    # and must fail CI. No continue-on-error here.
 
     steps:
       - name: Checkout code
@@ -138,14 +182,14 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: hipages/frontend/package-lock.json
+          cache-dependency-path: ProConnect/frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: hipages/frontend
+        working-directory: ProConnect/frontend
         run: npm ci --legacy-peer-deps
 
       - name: Build Next.js
-        working-directory: hipages/frontend
+        working-directory: ProConnect/frontend
         env:
           # Required at build time for NEXT_PUBLIC_ variables
           NEXT_PUBLIC_API_URL:      http://localhost:8000

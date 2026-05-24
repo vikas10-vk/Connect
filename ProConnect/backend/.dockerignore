@@ -1,0 +1,94 @@
+# =============================================================================
+# .dockerignore — Files excluded from the Docker build context
+# ProConnect Backend
+# =============================================================================
+#
+# WHY THIS MATTERS:
+#   Docker sends the entire build context to the daemon before building.
+#   Without .dockerignore, it would upload node_modules, venv, __pycache__,
+#   test databases, logs, and hundreds of MB of junk.
+#   This reduces build context from ~600MB to ~5MB.
+# =============================================================================
+
+# Python virtual environments — never copy these into the image
+.venv/
+venv/
+env/
+.env/
+
+# Python byte code and cache — rebuild inside the image instead
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Pytest and coverage — not needed in production
+tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.coverage
+.cache
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Alembic migration scripts are needed at startup (alembic upgrade head)
+# DO NOT add alembic/ here
+
+# Logs and debug output
+*.log
+chat_error.log
+groq_error.txt
+db_out.txt
+output.txt
+
+# Development-only debug and test scripts (not needed in production image)
+check_*.py
+debug_*.py
+create_test_*.py
+create_admin.py
+create_user_insights.py
+fix_*.py
+trigger_*.py
+test_db.py
+test_ids.py
+test_r2.py
+test_review.py
+set_r2_cors.py
+seed.py
+
+# Scratch and temporary files
+scratch/
+
+# Celery beat schedule (runtime state, not source)
+celerybeat-schedule
+celerybeat.pid
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile.dev
+.dockerignore
+
+# Environment files — secrets never go into the image
+# Runtime env vars are injected at container start via docker-compose or Kubernetes
+.env
+.env.*
+
+# CI/build artefacts
+*.egg-info/
+dist/
+build/
